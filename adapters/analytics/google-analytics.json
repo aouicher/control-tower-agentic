@@ -1,0 +1,27 @@
+{
+  "tool": "google-analytics",
+  "capability": "analytics",
+  "access": "mcp",
+  "setup_url": "https://developers.google.com/analytics/devguides/MCP",
+  "install": [
+    "claude mcp add analytics-mcp -- pipx run analytics-mcp"
+  ],
+  "env": [
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_PROJECT"
+  ],
+  "permissions_allow": [
+    "mcp__analytics-mcp__get_account_summaries",
+    "mcp__analytics-mcp__get_property_details",
+    "mcp__analytics-mcp__get_custom_dimensions_and_metrics",
+    "mcp__analytics-mcp__run_report",
+    "mcp__analytics-mcp__run_realtime_report",
+    "mcp__analytics-mcp__run_funnel_report",
+    "mcp__analytics-mcp__run_conversions_report"
+  ],
+  "verify": "Ask Claude Code to call get_account_summaries and list the accessible properties.",
+  "read_only": true,
+  "status": "documented",
+  "permissions_deny": [],
+  "read_only_mitigation": "Read-only OAuth scope analytics.readonly and Viewer role; the server is documented as read-only. Source: https://developers.google.com/analytics/devguides/MCP"
+}

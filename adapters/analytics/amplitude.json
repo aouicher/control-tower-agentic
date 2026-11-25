@@ -1,0 +1,23 @@
+{
+  "tool": "amplitude",
+  "capability": "analytics",
+  "access": "mcp",
+  "setup_url": "https://amplitude.com/docs/amplitude-ai/amplitude-mcp/claude-code",
+  "install": [
+    "claude mcp add --transport http --scope user Amplitude https://mcp.amplitude.com/mcp"
+  ],
+  "env": [],
+  "permissions_allow": [
+    "mcp__Amplitude__query_amplitude_data",
+    "mcp__Amplitude__get_amplitude_context",
+    "mcp__Amplitude__get_amp_taxonomy"
+  ],
+  "verify": "Ask Claude Code which Amplitude projects you can access.",
+  "read_only": false,
+  "status": "documented",
+  "permissions_deny": [
+    "mcp__Amplitude__manage_amp_events",
+    "mcp__Amplitude__run_amp"
+  ],
+  "read_only_mitigation": "The server has read and write tools and no read-only switch. Authenticate with a Viewer-role account (Use MCP read only) and deny the write tools. Source: https://amplitude.com/docs/amplitude-ai/amplitude-mcp"
+}

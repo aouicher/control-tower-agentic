@@ -1,0 +1,16 @@
+{
+  "tool": "sentry",
+  "capability": "errors",
+  "access": "mcp",
+  "setup_url": "https://mcp.sentry.dev/",
+  "install": [
+    "claude mcp add --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}"
+  ],
+  "env": [],
+  "permissions_allow": [],
+  "verify": "Ask Claude Code to list the recent unresolved Sentry issues of the scoped project.",
+  "read_only": false,
+  "status": "documented",
+  "permissions_deny": [],
+  "read_only_mitigation": "The official page (https://mcp.sentry.dev/) lists no tool names and no read-only mode. Run /mcp, review the tool list, and allow only the read-only tools; use an account with the minimum role."
+}

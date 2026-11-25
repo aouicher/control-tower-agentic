@@ -1,0 +1,25 @@
+{
+  "tool": "google-calendar",
+  "capability": "calendar",
+  "access": "mcp",
+  "setup_url": "https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server",
+  "install": [
+    "claude mcp add --transport http calendar https://calendarmcp.googleapis.com/mcp/v1"
+  ],
+  "env": [],
+  "permissions_allow": [
+    "mcp__calendar__list_calendars",
+    "mcp__calendar__list_events",
+    "mcp__calendar__get_event",
+    "mcp__calendar__search_events"
+  ],
+  "permissions_deny": [
+    "mcp__calendar__create_event",
+    "mcp__calendar__update_event",
+    "mcp__calendar__delete_event",
+    "mcp__calendar__respond_to_event"
+  ],
+  "verify": "In Claude Code run /mcp and complete the sign-in for the calendar server, then ask: list my events for tomorrow (read only).",
+  "read_only": true,
+  "status": "documented"
+}

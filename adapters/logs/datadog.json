@@ -1,0 +1,19 @@
+{
+  "tool": "datadog",
+  "capability": "logs",
+  "access": "mcp",
+  "setup_url": "https://docs.datadoghq.com/mcp_server/setup.md",
+  "install": [
+    "claude mcp add --transport http datadog-mcp https://mcp.datadoghq.com/v1/mcp"
+  ],
+  "env": [],
+  "permissions_allow": [
+    "mcp__datadog-mcp__search_datadog_logs",
+    "mcp__datadog-mcp__analyze_datadog_logs"
+  ],
+  "verify": "Ask Claude Code to count error logs of one service over the last hour with analyze_datadog_logs.",
+  "read_only": true,
+  "status": "documented",
+  "permissions_deny": [],
+  "read_only_mitigation": "Use OAuth or a token with read permissions only (Logs Read Data, Logs Read Index Data); allow only the two logs tools. Source: https://docs.datadoghq.com/mcp_server/tools.md"
+}

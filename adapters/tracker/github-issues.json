@@ -1,0 +1,24 @@
+{
+  "tool": "github-issues",
+  "capability": "tracker",
+  "access": "cli",
+  "setup_url": "https://cli.github.com/manual/gh_issue_list",
+  "install": [
+    "gh auth login"
+  ],
+  "env": [
+    "GH_TOKEN"
+  ],
+  "permissions_allow": [],
+  "permissions_deny": [
+    "Bash(gh issue create:*)",
+    "Bash(gh issue edit:*)",
+    "Bash(gh issue close:*)",
+    "Bash(gh issue comment:*)",
+    "Bash(gh issue delete:*)"
+  ],
+  "verify": "Run: gh issue list --repo OWNER/REPO --limit 5 --json number,title,state",
+  "read_only": false,
+  "read_only_mitigation": "Use a fine-grained personal access token limited to the needed repositories with read-only permissions, supplied through GH_TOKEN; the CLI itself has write commands, so the token is the control. Claude Code prefix rules need a wildcard, so no command is pre-allowed: approve read commands one by one or review them, and keep the deny list.",
+  "status": "documented"
+}

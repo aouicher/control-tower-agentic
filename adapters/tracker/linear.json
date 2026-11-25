@@ -1,0 +1,15 @@
+{
+  "tool": "linear",
+  "capability": "tracker",
+  "access": "mcp",
+  "setup_url": "https://linear.app/docs/mcp",
+  "install": [
+    "claude mcp add --transport http linear-server https://mcp.linear.app/mcp/readonly"
+  ],
+  "env": [],
+  "permissions_allow": [],
+  "permissions_deny": [],
+  "verify": "In Claude Code run /mcp, authenticate linear-server, then ask: list the issues of the current cycle for one team (read only).",
+  "read_only": true,
+  "status": "documented"
+}

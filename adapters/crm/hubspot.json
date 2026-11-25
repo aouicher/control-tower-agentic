@@ -1,0 +1,26 @@
+{
+  "tool": "hubspot",
+  "capability": "crm",
+  "access": "mcp",
+  "setup_url": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
+  "install": [
+    "Create an MCP connector in HubSpot (Development > MCP Connectors), then add https://mcp.hubspot.com to your MCP client with Streamable HTTP and the connector client id and secret; check the official documentation for the exact Claude Code command"
+  ],
+  "env": [],
+  "permissions_allow": [
+    "mcp__hubspot__get_user_details",
+    "mcp__hubspot__search_crm_objects",
+    "mcp__hubspot__get_crm_objects",
+    "mcp__hubspot__read_campaign_data"
+  ],
+  "verify": "Ask Claude Code to run get_user_details and report which tools and objects are accessible.",
+  "read_only": false,
+  "status": "documented",
+  "permissions_deny": [
+    "mcp__hubspot__manage_campaign_objects",
+    "mcp__hubspot__manage_marketing_email",
+    "mcp__hubspot__manage_website_page",
+    "mcp__hubspot__manage_blog_post"
+  ],
+  "read_only_mitigation": "The server exposes write tools and no read-only mode is documented. Authorise with a view-only HubSpot user, decline optional write permissions at consent, and deny the write tools. Source: https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server"
+}

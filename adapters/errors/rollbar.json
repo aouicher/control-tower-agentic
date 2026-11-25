@@ -1,0 +1,29 @@
+{
+  "tool": "rollbar",
+  "capability": "errors",
+  "access": "mcp",
+  "setup_url": "https://docs.rollbar.com/docs/mcp-server-setup",
+  "install": [
+    "Add to .mcp.json: {\"mcpServers\": {\"rollbar\": {\"type\": \"stdio\", \"command\": \"npx\", \"args\": [\"-y\", \"@rollbar/mcp-server@latest\"], \"env\": {\"ROLLBAR_ACCOUNT_ACCESS_TOKEN\": \"<read-scope account token>\"}}}}"
+  ],
+  "env": [
+    "ROLLBAR_ACCOUNT_ACCESS_TOKEN",
+    "ROLLBAR_ACCESS_TOKEN"
+  ],
+  "permissions_allow": [
+    "mcp__rollbar__list-projects",
+    "mcp__rollbar__get-item-details",
+    "mcp__rollbar__get-top-items",
+    "mcp__rollbar__list-items",
+    "mcp__rollbar__list-occurrences",
+    "mcp__rollbar__get-deployments",
+    "mcp__rollbar__get-version"
+  ],
+  "verify": "Ask Claude Code to list the Rollbar projects (tool list-projects).",
+  "read_only": true,
+  "status": "documented",
+  "permissions_deny": [
+    "mcp__rollbar__update-item"
+  ],
+  "read_only_mitigation": "Use a read-scope token; update-item needs a read and write token and is denied here. Source: https://docs.rollbar.com/docs/mcp-server-setup"
+}

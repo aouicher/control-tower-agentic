@@ -1,0 +1,16 @@
+{
+  "tool": "jira",
+  "capability": "tracker",
+  "access": "mcp",
+  "setup_url": "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
+  "install": [
+    "claude mcp add --transport http atlassian https://mcp.atlassian.com/v2/mcp"
+  ],
+  "env": [],
+  "permissions_allow": [],
+  "permissions_deny": [],
+  "verify": "In Claude Code run /mcp and authenticate the atlassian server, then ask: list the tools you can call, and fetch one issue key I give you (read only).",
+  "read_only": false,
+  "read_only_mitigation": "The documentation read does not describe a read-only mode: connect with an account or service account that has view-only project permissions, and allow only read tools by exact name after reviewing the tool list.",
+  "status": "documented"
+}

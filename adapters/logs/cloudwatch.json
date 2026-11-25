@@ -1,0 +1,26 @@
+{
+  "tool": "cloudwatch",
+  "capability": "logs",
+  "access": "mcp",
+  "setup_url": "https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server",
+  "install": [
+    "claude mcp add cloudwatch --env AWS_PROFILE=<read-only-profile> --env FASTMCP_LOG_LEVEL=ERROR -- uvx awslabs.cloudwatch-mcp-server@latest"
+  ],
+  "env": [
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "FASTMCP_LOG_LEVEL"
+  ],
+  "permissions_allow": [
+    "mcp__cloudwatch__describe_log_groups",
+    "mcp__cloudwatch__analyze_log_group",
+    "mcp__cloudwatch__execute_log_insights_query",
+    "mcp__cloudwatch__get_logs_insight_query_results",
+    "mcp__cloudwatch__cancel_logs_insight_query"
+  ],
+  "verify": "Ask Claude Code to describe the log groups whose name starts with a given prefix.",
+  "read_only": false,
+  "status": "documented",
+  "permissions_deny": [],
+  "read_only_mitigation": "The server needs logs:StartQuery and logs:StopQuery, which are not read-only by name (they do not alter log data but queries are billed). Use a profile limited to the documented IAM actions listed at https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server and keep time windows tight."
+}

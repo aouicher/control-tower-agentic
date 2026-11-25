@@ -1,0 +1,16 @@
+{
+  "tool": "asana",
+  "capability": "tracker",
+  "access": "mcp",
+  "setup_url": "https://developers.asana.com/docs/using-asanas-mcp-server",
+  "install": [
+    "claude mcp add --transport http --client-id YOUR_CLIENT_ID --client-secret --callback-port 8080 asana https://mcp.asana.com/v2/mcp"
+  ],
+  "env": [],
+  "permissions_allow": [],
+  "permissions_deny": [],
+  "verify": "Start claude, run /mcp to confirm the asana server is connected, then ask for the tasks of one project (read only).",
+  "read_only": false,
+  "read_only_mitigation": "The documentation read does not describe a read-only mode: connect with a user who has read-only (viewer) access to the needed projects, and allow only read tools by exact name after reviewing the tool list.",
+  "status": "documented"
+}
