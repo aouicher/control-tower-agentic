@@ -4,6 +4,8 @@ A personal **control tower** for knowledge work: an [Obsidian](https://obsidian.
 
 It is built for people who lead, build, plan or promote things: engineering leaders, developers, product managers, marketers. You pick the profiles (called **packs**) and the tools you already use (called **adapters**); an assistant installs everything for you.
 
+![The cockpit: priorities of the day, agenda and overdue tasks](docs/images/cockpit-today.png)
+
 ## What you get
 
 | Piece | What it does |
@@ -14,6 +16,18 @@ It is built for people who lead, build, plan or promote things: engineering lead
 | **Cloud routines** | Scheduled claude.ai routines; the installer offers them and creates the ones you choose. |
 | **Tool adapters** | Documented, read-only connections to Jira, Linear, GitHub, Sentry, Rollbar, SonarQube, CloudWatch, Datadog, Google Calendar, Google Analytics, Amplitude, HubSpot, Asana. |
 | **A guided installer** | Claude asks a few questions, then installs only what you chose. Nothing is overwritten. |
+
+## A look inside
+
+Screenshots of the fictional demo vault (company "Acme"), built with `python3 examples/build_demo_vault.py --out ~/control-tower-demo`.
+
+| Projects, initiatives, people and teams at a glance | A weekly review written from your tasks |
+|---|---|
+| ![Cockpit dashboards](docs/images/cockpit-dashboards.png) | ![Weekly review](docs/images/weekly-review.png) |
+
+| A 1-1 note filed by `/meeting`: decisions and actions routed to their notes |
+|---|
+| ![1-1 meeting note](docs/images/meeting-1-1.png) |
 
 ## Design principles
 

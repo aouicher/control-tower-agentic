@@ -182,6 +182,10 @@ class InstallTests(unittest.TestCase):
             install.install(a)
             daily = json.load(open(os.path.join(a['vault_path'], '.obsidian', 'daily-notes.json')))
             self.assertEqual(daily['folder'], 'journal/daily')
+            obs = os.path.join(a['vault_path'], '.obsidian')
+            self.assertFalse(json.load(open(os.path.join(obs, 'app.json')))['readableLineLength'], 'would override the width snippet')
+            self.assertIn('wide-pages', json.load(open(os.path.join(obs, 'appearance.json')))['enabledCssSnippets'])
+            self.assertTrue(os.path.isfile(os.path.join(obs, 'snippets', 'wide-pages.css')))
 
     def test_next_steps_note_lists_the_commands_but_installer_runs_none(self):
         with tempfile.TemporaryDirectory() as tmp:

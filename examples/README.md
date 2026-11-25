@@ -35,3 +35,8 @@ cp -R examples/pack-notes/product/. "<your vault>"/
 ```
 
 Copy only the packs you installed. `cp -R` overwrites files with the same name: check before copying into a vault you already use.
+
+## Demo vault
+
+`build_demo_vault.py` runs the real installer into a new folder, then adds about 50 fictional Acme notes dated relative to today, so every cockpit page and dashboard has content (used for the README screenshots): `python3 examples/build_demo_vault.py --out ~/control-tower-demo`.
+Options: `--packs engineering,product`, `--date YYYY-MM-DD`, `--force` (rebuild a previous demo), `--tasks-plugin-dir <installed obsidian-tasks-plugin folder>` (copies a local Tasks plugin; nothing is downloaded). Nothing is scheduled.

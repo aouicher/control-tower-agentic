@@ -314,13 +314,25 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
     return '\n'.join(lines)
 
 
+WIDE_PAGES_CSS = '''/* control tower: wider pages so dashboards and report tables fit. Settings > Appearance > CSS snippets to turn off. */
+.markdown-source-view.mod-cm6 .cm-sizer,
+.markdown-preview-view .markdown-preview-sizer {
+  max-width: 1200px;
+  margin-inline: auto;
+}
+'''
+
+
 def obsidian_seed(vault):
     cfg = os.path.join(vault, '.obsidian')
     if os.path.exists(cfg):
         return []
     files = {
         'app.json': {'attachmentFolderPath': '_system/attachments', 'newFileLocation': 'folder', 'newFileFolderPath': '_inbox',
-                     'alwaysUpdateLinks': True, 'userIgnoreFilters': ['_system/attachments/', '_system/archive/', '.claude/']},
+                     'alwaysUpdateLinks': True, 'userIgnoreFilters': ['_system/attachments/', '_system/archive/', '.claude/'],
+                     # dashboards and report tables need width: Obsidian's readable line length would override the snippet below
+                     'readableLineLength': False},
+        'appearance.json': {'enabledCssSnippets': ['wide-pages']},
         'daily-notes.json': {'folder': 'journal/daily', 'format': 'YYYY/YYYY-MM-DD', 'template': '_system/templates/daily'},
         'templates.json': {'folder': '_system/templates'},
         'core-plugins.json': {'file-explorer': True, 'global-search': True, 'switcher': True, 'graph': True, 'backlink': True,
@@ -329,7 +341,10 @@ def obsidian_seed(vault):
     }
     for name, data in files.items():
         jdump(os.path.join(cfg, name), data)
-    return ['.obsidian/' + n for n in files]
+    os.makedirs(os.path.join(cfg, 'snippets'), exist_ok=True)
+    with open(os.path.join(cfg, 'snippets', 'wide-pages.css'), 'w', encoding='utf-8') as fh:
+        fh.write(WIDE_PAGES_CSS)
+    return ['.obsidian/' + n for n in files] + ['.obsidian/snippets/wide-pages.css']
 
 
 # ----------------------------------------------------------------------------- jobs and schedule

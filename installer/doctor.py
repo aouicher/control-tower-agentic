@@ -64,7 +64,8 @@ def check(vault, ct_home, claude_bin='claude'):
     # notes: frontmatter and leftover tokens
     bad_fm, tokens, unquoted, count = [], [], [], 0
     for root, dirs, files in os.walk(vault):
-        dirs[:] = [d for d in dirs if d not in ('.obsidian', '.control-tower', '.control-tower-backup', '_attachments')]
+        # notes only: skip dot-folders (Obsidian ignores them; a runtime folder may live there) except the vault's .claude
+        dirs[:] = [d for d in dirs if d not in ('_attachments',) and (not d.startswith('.') or d == '.claude')]
         for f in files:
             if not f.endswith(('.md', '.base')):
                 continue
