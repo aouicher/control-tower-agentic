@@ -9,7 +9,7 @@ It is built for people who lead, build, plan or promote things: engineering lead
 | Piece | What it does |
 |---|---|
 | **A structured vault** | A cockpit page, projects, workstreams, decisions, risks, people, meetings and reports, all as plain Markdown with typed properties and ready-made Obsidian dashboards. |
-| **Skills** | Commands such as `/today`, `/weekly-review`, `/meeting`, `/research`, plus pack skills (standup, campaign brief, PRD draft, postmortem...). |
+| **Skills** | Commands such as `/today`, `/inbox`, `/weekly-review`, `/meeting`, `/research`, plus pack skills (standup, campaign brief, PRD draft, postmortem...). |
 | **Scheduled jobs** | Read-only reports written into the vault each morning or week (pull requests, error triage, campaign metrics, product digest...). |
 | **Cloud routines** | Scheduled claude.ai routines; the installer offers them and creates the ones you choose. |
 | **Tool adapters** | Documented, read-only connections to Jira, Linear, GitHub, Sentry, Rollbar, SonarQube, CloudWatch, Datadog, Google Calendar, Google Analytics, Amplitude, HubSpot, Asana. |
@@ -50,6 +50,7 @@ python3 installer/doctor.py --vault ~/control-tower-vault
 ## Documentation
 
 - [Getting started](docs/getting-started.md): prerequisites, install, first run, uninstall
+- [Using it every day](docs/daily-use.md): morning, inbox, during the day, Friday, with examples per profile
 - [Concepts](docs/concepts.md): vault layout, note types, tasks, page style
 - [Packs](docs/packs.md): what each profile installs
 - [Adapters](docs/adapters.md): connecting your tools, read-only

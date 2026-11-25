@@ -13,7 +13,7 @@ The vault may sync across devices: re-read a note before editing it.
 
 ## Vault structure
 - `cockpit.md`: the home page, live queries and embedded dashboards only. Never type content there.
-- `_inbox/`: unprocessed capture. Triage into the folders below when asked.
+- `_inbox/`: default folder for new notes, unprocessed capture. Emptied with the `inbox` skill (`/inbox`), never filed without my agreement.
 - `cockpit/`: reading pages `my-work`, `commitments`, `overview`, `today` (regenerated each morning by the `today` skill). Do not edit `today` by hand.
 - `work/projects/` (things with an end date), `work/areas/` (ongoing responsibilities), `work/workstreams/<group>/` (one subfolder per {{ct.team}} or channel), `work/decisions/`, `work/risks/` ({{ct.risks}}, incidents, open problems).
 - `team/`: {{ct.team}} notes and {{ct.people}} notes.

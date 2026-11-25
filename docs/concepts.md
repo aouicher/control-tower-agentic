@@ -5,7 +5,7 @@
 ```
 cockpit.md         your entry page: what needs attention now
 cockpit/           today, my work, commitments, overview
-_inbox/            quick capture, triaged later
+_inbox/            default folder for new notes: capture now, sort with /inbox
 work/projects/     time-boxed outcomes
 work/areas/        ongoing responsibilities
 work/workstreams/  streams of work inside projects (campaigns in the marketing pack)

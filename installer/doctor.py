@@ -16,7 +16,7 @@ import sys
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
           '_system/tools', '_system/archive', '_system/attachments', '.claude/skills']
-CORE_SKILLS = ['today', 'weekly-review', 'meeting', 'research', 'time-review']
+CORE_SKILLS = ['today', 'weekly-review', 'meeting', 'research', 'time-review', 'inbox']
 
 
 class Report:
