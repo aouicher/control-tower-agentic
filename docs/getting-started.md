@@ -27,7 +27,7 @@ Optional: accounts for the tools you want to connect (see [adapters](adapters.md
 ### Option A: guided (recommended)
 
 ```bash
-git clone https://github.com/<owner>/control-tower-agentic.git
+git clone https://github.com/aouicher/control-tower-agentic.git
 cd control-tower-agentic
 claude
 ```

@@ -42,7 +42,7 @@ Screenshots of the fictional demo vault (company "Acme"), built with `python3 ex
 Prerequisites: Python 3.9+, git, [Claude Code](https://claude.com/claude-code), Obsidian 1.9 or newer. See [docs/getting-started.md](docs/getting-started.md) for details, including a short guide if you are new to the terminal.
 
 ```bash
-git clone https://github.com/<owner>/control-tower-agentic.git
+git clone https://github.com/aouicher/control-tower-agentic.git
 cd control-tower-agentic
 claude
 ```
