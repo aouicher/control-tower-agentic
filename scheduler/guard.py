@@ -40,8 +40,6 @@ BASH_RULES = [
     (r'\bdocker\s+(rm|rmi|kill|system\s+prune|volume\s+rm)\b', 'container destruction'),
     (r'\b(mysql|psql|sqlite3)\b.*\b(drop|delete|truncate|update|insert|alter)\b', 'database write'),
 ]
-READ_SECRET = re.compile(r'(^|/)(\.env(\.[\w-]+)?|\.netrc|\.npmrc|\.git-credentials|id_rsa|id_ed25519|credentials)$'
-                         r'|/\.(ssh|aws|gnupg|kube|docker|config/gh|config/gcloud|claude)(/|$)', re.I)
 # Areas that an unattended job must never modify. `.claude` and `.control-tower` matter most: the vault's Claude settings are loaded by
 # the job runner, so a job able to edit them could widen its own permissions or hooks for the next run.
 # `.git` matters as much: a hook or `core.fsmonitor` written there would run as the user at the next git command.
@@ -101,69 +99,100 @@ def inside(path, root):
     path, root = real(path), real(root)
     return path == root or path.startswith(root + os.sep)
 
-# Inside the vault, jobs must READ their own instructions: the skills, the adapter notes and the pack rules. Everything else under
-# `.claude` (settings, local files) stays unreadable, and nothing under `.claude` is ever writable (see PROTECTED).
+# ----------------------------------------------------------------------------- path policy (one place)
+# Inside the vault, jobs must READ their own instructions: skills, adapter notes, pack rules. The rest of `.claude` (settings,
+# local files) stays unreadable, and nothing under `.claude` is writable (PROTECTED above).
 VAULT_READABLE = ('.claude/skills', '.claude/adapters', '.claude/rules')
+# One list of secret names, judged per path segment (case-insensitive). `.config/gh` and `.config/gcloud` are two-segment names.
+SECRET_NAMES = ('.env', '.env.local', '.env.production', '.netrc', '.npmrc', '.git-credentials', 'id_rsa', 'id_ed25519',
+                'credentials', '.ssh', '.aws', '.gnupg', '.kube', '.docker', '.claude')
+SECRET_SEGMENT = re.compile(r'^(\.env.*|\.netrc|\.npmrc|\.git-credentials|id_rsa.*|id_ed25519.*|credentials.*'
+                            r'|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude)$', re.I)
+SECRET_PAIRS = (('.config', 'gh'), ('.config', 'gcloud'))
+GLOB_META = re.compile(r'[{}\[\]\\]')  # brace, bracket and backslash syntax can rebuild an escaping path: refused outright
 
 
-def vault_readable(path, vault):
-    """True when `path` resolves inside one of the vault folders jobs may read (symlinks resolved, case-insensitive)."""
-    if not inside(path, vault):
-        return False
-    rel = os.path.relpath(real(path), real(vault)).replace(os.sep, '/').lower()
-    return any(rel == d or rel.startswith(d + '/') for d in VAULT_READABLE)
+def vault_rel(path, vault):
+    """The ONLY way to get a vault-relative path: symlinks resolved, '/'-separated, lowercase. None when outside the vault."""
+    p, v = real(path), real(vault)
+    if p == v:
+        return ''
+    if not p.startswith(v + os.sep):
+        return None
+    return os.path.relpath(p, v).replace(os.sep, '/').lower()
 
 
-SECRET_NAMES = ('.env', '.env.local', '.env.production', '.netrc', '.npmrc', '.git-credentials', 'id_rsa', 'id_ed25519', 'credentials', '.ssh', '.aws', '.gnupg', '.kube', '.docker', '.claude')
-GLOB_META = re.compile(r'[{}\[\]\\]')
-SECRET_SEGMENT = re.compile(r'^(\.env.*|\.netrc|\.npmrc|\.git-credentials|id_rsa.*|id_ed25519.*|credentials.*|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude)$', re.I)
+def secret_segment(seg, wildcard=False):
+    """A path segment that is, or (as a glob) could match, a secret name. Pure `*` / `**` are allowed."""
+    if SECRET_SEGMENT.match(seg):
+        return True
+    if wildcard and re.search(r'[*?]', seg) and not re.fullmatch(r'\*+', seg):
+        return any(re.match(fnmatch.translate(seg), n, re.I) for n in SECRET_NAMES)
+    return False
 
 
-def search_scope_reason(tool, inp, event, vault):
-    """Glob and Grep: the search root (path, else the hook's cwd) and the static prefix of the glob must stay inside the vault.
+def secret_in(segs):
+    return any(secret_segment(x) for x in segs) or any(tuple(segs[i:i + 2]) == pair for pair in SECRET_PAIRS for i in range(len(segs)))
 
-    Patterns are not judged by their text alone: brace, bracket and backslash syntax can rebuild a path that escapes, so they are refused
-    outright. Fails closed when no search root can be worked out.
-    """
-    pat = inp.get('pattern') if tool == 'Glob' else inp.get('glob')
+
+def read_reason(path, vault):
+    """Read rule, shared by Read, the search root and the static prefix of a glob."""
+    rel = vault_rel(path, vault)
+    if rel is None:
+        return f'jobs may only read inside the vault: {path}'  # blocks ~/.ssh, ~/.aws, ~/.claude, /etc... in one rule
+    segs = [x for x in rel.split('/') if x]
+    readable = any(rel == d or rel.startswith(d + '/') for d in VAULT_READABLE)
+    if secret_in(segs[1:] if readable else segs):  # in a readable folder, `.claude` itself is not the secret
+        return f'secret file: {path}'
+    return None
+
+
+def write_reason(path, vault):
+    rel = vault_rel(path, vault)
+    if rel is None:
+        return f'write outside the vault: {path}'
+    if rel in PROTECTED_FILES or any(rel == p or rel.startswith(p + '/') for p in PROTECTED):
+        return f'jobs must not modify {rel}'
+    if secret_in([x for x in rel.split('/') if x]):
+        return f'secret file: {path}'
+    return None
+
+
+def search_reason(tool, inp, event, vault):
+    """Glob and Grep. The search root (path, else the hook's cwd) and the static prefix of the glob are real paths: they get the
+    read rule. The wildcard tail is only names: each segment gets the secret check. Fails closed when no root is known."""
     base = inp.get('path') or event.get('cwd')
     if not base:
         return 'search root unknown: refusing to search'
-    if not inside(base, vault):
-        return f'search starts outside the vault: {base}'
+    reason = read_reason(base, vault)
+    if reason:
+        return f'search root: {reason}'
+    pat = inp.get('pattern') if tool == 'Glob' else inp.get('glob')
     if not pat:
         return None
     pat = str(pat)
-    if GLOB_META.search(pat):
-        return f'glob syntax not allowed in jobs ({{ }} [ ] \\): {pat}'
-    if pat.startswith('~'):
-        return f'pattern escapes the vault: {pat}'
-    segments = [x for x in pat.replace('\\', '/').split('/') if x]
-    if any(x == '..' for x in segments):
+    if GLOB_META.search(pat) or pat.startswith('~'):
+        return f'glob syntax not allowed in jobs: {pat}'
+    segments = [x for x in pat.split('/') if x]
+    if '..' in segments:
         return f'pattern escapes the vault: {pat}'
     static = []
     for x in segments:
         if re.search(r'[*?]', x):
             break
         static.append(x)
-    target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
-    if not inside(target, vault):
-        return f'pattern escapes the vault: {pat}'
-    if vault_readable(target, vault):
-        # the search starts in a readable folder: judge only the part after it (`.claude/adapters/*.md` is fine)
-        rel_base = os.path.relpath(real(base), real(vault)).replace(os.sep, '/')
-        skip = len([s for s in rel_base.split('/') if s and s != '.']) if not pat.startswith('/') else 0
-        prefix = [s for s in os.path.relpath(real(target), real(vault)).replace(os.sep, '/').split('/') if s]
-        segments = segments[max(len(prefix) - skip, 0):] if not pat.startswith('/') else segments[len(real(vault).strip('/').split('/')) + len(prefix):]
-    for x in segments:
-        # a wildcard segment is refused when it could match a secret name (".*", "*env*", ".e*" ...), not only when it spells one
-        if SECRET_SEGMENT.match(x) or (re.search(r'[*?]', x) and not re.fullmatch(r'\*+', x) and any(re.match(fnmatch.translate(x), n, re.I) for n in SECRET_NAMES)):
-            return f'pattern targets a secret file: {pat}'
+    if static:
+        target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
+        reason = read_reason(target, vault)
+        if reason:
+            return f'pattern {reason}: {pat}'
+    if any(secret_segment(x, wildcard=True) for x in segments[len(static):]):
+        return f'pattern targets a secret file: {pat}'
     return None
 
 
 def check(event, vault):
-    """Return a human-readable reason when the call must be blocked, else None."""
+    """Return a human-readable reason when the call must be blocked, else None. One rule per tool family."""
     tool = event.get('tool_name', '')
     inp = event.get('tool_input') or {}
     if tool == 'Bash':
@@ -172,32 +201,16 @@ def check(event, vault):
             if re.search(rx, cmd, re.I):
                 return f'{reason}: {cmd[:120]}'
         reason = date_reason(cmd)
-        if reason:
-            return f'{reason}: {cmd[:120]}'
-        return None
+        return f'{reason}: {cmd[:120]}' if reason else None
     if tool in ('Glob', 'Grep'):
-        reason = search_scope_reason(tool, inp, event, vault)
-        if reason:
-            return reason
+        return search_reason(tool, inp, event, vault)
     path = inp.get('file_path') or inp.get('notebook_path') or inp.get('path')
     if not path:
         return None
     if tool in WRITE_TOOLS:
-        if not inside(path, vault):
-            return f'write outside the vault: {path}'
-        rel = os.path.relpath(real(path), real(vault)).replace(os.sep, '/').lower()  # case-insensitive: macOS and Windows file systems
-        if rel in PROTECTED_FILES or any(rel == p or rel.startswith(p + '/') for p in PROTECTED):
-            return f'jobs must not modify {rel}'
-    if tool in ('Read', 'Grep', 'Glob') and not inside(path, vault):
-        return f'jobs may only read inside the vault: {path}'  # blocks ~/.ssh, ~/.aws, ~/.claude, /etc... in one rule
-    if tool in WRITE_TOOLS or tool in ('Read', 'Grep', 'Glob'):
-        if tool not in WRITE_TOOLS and vault_readable(path, vault):
-            # skills, adapter notes and rules: only the vault-relative part is judged, so `.claude` itself is not a secret here
-            rel = os.path.relpath(real(path), real(vault)).replace(os.sep, '/')
-            if READ_SECRET.search(rel):
-                return f'secret file: {path}'
-        elif READ_SECRET.search(real(path)):
-            return f'secret file: {path}'
+        return write_reason(path, vault)
+    if tool == 'Read':
+        return read_reason(path, vault)
     return None
 
 
