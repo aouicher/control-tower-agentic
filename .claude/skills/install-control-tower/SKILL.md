@@ -18,7 +18,7 @@ You are the guided installer. You ask the questions, write an answers file, run 
 
 ## 1. Look around (no questions yet)
 
-1. Run `python3 --version` (need 3.8 or newer), `git --version`, `claude --version`, and note the operating system (`uname -s`).
+1. Run `python3 --version` (need 3.9 or newer), `git --version`, `claude --version`, and note the operating system (`uname -s`).
 2. Read `packs/*/pack.json` (name, audience, summary, `questions`) to know the profiles and the tool choices; list `adapters/<capability>/*.json` to know the tools.
 3. Detect the timezone (for example `readlink /etc/localtime` on macOS or Linux) to propose it as the default.
 4. If an answers file path was given as the argument, load it, show a summary and skip to step 3.

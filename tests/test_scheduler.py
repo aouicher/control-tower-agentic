@@ -199,6 +199,14 @@ class RunJobTests(unittest.TestCase):
         self.assertIn('boom', open(os.path.join(self.home, 'logs', 'demo.stderr.log')).read())
         self.assertIn('rc=1', open(os.path.join(self.home, 'logs', 'demo.log')).read())
 
+    def test_non_executable_claude_is_logged_not_crashed(self):
+        os.chmod(self.fake, 0o644)
+        r = self.run_job()
+        self.assertEqual(r.returncode, 126, r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+        self.assertIn('cannot run', open(os.path.join(self.home, 'logs', 'demo.stderr.log')).read())
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'locks', 'demo.lock')), 'the lock must be released')
+
     def test_dry_run_does_not_execute(self):
         r = self.run_job(extra=['--dry-run'])
         self.assertEqual(r.returncode, 0)

@@ -124,6 +124,8 @@ def main():
         rc, out, errtxt = 124, '', 'timed out'
     except FileNotFoundError:
         rc, out, errtxt = 127, '', f'executable not found: {claude_bin}'
+    except OSError as exc:  # not executable, bad interpreter...
+        rc, out, errtxt = 126, '', f'cannot run {claude_bin}: {exc}'
     finally:
         shutil.rmtree(lock, ignore_errors=True)
 

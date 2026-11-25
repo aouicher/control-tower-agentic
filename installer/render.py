@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a template tree into a destination, replacing {{ct.*}} tokens.
 
-Standard library only (Python 3.8+). Idempotent and safe by default:
+Standard library only (Python 3.9+). Idempotent and safe by default:
   * existing destination files are never overwritten unless --force is given;
     with --force the old file is first copied to <dst>/.control-tower-backup/<timestamp>/
   * Obsidian placeholders such as {{title}} and {{date:YYYY-MM-DD}} are left untouched

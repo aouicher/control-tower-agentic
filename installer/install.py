@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Control tower installer. Standard library only (Python 3.8+).
+"""Control tower installer. Standard library only (Python 3.9+).
 
 Installs the core vault, the chosen packs, the tool adapter notes, the scheduled jobs and (optionally)
 the schedule, from an answers file or an interactive terminal wizard.
@@ -24,6 +24,10 @@ import re
 import shutil
 import subprocess
 import sys
+
+if sys.version_info < (3, 9):
+    sys.exit('control tower needs Python 3.9 or newer (found %s)' % sys.version.split()[0])
+import zoneinfo  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -87,11 +91,7 @@ def validate(answers, repo=REPO):
         errors.append('answers: "owner_handle" may only contain letters, digits, ".", "_" and "-"')
     tz = str(answers.get('timezone', ''))
     try:
-        import zoneinfo
         zoneinfo.ZoneInfo(tz)
-    except ImportError:
-        if not re.fullmatch(r'[A-Za-z_]+(/[A-Za-z_+\-0-9]+)*', tz):
-            errors.append(f'answers: "{tz}" does not look like an IANA timezone')
     except Exception:
         errors.append(f'answers: unknown timezone "{tz}" (use an IANA name such as Europe/Paris)')
     available = list_packs(repo)
@@ -293,11 +293,7 @@ def parse_days(spec):
 
 def local_time(hhmm, timezone):
     """Convert a time in the user's timezone to the machine's local time, returning (HH:MM, warning or None)."""
-    try:
-        import zoneinfo
-        tz = zoneinfo.ZoneInfo(timezone)
-    except Exception:
-        return hhmm, None
+    tz = zoneinfo.ZoneInfo(timezone)  # validated before; never fall back silently to machine time
     h, m = map(int, hhmm.split(':'))
     now = datetime.datetime.now(tz)
     target = now.replace(hour=h, minute=m, second=0, microsecond=0)

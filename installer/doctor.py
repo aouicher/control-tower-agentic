@@ -52,7 +52,7 @@ def check(vault, ct_home, claude_bin='claude'):
     r = Report()
     vault = os.path.abspath(os.path.expanduser(vault))
     ct_home = os.path.abspath(os.path.expanduser(ct_home))
-    r.add('ok' if sys.version_info >= (3, 8) else 'FAIL', 'python >= 3.8', sys.version.split()[0])
+    r.add('ok' if sys.version_info >= (3, 9) else 'FAIL', 'python >= 3.9', sys.version.split()[0])
     r.add('ok' if shutil.which(claude_bin) else 'warn', 'claude CLI on PATH', claude_bin if shutil.which(claude_bin) else 'not found: install Claude Code')
     r.add('ok' if shutil.which('git') else 'warn', 'git on PATH')
     if not os.path.isdir(vault):
