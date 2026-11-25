@@ -1,0 +1,26 @@
+filters:
+  and:
+    - file.inFolder("work")
+    - type == "decision"
+    - decision_status == "to-decide" || decision_status == "proposed"
+properties:
+  decision_status:
+    displayName: Status
+  owner:
+    displayName: Decider
+  team:
+    displayName: "{{ct.Team}}"
+  due:
+    displayName: Decide by
+views:
+  - type: table
+    name: Open decisions
+    order:
+      - file.name
+      - decision_status
+      - owner
+      - team
+      - due
+    sort:
+      - property: due
+        direction: ASC

@@ -1,0 +1,25 @@
+filters:
+  and:
+    - file.inFolder("work")
+    - type == "risk"
+    - status != "archived"
+    - risk_status != "closed"
+properties:
+  severity:
+    displayName: Severity
+  risk_status:
+    displayName: Status
+  team:
+    displayName: "{{ct.Team}}"
+views:
+  - type: table
+    name: "Open {{ct.risks}}"
+    order:
+      - file.name
+      - severity
+      - risk_status
+      - team
+      - date
+    sort:
+      - property: date
+        direction: DESC

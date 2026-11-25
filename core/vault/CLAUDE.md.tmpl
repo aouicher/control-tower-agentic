@@ -1,0 +1,76 @@
+# CLAUDE.md — {{ct.owner_name}}'s control tower
+
+Review monthly. Keep under 100 lines.
+
+## Who I am
+- {{ct.owner_name}}. Timezone: {{ct.timezone}} (use it for every date and time).
+- I want direct, high-signal output: lead with the answer, state trade-offs, end with a decision or a next step.
+- Reply in the language I write in. Notes are written in English unless I ask otherwise.
+
+## What this is
+An Obsidian vault of plain Markdown notes, not a software project. No build, no tests.
+The vault may sync across devices: re-read a note before editing it.
+
+## Vault structure
+- `cockpit.md`: the home page, live queries and embedded dashboards only. Never type content there.
+- `_inbox/`: unprocessed capture. Triage into the folders below when asked.
+- `cockpit/`: reading pages `my-work`, `commitments`, `overview`, `today` (regenerated each morning by the `today` skill). Do not edit `today` by hand.
+- `work/projects/` (things with an end date), `work/areas/` (ongoing responsibilities), `work/workstreams/<group>/` (one subfolder per {{ct.team}} or channel), `work/decisions/`, `work/risks/` ({{ct.risks}}, incidents, open problems).
+- `team/`: {{ct.team}} notes and {{ct.people}} notes.
+- `journal/`: `daily/<YYYY>/` (daily notes, weekly reviews; only today's tasks), `meetings/<type>/` (1-1s: one folder per {{ct.person}}), `reports/` (generated).
+- `library/`: references and research notes.
+- `_system/`: `templates/` and `dashboards/` (read; edit only when asked), `tools/`, `archive/` (retired notes), `attachments/` (ignore).
+- `.claude/skills/`: the vault skills.
+Folder names never change; only the words shown to me do.
+
+## Note format
+Every note starts with YAML frontmatter:
+```yaml
+---
+title: "Descriptive title"
+date: YYYY-MM-DD
+tags: []
+type: project
+status: draft | active | archived
+---
+```
+- Free text values are ALWAYS in double quotes: an unquoted `: ` or ` #` breaks the properties panel.
+- Several links in one property: a YAML list of quoted links, `team: ["[[team-a]]", "[[team-b]]"]`.
+- `type` is one of: `project`, `area`, `workstream`, `decision`, `risk`, `team`, `person`, `report`, `meeting`, `resource`, `hub`.
+- Properties by type: project (`owner`, `team`, `rag`, `blocker`, `next_step`, `due`); area (`owner`, `team`); workstream (`group`, `team`, `owner`, `rag`, `progress`, `blocker`, `next_step`, `due`, `tracker`); decision (`decision_status`: to-decide, proposed, made; `owner`, `team`, `due`); risk (`severity`: low, medium, high, critical; `risk_status`: open, mitigated, closed; `team`); team (`lead`, `rag`, `tracker`, `members`); person (`role`, `team`, `signal`, `rag`, `last_one_to_one`); report (`report_kind`); meeting (`meeting_type`).
+- `rag` is `red | amber | green | unknown`. Automations may propose it in text; only I write `rag`.
+- File names are descriptive phrases (`payment-provider-migration.md`), never `untitled-12.md`.
+
+## Page style
+- Only long pages (over about 40 lines) and generated reports open with ONE `> [!summary] Summary` callout (3 bullets max). Short pages get none.
+- Tables for comparisons and attributes, bullets for ideas, no paragraph over 3 lines.
+- Icons on `##` headings, always the same: 📅 agenda · ✅ actions · ⚖️ decisions · 🚧 work in progress · 🩺 health · 📊 figures · 👥 {{ct.teams}} · 🚨 {{ct.risks}} · 📎 annexes. Status: 🟢 🟠 🔴 ⚪.
+- Detail (ids, raw numbers, sources, logs) goes at the bottom in FOLDED callouts `> [!note]- Title`, every line prefixed with `> `.
+- Generated pages show `🕐 Generated on DD/MM/YYYY at HH:MM` right under the title, with the real time.
+- {{ct.People}}, {{ct.teams}}, {{ct.workstreams}} and projects are wikilinks.
+- Never rename a heading a skill looks for (`## Notes`, `## Tasks`, `## Decisions`, `## Actions`): only add an icon in front.
+
+## Linking and tasks
+- Wikilinks only: `[[note]]`, `[[note#Heading]]`, `[[note|alias]]`. Tags are lowercase and hyphenated.
+- Task syntax: `- [ ] Task text @{{ct.owner_handle}} 📅 YYYY-MM-DD` (Tasks plugin).
+- A task lives ONCE, in the note of its project, area, {{ct.team}}, {{ct.workstream}} or {{ct.risk}}. Daily notes only hold tasks for today. Dashboards aggregate; never copy a task elsewhere.
+- Tags: `#waiting` (waiting on someone else), `#committed` (I promised it), `#deadline` (hard or external date), `#to-triage` (proposed by an automation, not yet accepted).
+- Jobs and agents may only create `#to-triage` tasks, never plain ones.
+- A note derived from another (meeting to action items) links both ways.
+
+## What you can do
+- Create and edit notes in the format above; search the vault (exclude `_system/` and `.obsidian/`).
+- Extract tasks, link related notes, build maps of content, summarise periods.
+- Save research to `library/` with sources.
+- Run the vault skills in `.claude/skills/`.
+
+## What you must NOT do
+- Never delete a note: move it to `_system/archive/`.
+- Never rename or move a file without asking (it breaks wikilinks; if approved, update every link).
+- Never write to `_system/attachments/`; never modify `_system/templates/` or `.obsidian/` unless asked.
+- Never store secrets, credentials, customers' personal data or confidential documents. If asked, refuse and use a neutral description.
+- Jobs are read-only on external systems and write only inside the vault.
+
+## Tooling
+- Tasks always live in this vault, never in an external task manager unless I explicitly ask.
+- Search with `grep -ril "query" .`; fall back to it only for text, wikilinks are the structure.

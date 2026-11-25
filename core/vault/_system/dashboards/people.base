@@ -1,0 +1,31 @@
+filters:
+  and:
+    - file.inFolder("team")
+    - type == "person"
+    - status == "active"
+formulas:
+  rag_icon: if(rag == "red", "🔴", if(rag == "amber", "🟠", if(rag == "green", "🟢", "⚪")))
+properties:
+  formula.rag_icon:
+    displayName: RAG
+  role:
+    displayName: Role
+  team:
+    displayName: "{{ct.Team}}"
+  last_one_to_one:
+    displayName: Last 1:1
+  signal:
+    displayName: Signal
+views:
+  - type: table
+    name: "{{ct.people}}"
+    order:
+      - file.name
+      - formula.rag_icon
+      - role
+      - team
+      - signal
+      - last_one_to_one
+    sort:
+      - property: last_one_to_one
+        direction: ASC

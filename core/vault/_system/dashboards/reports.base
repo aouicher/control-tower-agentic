@@ -1,0 +1,20 @@
+filters:
+  and:
+    - file.inFolder("journal/reports")
+    - type == "report"
+properties:
+  report_kind:
+    displayName: Kind
+  date:
+    displayName: Date
+views:
+  - type: table
+    name: Latest reports
+    order:
+      - file.name
+      - report_kind
+      - date
+    sort:
+      - property: date
+        direction: DESC
+    limit: 8

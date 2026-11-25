@@ -1,0 +1,37 @@
+filters:
+  and:
+    - file.inFolder("work")
+    - type == "project"
+    - status == "active"
+formulas:
+  rag_rank: if(rag == "red", 0, if(rag == "amber", 1, if(rag == "green", 2, 3)))
+  rag_icon: if(rag == "red", "🔴", if(rag == "amber", "🟠", if(rag == "green", "🟢", "⚪")))
+properties:
+  formula.rag_icon:
+    displayName: RAG
+  owner:
+    displayName: Owner
+  team:
+    displayName: "{{ct.Team}}"
+  blocker:
+    displayName: Blocker
+  next_step:
+    displayName: Next step
+  due:
+    displayName: Due
+views:
+  - type: table
+    name: Projects in progress
+    order:
+      - file.name
+      - formula.rag_icon
+      - owner
+      - team
+      - blocker
+      - next_step
+      - due
+    sort:
+      - property: formula.rag_rank
+        direction: ASC
+      - property: due
+        direction: ASC

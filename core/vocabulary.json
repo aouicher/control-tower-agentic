@@ -1,0 +1,7 @@
+{
+  "_comment": "Default vocabulary of the core. A pack can override any entry in packs/<id>/vocabulary.json. Only the words shown to the user change: folder names, property values and task tags are stable.",
+  "team": { "singular": "team", "plural": "teams" },
+  "workstream": { "singular": "workstream", "plural": "workstreams" },
+  "risk": { "singular": "risk", "plural": "risks" },
+  "person": { "singular": "person", "plural": "people" }
+}

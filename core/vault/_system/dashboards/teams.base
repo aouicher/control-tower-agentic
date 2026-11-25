@@ -1,0 +1,29 @@
+filters:
+  and:
+    - file.inFolder("team")
+    - type == "team"
+    - status == "active"
+formulas:
+  rag_rank: if(rag == "red", 0, if(rag == "amber", 1, if(rag == "green", 2, 3)))
+  rag_icon: if(rag == "red", "🔴", if(rag == "amber", "🟠", if(rag == "green", "🟢", "⚪")))
+properties:
+  formula.rag_icon:
+    displayName: RAG
+  lead:
+    displayName: Lead
+  tracker:
+    displayName: Tracker
+  members:
+    displayName: Members
+views:
+  - type: table
+    name: "{{ct.Teams}}"
+    order:
+      - file.name
+      - formula.rag_icon
+      - lead
+      - tracker
+      - members
+    sort:
+      - property: formula.rag_rank
+        direction: ASC

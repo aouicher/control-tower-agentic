@@ -1,0 +1,43 @@
+filters:
+  and:
+    - file.inFolder("work")
+    - type == "workstream"
+    - status == "active"
+formulas:
+  rag_rank: if(rag == "red", 0, if(rag == "amber", 1, if(rag == "green", 2, 3)))
+  rag_icon: if(rag == "red", "🔴", if(rag == "amber", "🟠", if(rag == "green", "🟢", "⚪")))
+properties:
+  formula.rag_icon:
+    displayName: RAG
+  group:
+    displayName: "{{ct.Team}}"
+  owner:
+    displayName: Owner
+  progress:
+    displayName: Progress
+  blocker:
+    displayName: Blocker
+  next_step:
+    displayName: Next step
+  due:
+    displayName: Due
+  tracker:
+    displayName: Tracker
+views:
+  - type: table
+    name: "All {{ct.workstreams}}"
+    groupBy:
+      property: group
+      direction: ASC
+    order:
+      - file.name
+      - formula.rag_icon
+      - owner
+      - progress
+      - blocker
+      - next_step
+      - due
+      - tracker
+    sort:
+      - property: formula.rag_rank
+        direction: ASC
