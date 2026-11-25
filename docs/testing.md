@@ -22,4 +22,4 @@ python3 ~/.control-tower/bin/run_job.py --job <id> --ct-home ~/.control-tower
 tail -n 40 ~/.control-tower/logs/<id>.log
 ```
 
-CI runs the unit, end-to-end and leak checks on Ubuntu and macOS with Python 3.9 and 3.13, plus the container test (`.github/workflows/ci.yml`).
+CI runs the unit, end-to-end and leak checks on macOS (Python 3.9 and 3.13) and Ubuntu (Python 3.13), plus the container test on Python 3.9; the private denylist stays local, so CI scans generic patterns only (`.github/workflows/ci.yml`).

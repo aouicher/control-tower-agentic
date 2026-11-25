@@ -10,6 +10,7 @@ Usage:
     python3 tools/scan-leaks.py            # scan the working tree (git tracked + untracked, not ignored)
     python3 tools/scan-leaks.py --staged   # scan staged files only
     python3 tools/scan-leaks.py --strict   # also fail on language warnings
+    python3 tools/scan-leaks.py --strict --no-denylist   # CI: no private denylist there, by design
 
 Exit code 1 when something is found. Read-only: it never edits files.
 """
@@ -66,7 +67,7 @@ def main():
     strict = '--strict' in sys.argv
     deny = load_denylist()
     findings, warnings = [], []
-    if not deny:
+    if not deny and '--no-denylist' not in sys.argv:  # CI has no private denylist by design: say so explicitly with --no-denylist
         warnings.append(('(setup)', 0, 'no .denylist.local found: private names are NOT checked'))
     for rel in list_files(staged):
         ext = os.path.splitext(rel)[1].lower()
