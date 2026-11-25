@@ -1,0 +1,27 @@
+{
+  "id": "product",
+  "name": "Product manager",
+  "audience": "Product managers, product leads, heads of product",
+  "summary": "Run discovery, prioritisation, PRDs and the weekly product digest from one vault.",
+  "vocabulary": "vocabulary.json",
+  "skills": ["discovery-notes", "prioritize", "prd-draft", "product-weekly"],
+  "templates": ["opportunity", "interview", "prd", "release-notes"],
+  "dashboards": ["opportunities"],
+  "cockpit_pages": ["roadmap"],
+  "jobs": ["product-weekly", "feedback-digest"],
+  "routines": ["daily-note", "weekly-review", "morning-brief"],
+  "capabilities": {
+    "required": ["calendar"],
+    "optional": ["tracker", "analytics", "crm"]
+  },
+  "questions": [
+    {"id": "calendar_tool", "ask": "Which calendar do you use?", "capability": "calendar",
+     "choices": ["google-calendar", "none"]},
+    {"id": "tracker_tool", "ask": "Which issue tracker holds your delivery work?", "capability": "tracker",
+     "choices": ["jira", "linear", "github-issues", "asana", "none"]},
+    {"id": "analytics_tool", "ask": "Which product analytics tool do you use?", "capability": "analytics",
+     "choices": ["google-analytics", "amplitude", "none"]},
+    {"id": "crm_tool", "ask": "Which CRM holds customer feedback and accounts?", "capability": "crm",
+     "choices": ["hubspot", "none"]}
+  ]
+}

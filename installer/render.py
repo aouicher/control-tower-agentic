@@ -15,7 +15,7 @@ Tokens:
 Usage:
   python3 installer/render.py --src core/vault --dst ~/my-vault \
       --vocab core/vocabulary.json [--vocab packs/engineering/vocabulary.json] \
-      --answers answers.json [--dry-run] [--force]
+      --answers answers.json [--dry-run] [--force] [--fail-on-collision]
 """
 import argparse
 import datetime
@@ -70,6 +70,8 @@ def main():
     ap.add_argument('--answers', default=None)
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--force', action='store_true')
+    ap.add_argument('--fail-on-collision', action='store_true',
+                    help='error out if a destination file already exists (used to overlay a pack on the core)')
     args = ap.parse_args()
 
     answers = json.load(open(args.answers, encoding='utf-8')) if args.answers else {}
@@ -97,6 +99,12 @@ def main():
     if errors:
         print('\n'.join(errors), file=sys.stderr)
         sys.exit(2)
+
+    if args.fail_on_collision:
+        clash = [o for _, t, o, _ in plan if os.path.exists(t) and not o.endswith('.gitkeep')]
+        if clash:
+            print('collision with existing files: ' + ', '.join(sorted(clash)), file=sys.stderr)
+            sys.exit(3)
 
     created = skipped = replaced = 0
     for s, target, out_rel, content in plan:

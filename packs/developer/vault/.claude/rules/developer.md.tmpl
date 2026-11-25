@@ -1,0 +1,42 @@
+# Developer pack rules
+
+These rules extend `CLAUDE.md` for a software developer. They never override it.
+
+## Daily rhythm
+- Morning: read `cockpit/dev-today.md`, run `/review-queue`, then `/standup` before the team standup.
+- During the day: log decisions, findings and links with `/worklog`. Do not wait for the evening.
+- After a bug hunt that took more than 30 minutes: run `/debug-journal`.
+- Friday: read the `weekly-wrap` report and run the weekly review.
+
+## What a good worklog entry is
+- One line, dated with the time (`HH:MM`), starting with a verb: decided, found, shipped, blocked.
+- Holds the why, not the what: "Chose a queue over polling because retries must be idempotent", not "Changed the code".
+- Ends with a link: pull request, ticket, commit, or a wikilink to a note.
+- Never a pasted log, stack trace or diff: summarise it and link the source.
+
+## Note types added by this pack
+| `type` | Folder | Properties |
+|---|---|---|
+| `pull-request` | `work/pull-requests/` | `repo`, `pr`, `url`, `pr_state` (`draft | open | merged | closed`), `review_state` (`none | requested | changes-requested | approved`), `ci_state` (`unknown | passing | failing`), `ticket` |
+| `spike` | `work/spikes/` | `question`, `timebox`, `due`, `outcome` (`open | answered | abandoned`) |
+
+Debug journals are `type: resource` notes in `library/` tagged `debug-journal`.
+A pull request note is optional: create one only for a change that needs follow-up. Properties are written by the user; automations may propose changes in text.
+
+## What automations may write
+- Reports in `journal/reports/` (`dev-morning-YYYY-MM-DD.md`, weekly wrap).
+- Today's section of `cockpit/today.md` (`standup` skill).
+- Dated lines appended to the daily note (`worklog` skill) and new notes in `library/` (`debug-journal` skill).
+- Tasks, only as `- [ ] text @{{ct.owner_handle}} #to-triage`, never plain, and only for new important findings.
+- Never `rag`, `owner`, `due` or `group` of an existing note, never `pr_state`, `review_state` or `ci_state` of an existing note.
+
+## Limits on external data
+- List commands return one default page: `gh pr list` returns 30. Always pass `--limit` (for example `--limit 100`) and say "at least N (truncated)" when the result hits it.
+- Trackers return at most 100 items per page: paginate, or report "at least N (truncated)". Never present a count from a truncated page as a total.
+- Unattended jobs cannot check the vault for duplicate tasks: they only propose `#to-triage` tasks.
+
+## Never store
+- Secrets: tokens, passwords, API keys, private keys, connection strings, `.env` content.
+- Customer data: names, emails, account ids, payloads copied from production. Use a neutral description ("a customer with an expired plan").
+- Raw production logs or database dumps. Summarise and link.
+If a skill is about to write one of these, redact it and say so.

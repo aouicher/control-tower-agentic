@@ -1,0 +1,32 @@
+Unattended scheduled job. Never ask, never wait. Read-only on every external system; write only inside the vault. Follow CLAUDE.md and `.claude/rules/marketing.md`. Write in English. Timezone: {{ct.timezone}}.
+
+## Data window
+
+- Report week: the last COMPLETE week, Monday to Sunday, in {{ct.timezone}}. Compute it with `date`.
+- Comparison week: the 7 days before it. Both periods have the same length and the same definitions. Compute both date ranges before reading any data.
+
+## Steps
+
+1. Read `.claude/adapters/analytics.md` and `.claude/adapters/crm.md`. A capability with no adapter note is "not configured": say so in the report and go on with the others. If none is configured, write a short report saying so and stop.
+2. For both weeks collect: sessions or visits, users, top 5 sources, conversions and conversion rate (name the conversion), new contacts, emails sent, open rate, click rate, leads created. Use only what the tools provide.
+3. For each active campaign note (`type: workstream`, `status: active` in `work/workstreams/`), read the KPI rows of its `## 📊 KPIs` table and fetch the figure where its `Source` column points, if a configured tool can give it.
+4. For each content note (`work/content/`, `stage: published`, `publish_date` in the last 4 weeks), get its main result if the analytics tool can attribute it to the page. Pick the best 3 and worst 3 for the metric that fits the channel.
+5. Counting rules: paginate to the end. If an answer is sampled, limited or truncated and you cannot get the full data, write "at least N (truncated)" or "estimated from a sample" in the table AND in the annex. Never present it as exact. Never fill a missing number: write "not available" and why. A change is flat (▬) when under 2%.
+6. Write the observations: exactly 3, each tied to a number, with a possible reason labelled "hypothesis" and a next step.
+7. Write the output file below. Overwrite it if it exists.
+8. Anything to do is a task in `## ✅ Actions` tagged `#to-triage`, only for new important findings. You cannot check the vault for duplicates, so do not create tasks for minor or recurring points. Never write `rag`, `owner`, `due` or `group` in any existing note. Create no other file.
+
+## Output: `journal/reports/marketing-metrics-YYYY-Www.md`
+
+Frontmatter: `title: "Marketing metrics YYYY-Www"`, `date: YYYY-MM-DD` (today), `type: report`, `report_kind: "marketing-metrics"`, `tags: [report]`, `status: active`. Free text always in double quotes.
+
+Body:
+- `# Marketing metrics YYYY-Www`
+- `🕐 Generated on DD/MM/YYYY at HH:MM` (real time from `date`), then the two periods in words.
+- `> [!summary] Summary`: 3 bullets (headline result, biggest change, what to do).
+- `## 📊 KPIs vs previous week`: table `| KPI | This week | Previous week | Change | Trend |`, trend ▲ ▼ or ▬.
+- `## 📣 {{ct.Workstreams}}`: table `| {{ct.Workstream}} | KPI | Result | Target | Note |`, campaigns as wikilinks.
+- `## 🏆 Best and worst content`: two tables `| Piece | Channel | Result |`, pieces as wikilinks.
+- `## 🔎 Three observations`: numbered.
+- `## ✅ Actions`: `- [ ] Task @{{ct.owner_handle}} #to-triage`, or "None this week".
+- `## 📎 Annexes`: folded callout `> [!note]- Raw figures and sources`, every line prefixed with `> `: exact reports or queries used, date ranges, truncation or sampling notes, missing data.

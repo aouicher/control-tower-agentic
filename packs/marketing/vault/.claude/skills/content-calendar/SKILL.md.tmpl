@@ -1,0 +1,33 @@
+---
+name: content-calendar
+description: Plan the next two weeks from content notes and {{ct.workstreams}}, find gaps and clashes, and write cockpit/content-calendar.md. Use when the user says /content-calendar, "content calendar", "what are we publishing" or "plan the next two weeks".
+argument-hint: "[YYYY-MM-DD start date]"
+---
+
+# Content calendar
+
+Window: today (or the argument) to 14 days later. Get dates with `date +%F` and compute the end date.
+
+## Steps
+
+1. Read every note in `work/content/` with `type: content` and `status` not `archived`. Keep `channel`, `publish_date`, `stage`, `campaign`, `owner`.
+2. Read active campaign notes (`type: workstream`, `status: active`) in `work/workstreams/`: their `due`, `rag`, channels and timeline.
+3. If a calendar tool is configured (see `.claude/adapters/calendar.md`), read events in the window for launches, events and holidays that affect timing. If none, skip silently.
+4. Build the calendar: every content note with a `publish_date` inside the window, sorted by date.
+5. Find problems, and only report real ones:
+   - **Gaps**: a channel that usually publishes (it has published pieces in the last 8 weeks) with nothing in the window; a stretch of 3 or more weekdays with nothing at all; an active campaign with no content in the window.
+   - **Clashes**: two pieces on the same channel on the same day; more than 3 pieces on one day; a piece on a date with a calendar event that conflicts.
+   - **At risk**: `stage` is `idea` or `draft` with a publish date within 5 days; `scheduled` or `review` pieces with no `owner`.
+   - **Loose ends**: pieces with a `stage` of `scheduled` or `review` and no `publish_date`, and published pieces dated in the future.
+6. Write `cockpit/content-calendar.md`: replace ONLY what is between `<!-- ct:content-calendar:start -->` and `<!-- ct:content-calendar:end -->`, and update the `🕐` line and frontmatter date. Never touch the reminders block or the embedded dashboard. If the markers are missing, restore the page from the structure under Presentation and keep any text outside it.
+7. Never change `stage`, `publish_date` or `owner` in content notes. Suggested moves are written as text in the problems list.
+8. New tasks (for example "brief a writer for the empty Thursday slot") are proposed in the reply and, if written, go in the campaign note or content note concerned, tagged `#to-triage`. This skill cannot be sure a similar task does not exist, so propose only for important findings.
+9. Reply with the 3 most important problems and the file path.
+
+## Presentation
+
+Inside the calendar block:
+- `> [!summary] Summary`: pieces planned, problems found, the single most urgent fix.
+- `## 📅 Day by day`: table `| Date | Channel | Piece | Stage | {{ct.Workstream}} | Owner |`, pieces as wikilinks, one row per piece, stage with icons 🟢 published or scheduled, 🟠 review, 🔴 idea or draft close to its date, ⚪ otherwise.
+- `## 🚨 Gaps and clashes`: table `| Type | What | Suggestion |`, or one line "Nothing to flag".
+- `## 📎 Annexes`: folded callout `> [!note]- How this was built` with the window, the number of notes read and anything not available (for example no calendar connected).

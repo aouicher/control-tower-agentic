@@ -1,0 +1,24 @@
+{
+  "id": "morning-triage",
+  "name": "Morning triage",
+  "description": "New and spiking production errors plus failing quality gates, summarised in one short report.",
+  "schedule": {
+    "days": "mon-fri",
+    "time": "08:00"
+  },
+  "model": "sonnet",
+  "capabilities": [
+    "errors",
+    "quality"
+  ],
+  "outputs": [
+    "journal/reports/triage-YYYY-MM-DD.md"
+  ],
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit({{ct.vault_path}}/**)"
+    ],
+    "deny": []
+  }
+}

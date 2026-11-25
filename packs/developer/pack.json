@@ -1,0 +1,27 @@
+{
+  "id": "developer",
+  "name": "Software developer",
+  "audience": "Individual software developers and engineers who write and review code every day",
+  "summary": "A daily cockpit for developers: standup prep, review queue, worklog and debugging journal, fed by your pull requests and tickets.",
+  "vocabulary": "vocabulary.json",
+  "skills": ["standup", "review-queue", "worklog", "debug-journal"],
+  "templates": ["debug-journal", "pull-request-notes", "spike"],
+  "dashboards": ["my-pull-requests"],
+  "cockpit_pages": ["dev-today"],
+  "jobs": ["morning-prs", "weekly-wrap"],
+  "routines": ["daily-note", "weekly-review", "morning-brief"],
+  "capabilities": {
+    "required": ["code"],
+    "optional": ["tracker", "errors", "calendar"]
+  },
+  "questions": [
+    {"id": "code_tool", "ask": "Where do your pull requests live?", "capability": "code",
+     "choices": ["github"]},
+    {"id": "tracker_tool", "ask": "Which issue tracker do you use?", "capability": "tracker",
+     "choices": ["jira", "linear", "github-issues", "asana", "none"]},
+    {"id": "errors_tool", "ask": "Which error tracker do you use?", "capability": "errors",
+     "choices": ["rollbar", "sentry", "none"]},
+    {"id": "calendar_tool", "ask": "Which calendar do you use?", "capability": "calendar",
+     "choices": ["google-calendar", "none"]}
+  ]
+}

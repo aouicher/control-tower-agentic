@@ -1,0 +1,29 @@
+---
+name: debug-journal
+description: Turn a debugging session into a note in library/ with symptom, hypotheses tried, root cause, fix and how to detect it next time. Use when the user says /debug-journal, "write up this bug", "debug notes" or after a hard bug is solved.
+argument-hint: "[short title]"
+---
+
+# Debug journal
+
+Target: `library/<descriptive-phrase>.md`, from `_system/templates/debug-journal.md`.
+
+## Steps
+
+1. Gather the story from the conversation, the user's notes, today's daily note and, if asked, the git log (`git log --oneline -20`). Ask only for what is missing: the root cause and the fix are mandatory.
+2. File name: a descriptive phrase (`checkout-timeout-from-missing-index.md`). If a note with that name exists, add a suffix or ask.
+3. Fill the template:
+   - Symptom: what was observed, where, since when, how it was reproduced.
+   - Hypotheses: a table `| Hypothesis | How tested | Result |`, including the wrong ones. Wrong paths are the value of the note.
+   - Root cause: one short paragraph.
+   - Fix: summary and a link to the pull request or commit.
+   - Detect it next time: the alert, log pattern, test or check that would have caught it sooner.
+4. Redact: replace tokens, hostnames of production systems, customer identifiers and payload contents by neutral descriptions. Never paste raw logs: keep at most a few lines inside a folded `> [!note]- Evidence` callout.
+5. Link the note from today's daily note with a worklog line, and link related notes (`[[epic]]`, `[[pull-request note]]`).
+6. If a lasting improvement follows (test, alert, refactor), propose it as `- [ ] ... @{{ct.owner_handle}} #to-triage` in the relevant {{ct.workstream}} or project note, never in the daily note.
+
+## Rules
+
+- Never write secrets or customer data. If the user insists, refuse and use a neutral description.
+- Follow the page style of `CLAUDE.md`: summary callout (the note is long), folded annexes.
+- Frontmatter free text values in double quotes.

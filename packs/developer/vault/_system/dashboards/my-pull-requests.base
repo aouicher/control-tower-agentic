@@ -1,0 +1,32 @@
+filters:
+  and:
+    - file.inFolder("work")
+    - type == "pull-request"
+    - status != "archived"
+    - pr_state != "merged"
+    - pr_state != "closed"
+properties:
+  pr_state:
+    displayName: State
+  review_state:
+    displayName: Review
+  ci_state:
+    displayName: CI
+  repo:
+    displayName: Repository
+  ticket:
+    displayName: Ticket
+views:
+  - type: table
+    name: "Open pull requests"
+    order:
+      - file.name
+      - repo
+      - pr_state
+      - review_state
+      - ci_state
+      - ticket
+      - date
+    sort:
+      - property: date
+        direction: ASC

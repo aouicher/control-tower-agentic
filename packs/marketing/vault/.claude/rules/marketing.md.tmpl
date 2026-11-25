@@ -1,0 +1,40 @@
+# Marketing pack rules
+
+These rules add to `CLAUDE.md`. They never replace it.
+
+## Words
+- A {{ct.workstream}} is a **campaign**. Campaign notes are `workstream` notes (`type: workstream`) stored in `work/workstreams/<{{ct.team}}>/`, with all the usual properties.
+- A {{ct.person}} is a **teammate**. A {{ct.risk}} is anything that could hurt a campaign or a launch.
+
+## Added folder and note type: `content`
+One note per piece of content (article, post, email, video, landing page, press release, ad), stored in `work/content/`.
+
+| Property | Values |
+|---|---|
+| `type` | `content` |
+| `channel` | where it is published, one word, lowercase (for example `blog`, `email`, `linkedin`, `social`, `web`, `video`, `ads`, `press`) |
+| `publish_date` | `YYYY-MM-DD`, the day it goes live. Empty while still an idea |
+| `stage` | `idea`, `draft`, `review`, `scheduled`, `published` |
+| `campaign` | link to the campaign note, `"[[campaign-name]]"`. Empty for standalone content |
+| `owner` | who is responsible, a handle or a link to a teammate note |
+
+- Common properties still apply (`title`, `date`, `tags`, `status`). `status` follows the usual rule: `archived` for retired pieces, which also move to `_system/archive/`.
+- `stage` is the production step. Only the human moves it, except `/content-calendar` which may propose a change in text.
+- Tasks about a piece (write, review, design, schedule) live ONCE, in the content note under `## Tasks`.
+- Tasks about the campaign as a whole live in the campaign note.
+
+## Reports
+- Weekly marketing reports go in `journal/reports/marketing-metrics-YYYY-Www.md` with `type: report` and `report_kind: "marketing-metrics"`.
+- Competitor research goes in `library/` as `type: resource`, with sources.
+
+## Numbers
+- Never report a number taken from a truncated or sampled export without saying so ("at least N", "estimated from a sample").
+- Compare like with like: same period length, same definitions. If the previous period was shorter or had a different setup, say it.
+- Never invent a figure. If a tool is not connected or returns nothing, write "not available" and say why.
+- Percentages come with their base ("4.2% of 12,300 visits").
+- Trend arrows: ▲ up, ▼ down, ▬ flat (less than 2% change).
+
+## Automations
+- Jobs and routines cannot check the vault for duplicate tasks, so they only propose tasks for important new findings, always tagged `#to-triage`.
+- They never write `rag`, `owner`, `due` or `group` of an existing note.
+- They are read-only on analytics, CRM, tracker and calendar tools. They write only inside the vault.

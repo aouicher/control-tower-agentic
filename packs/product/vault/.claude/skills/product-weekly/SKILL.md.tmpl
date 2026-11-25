@@ -1,0 +1,30 @@
+---
+name: product-weekly
+description: Build the weekly product digest (shipped, in progress, blocked, metric movements, decisions needed) from the tracker and analytics adapters, into journal/reports/. Use when the user says /product-weekly, "product digest" or "what happened in product this week".
+argument-hint: "[YYYY-Www]"
+---
+
+# Product weekly
+
+## Window
+ISO week from the argument, else the current one (`date +%G-W%V`). Monday 00:00 to Sunday 23:59, in {{ct.timezone}}. The comparison period is the previous ISO week, same length.
+
+## Steps
+
+1. Read the adapters configured in `.claude/adapters/` (`tracker`, `analytics`). If one is missing, say so in the report and continue with the vault.
+2. Read the {{ct.workstreams}} in `work/workstreams/` with `status: active`, and their `tracker` property.
+3. **Tracker**: for each {{ct.workstream}}, list items done in the window (shipped), in progress, and blocked. Trackers return at most 100 items per page: paginate until the end, or write "at least N (truncated)". Never give a count from a partial page.
+4. **Analytics**: read the metrics named in the PRDs (primary and guardrail). Compare the week to the previous week, same segment and definition. If the data is sampled or from an export, say "sampled" next to the figure. If a metric is unavailable, say so instead of estimating.
+5. **Decisions needed**: open notes in `work/decisions/` with `decision_status: to-decide|proposed`, and blockers found in step 3.
+6. Write `journal/reports/product-weekly-<YYYY>-W<ww>.md` from `_system/templates/report.md`, `report_kind: "product-weekly"`:
+   - `🕐 Generated on DD/MM/YYYY at HH:MM` (real time) and `> [!summary] Summary` (3 bullets: shipped, risk, decision needed);
+   - `## ✅ Shipped`, `## 🚧 In progress`, `## 🚨 Blocked` (tables with {{ct.workstream}} wikilinks and tracker keys);
+   - `## 📊 Metric movements`: `| Metric | This week | Previous | Change | Note |`;
+   - `## ⚖️ Decisions needed`;
+   - folded `> [!note]- Sources and raw data` with queries, pages read, truncation and sampling notes.
+7. Propose a RAG per {{ct.workstream}} in the report text (🟢 🟠 🔴 ⚪) with the reason. Never write `rag`.
+8. New important findings become `#to-triage` tasks in the relevant {{ct.workstream}} note; check the vault for an existing equivalent first when interactive.
+
+## Rules
+- Read-only on external systems.
+- Say "no data" rather than "no change".

@@ -1,0 +1,37 @@
+filters:
+  and:
+    - file.inFolder("work/opportunities")
+    - type == "opportunity"
+    - stage != "dropped"
+properties:
+  problem:
+    displayName: Problem
+  score:
+    displayName: Score
+  reach:
+    displayName: Reach
+  impact:
+    displayName: Impact
+  confidence:
+    displayName: Confidence
+  effort:
+    displayName: Effort
+  stage:
+    displayName: Stage
+views:
+  - type: table
+    name: "Opportunities by stage"
+    groupBy:
+      property: stage
+      direction: ASC
+    order:
+      - file.name
+      - score
+      - reach
+      - impact
+      - confidence
+      - effort
+      - problem
+    sort:
+      - property: score
+        direction: DESC

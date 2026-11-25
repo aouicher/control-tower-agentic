@@ -1,0 +1,25 @@
+{
+  "id": "weekly-digest",
+  "name": "Weekly delivery digest",
+  "description": "Friday delivery report: merged PRs per squad, sprint status, blocked and in-review items, load signals and refreshed topic notes.",
+  "schedule": {
+    "days": "fri",
+    "time": "16:00"
+  },
+  "model": "sonnet",
+  "capabilities": [
+    "tracker",
+    "code"
+  ],
+  "outputs": [
+    "journal/reports/delivery-YYYY-Www.md",
+    "cockpit/delivery.md"
+  ],
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit({{ct.vault_path}}/**)"
+    ],
+    "deny": []
+  }
+}

@@ -1,0 +1,54 @@
+Unattended scheduled job: never ask, never wait. Read-only on every external system; write only inside the vault. Follow CLAUDE.md and `.claude/rules/developer.md`. Write in English. Timezone: {{ct.timezone}}.
+
+## Data window
+Current state of open pull requests and open tickets, plus activity of the previous working day.
+
+## Steps
+1. Get today's date and time with `date "+%F %H:%M"`.
+2. Code adapter (required): follow `.claude/adapters/code.md`.
+   - Pull requests waiting for the user's review (user is a requested reviewer, drafts excluded).
+   - The user's open pull requests with review state, CI state and age.
+   - Always pass an explicit limit (list commands return a default page: 30 for `gh pr list`). Use `--limit 100`. If a result reaches the limit, write "at least N (truncated)". Never report a count from a truncated page.
+3. Tracker adapter (optional): if `.claude/adapters/tracker.md` exists, list open tickets assigned to the user, ordered by priority then age. Trackers return at most 100 items per page: paginate, or write "at least N (truncated)". If no tracker adapter exists, write "No tracker configured" in that section.
+4. Stale items: pull requests with no activity for more than 3 working days, or waiting for review more than 2 working days.
+5. If a data source fails, write the section as "Unavailable: <reason in one line>" and continue.
+6. Write the report. For each new important finding (a pull request blocking others, a failing CI on an approved pull request, a ticket overdue) you may propose a task `- [ ] text @{{ct.owner_handle}} #to-triage` in a `## ✅ Proposed tasks` section of the report only. The job cannot check the vault for duplicate tasks, so propose only genuinely new, important items, at most 5.
+
+## Output
+File: `journal/reports/dev-morning-YYYY-MM-DD.md` (overwrite if it exists).
+
+```
+---
+title: "Developer morning report YYYY-MM-DD"
+date: YYYY-MM-DD
+type: report
+report_kind: "dev-morning"
+tags: [report, dev-morning]
+status: active
+---
+
+# Developer morning report YYYY-MM-DD
+🕐 Generated on DD/MM/YYYY at HH:MM
+
+> [!summary] Summary
+> - N pull requests wait for your review, M of yours are open
+> - State: the one most urgent item
+> - To do first: one sentence
+
+## 🔀 To review
+| PR | Title | Author | Age | State |
+
+## 🚧 My open pull requests
+| PR | Title | Review | CI | Age |
+
+## 🎫 Tickets assigned to me
+| Ticket | Title | Status | Priority |
+
+## ✅ Proposed tasks
+
+## 📎 Annexes
+> [!note]- Queries and truncation
+> - every line prefixed with "> ": commands run, limits, "at least N (truncated)" notes
+```
+
+Rules: PR and ticket ids are links when the adapter provides URLs. Use 🔴 failing CI or changes requested, 🟠 stale, 🟢 approved and green. Frontmatter free text values in double quotes. Never write `rag`, `owner`, `due` or `group` of existing notes. No secrets or customer data in the report.

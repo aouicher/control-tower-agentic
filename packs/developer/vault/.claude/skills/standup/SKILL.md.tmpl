@@ -1,0 +1,30 @@
+---
+name: standup
+description: Prepare the daily standup: what was done yesterday from git history and closed tickets, plan for today, blockers. Writes the standup section of cockpit/today.md. Use when the user says /standup, "prepare my standup" or "what did I do yesterday".
+argument-hint: "[YYYY-MM-DD]"
+---
+
+# Standup
+
+Output: section `## 🗣️ Standup` of `cockpit/today.md` (replace that section only; create it after the existing content if missing; keep the rest of the page and its frontmatter). Never copy tasks.
+
+## Steps
+
+1. Dates: `date +%F` for today. "Yesterday" is the previous working day (on Monday, Friday), computed with `date`.
+2. Done, from git: in the current repository and any repository the user names, run `git log --author="$(git config user.name)" --since="<yesterday 00:00>" --until="<today 00:00>" --oneline --all`. Group commits by branch or pull request. Merged pull requests: use the code adapter described in `.claude/adapters/code.md` with a limit of 100 and report "at least N (truncated)" if reached.
+3. Done, from tickets: if a tracker adapter exists (`.claude/adapters/tracker.md`), list tickets assigned to the user and resolved yesterday. Trackers return at most 100 items per page: paginate or say "at least N (truncated)". With no tracker configured, skip and say so in one line.
+4. Done, from the vault: read yesterday's daily note (`## 📝 Notes`, `## ⚖️ Decisions`) for context and links.
+5. Plan for today: open tasks due today or overdue (`grep -rn "^- \[ \]" work team`, never `journal/daily/`), today's `## 🎯 Focus` in the daily note, and open pull requests waiting on the user (run the `review-queue` logic if the user asks).
+6. {{ct.Risks}} and blockers: `blocker` property of active projects and {{ct.workstreams}}, `#waiting` tasks, pull requests with failing CI or changes requested, anything the user mentioned.
+7. Write the section: three short blocks Yesterday, Today, Blockers, each bullet one line with a link (pull request, ticket, wikilink). Under 12 bullets overall.
+8. Show the user the same text in the reply so it can be pasted into the team chat.
+
+## Rules
+
+- Never invent work: every "done" bullet traces to a commit, a ticket or a note.
+- Proposed tasks carry `#to-triage`. Never write `rag`.
+- No secrets or customer data in the page.
+
+## Presentation
+
+Right under the section heading: `🕐 Updated on DD/MM/YYYY at HH:MM` (real time). Use the page style of `CLAUDE.md`. Detail (commit hashes, raw lists) goes in a folded `> [!note]- Sources` callout at the end of the section.

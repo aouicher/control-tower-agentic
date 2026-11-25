@@ -1,0 +1,27 @@
+{
+  "id": "marketing",
+  "name": "Marketing lead",
+  "audience": "Marketing leads, marketers and content teams",
+  "summary": "Plan campaigns and content, keep a two-week calendar, and get a weekly results report without opening five tools.",
+  "vocabulary": "vocabulary.json",
+  "skills": ["campaign-brief", "content-calendar", "weekly-metrics", "competitor-watch"],
+  "templates": ["content-piece", "launch-plan", "campaign-retro"],
+  "dashboards": ["content-pipeline"],
+  "cockpit_pages": ["content-calendar"],
+  "jobs": ["weekly-metrics", "content-reminders"],
+  "routines": ["daily-note", "weekly-review", "morning-brief"],
+  "capabilities": {
+    "required": [],
+    "optional": ["analytics", "crm", "tracker", "calendar"]
+  },
+  "questions": [
+    {"id": "analytics_tool", "ask": "Which web or product analytics tool do you use?", "capability": "analytics",
+     "choices": ["google-analytics", "amplitude", "none"]},
+    {"id": "crm_tool", "ask": "Which CRM or email tool holds your contacts and campaigns?", "capability": "crm",
+     "choices": ["hubspot", "none"]},
+    {"id": "tracker_tool", "ask": "Which tool tracks your team's tasks?", "capability": "tracker",
+     "choices": ["jira", "linear", "github-issues", "asana", "none"]},
+    {"id": "calendar_tool", "ask": "Which calendar do you use?", "capability": "calendar",
+     "choices": ["google-calendar", "none"]}
+  ]
+}

@@ -1,0 +1,33 @@
+---
+name: campaign-brief
+description: Turn a marketing goal into a {{ct.workstream}} note with audience, message, channels, budget, KPIs, timeline and risks. Use when the user says /campaign-brief, "plan a campaign", "brief for a campaign" or gives a goal to turn into a plan.
+argument-hint: "<goal> [{{ct.team}}]"
+---
+
+# Campaign brief
+
+A campaign is a `workstream` note in `work/workstreams/<{{ct.team}}-slug>/`.
+
+## Steps
+
+1. Read the goal. If the goal, the audience or the end date is missing, ask for it in ONE short message (max 3 questions). Do not ask about anything else: leave the rest as "to define".
+2. Search the vault first: `grep -ril "<keywords>" work library --include=*.md`. Reuse what exists: past campaigns and retros, competitor notes in `library/`, existing content in `work/content/`. If a campaign note on the same goal exists, update it instead of creating another.
+3. Pick the {{ct.team}} folder: the {{ct.team}} the user names, else the one in the matching `team/` note, else ask. Create `work/workstreams/<{{ct.team}}-slug>/` if missing.
+4. Create `<descriptive-hyphenated-title>.md` from `_system/templates/workstream.md`. Frontmatter: `type: workstream`, `status: draft`, `group` = the {{ct.team}} slug, `team` = link to the {{ct.team}} note when it exists, `owner` = the user's handle, `rag: unknown`, `progress: 0`, `due` = the campaign end date when known, all free text in double quotes.
+5. Fill the body as described under Presentation. Mark every guess as "assumption". Never invent a budget, a KPI target or a baseline: write "to define" and say what is needed to define it.
+6. Proposed follow-up work goes under `## ✅ Tasks`, each task tagged `#to-triage`. Propose content notes as a list (channel, idea, target date) and create them in `work/content/` only if the user agrees, from `_system/templates/content-piece.md`, with `stage: idea` and `campaign` linking this note.
+7. Reply with the file path and 3 lines: the goal, the biggest open question, the first action.
+
+## Presentation
+
+Follow the page style of the vault `CLAUDE.md`. Headings and order:
+- `> [!summary] Summary`: goal, audience, timing (3 bullets).
+- `## 🎯 Goal`: one sentence plus the single main KPI.
+- `## 👥 Audience`: table `| Who | What they care about | Where they are |`.
+- `## 💬 Message`: the one big idea, 3 supporting points, the call to action.
+- `## 📣 Channels`: table `| Channel | Role | Content | Effort |`.
+- `## 💶 Budget`: table `| Item | Amount | Note |`, or "to define".
+- `## 📊 KPIs`: table `| KPI | Baseline | Target | Source |`. Source is where the number will be read.
+- `## 📅 Timeline`: table `| When | Milestone | Owner |`.
+- `## 🚨 {{ct.Risks}}`: table `| {{ct.Risk}} | Likelihood | What we do about it |`, 3 to 5 rows.
+- Keep the template's `## 🩺 Health`, `## 🚧 Work in progress`, `## ✅ Tasks`, `## ⚖️ Decisions` and `## 📝 Notes` headings.

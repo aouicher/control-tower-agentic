@@ -1,0 +1,28 @@
+---
+name: prd-draft
+description: Draft a product requirements note for an initiative covering problem, users, goals and non-goals, requirements, metrics, open questions and risks. Use when the user says /prd-draft <initiative>, "write the PRD for X" or "spec this".
+argument-hint: "<initiative or opportunity>"
+---
+
+# PRD draft
+
+## Steps
+
+1. Find the {{ct.workstream}} note in `work/workstreams/` (or the opportunity in `work/opportunities/`). If there are several matches, list them and ask. If a PRD already exists, update it with a dated section instead of creating a second one.
+2. Gather context in the vault only: the linked opportunities and their `evidence`, linked interviews in `library/interviews/`, related decisions in `work/decisions/`, {{ct.risks}} in `work/risks/`. Quote them with wikilinks.
+3. Write `work/workstreams/<group>/<initiative-slug>-prd.md` from `_system/templates/prd.md`, with `type: resource`, `status: draft`:
+   - **Problem**: who has it, how often, evidence (linked), what it costs them.
+   - **Users**: segments, not individuals.
+   - **Goals** and **Non-goals**: goals are measurable outcomes; non-goals are explicit exclusions.
+   - **Requirements**: numbered `R1, R2...` with a priority (must, should, could) and an acceptance criterion each.
+   - **Metrics**: one primary metric with baseline and target, guardrail metrics, and where each is measured. Leave a baseline empty and say "to measure" when it is unknown; never invent numbers.
+   - **Open questions**: each with an owner suggestion and what it blocks.
+   - **{{ct.Risks}}**: delivery, adoption, legal, dependency. Link existing {{ct.risk}} notes.
+4. Link the PRD from the initiative note's `## 📝 Notes` section (add a line; change no property).
+5. Anything that needs doing becomes a `#to-triage` task, written once in the initiative note.
+6. Reply with the path, the open questions, and the assumptions you had to make.
+
+## Rules
+- Mark every assumption as "Assumption:". Never present a guess as a fact.
+- Requirements describe the need, not the implementation.
+- Never write `rag`, `owner` or `due` of the initiative.

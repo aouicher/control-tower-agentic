@@ -1,0 +1,6 @@
+{
+  "team": { "singular": "squad", "plural": "squads" },
+  "workstream": { "singular": "topic", "plural": "topics" },
+  "risk": { "singular": "incident", "plural": "incidents" },
+  "person": { "singular": "direct report", "plural": "direct reports" }
+}

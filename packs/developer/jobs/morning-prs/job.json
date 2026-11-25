@@ -1,0 +1,10 @@
+{
+  "id": "morning-prs",
+  "name": "Morning pull requests",
+  "description": "Pull requests to review, your open pull requests and tickets assigned to you, written to a morning report.",
+  "schedule": {"days": "mon-fri", "time": "08:30"},
+  "model": "sonnet",
+  "capabilities": ["code", "tracker"],
+  "outputs": ["journal/reports/dev-morning-YYYY-MM-DD.md"],
+  "permissions": {"allow": [], "deny": []}
+}

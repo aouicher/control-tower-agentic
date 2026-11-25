@@ -1,0 +1,33 @@
+filters:
+  and:
+    - file.inFolder("work/content")
+    - type == "content"
+    - status != "archived"
+formulas:
+  stage_rank: if(stage == "idea", 0, if(stage == "draft", 1, if(stage == "review", 2, if(stage == "scheduled", 3, 4))))
+properties:
+  channel:
+    displayName: Channel
+  publish_date:
+    displayName: Publish date
+  stage:
+    displayName: Stage
+  campaign:
+    displayName: "{{ct.Workstream}}"
+  owner:
+    displayName: Owner
+views:
+  - type: table
+    name: Content pipeline
+    groupBy:
+      property: stage
+      direction: ASC
+    order:
+      - file.name
+      - channel
+      - publish_date
+      - campaign
+      - owner
+    sort:
+      - property: publish_date
+        direction: ASC

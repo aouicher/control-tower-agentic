@@ -1,0 +1,28 @@
+---
+name: competitor-watch
+description: Research competitors' recent moves (launches, pricing, campaigns, content, hiring signals) and save a sourced note in library/. Use when the user says /competitor-watch, "what are competitors doing" or "check on <competitor>".
+argument-hint: "<competitor name or list> [period, default last 30 days]"
+---
+
+# Competitor watch
+
+## Steps
+
+1. Read the argument. If no competitor is named, read the notes in `library/` of competitors already followed and the campaign notes in `work/`, and propose the list in one line before starting.
+2. Search the vault first: `grep -ril "<competitor>" library work --include=*.md`. If a note exists, you will update it (step 5), not duplicate it.
+3. Search the web, if a search tool is available; otherwise say so and stop. Use generic keywords only: never send vault content, plans or numbers to a search engine. Look at, in this order of preference: the competitor's own site, blog, newsroom, pricing and changelog pages; official social accounts; press coverage; public job postings; public ad libraries.
+4. For each move found, keep: what it is, the date, the source URL. A claim without a source or a date is not written down. Mark anything uncertain "unconfirmed". Paraphrase, never paste long passages.
+5. Write or update `library/competitor-<name>.md` from `_system/templates/resource.md`: `type: resource`, `status: draft`, tags `competitor` and the topic, double-quoted title. If the note exists, append a dated section `## 🔄 Update DD/MM/YYYY` and leave older text alone.
+6. If a move touches a live campaign, link the campaign note and list it in the reply. Do not edit the campaign note.
+7. Suggested reactions are proposals only, tagged `#to-triage` if written as tasks, in the library note under `## ✅ Actions`.
+8. Reply with the 3 most important moves and the file path.
+
+## Presentation
+
+Follow the page style of the vault `CLAUDE.md`.
+- `> [!summary] Summary`: 3 bullets, the most important move first.
+- `## 📅 Recent moves`: table `| Date | Move | Why it matters to us | Confidence |` (confirmed or unconfirmed), newest first.
+- `## 📣 Positioning and messages`: bullets, only what the sources show.
+- `## 🔗 Connections`: wikilinks to our campaigns and content that relate.
+- `## ✅ Actions`: proposals tagged `#to-triage`.
+- `## 📎 Sources`: folded `> [!note]- Sources` with title, URL and access date, every line prefixed `> `.

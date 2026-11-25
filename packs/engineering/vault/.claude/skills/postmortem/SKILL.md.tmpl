@@ -1,0 +1,25 @@
+---
+name: postmortem
+description: Write a blameless {{ct.risk}} postmortem into work/risks/ from the core risk template, with a sourced timeline, root cause, impact and follow-up tasks. Use when the user says /postmortem, "post-mortem", "RCA", "incident review" or asks to write up an {{ct.risk}}.
+argument-hint: "<incident description, link or existing risk note>"
+---
+
+# Postmortem
+
+A blameless write-up: it explains how the system and the process allowed the {{ct.risk}}, never who is at fault. It is a draft for the user to validate.
+
+## Steps
+
+1. **Identify the {{ct.risk}}**: use the argument, or an existing note in `work/risks/` (read it first and extend it rather than creating a second one). If nothing is given, ask one question: what happened and when.
+2. **Gather evidence, read-only**, from what is configured: error tracker, logs, deploys and PRs (`code`), tracker tickets, chat excerpts the user pastes. Pass full resource identifiers to log queries. A query that scans 0 records is a coverage gap, not evidence. Mask personal data and secrets; never copy stack traces or customer data into the note.
+3. **Build the timeline** in the user's timezone, one row per event, each with its source (link, query, ticket key). Separate facts from hypotheses. Mark any gap in the timeline as "unknown", never fill it by assumption.
+4. **Quantify the impact**: duration (detection to resolution), affected users or operations as numbers with the query that produced them, money or data at risk when relevant. If a figure cannot be verified, write "not verified".
+5. **Analyse causes**: the trigger, the contributing factors (design, tests, monitoring, process, change management) and the root cause, using "5 whys" until the answer is a system or process property. Name roles and systems, never individuals.
+6. **Write the note** `work/risks/<descriptive-slug>.md` from `_system/templates/risk.md`: frontmatter `severity`, `risk_status` (`mitigated` if the service is restored, `open` while follow-ups are pending), `team` (wikilink, quoted). Keep the core headings (`## 🚨 Description`, `## 📅 Timeline`, `## 🔎 Cause`, `## 🛡️ Mitigation`, `## ✅ Open tasks`, `## ⚖️ Decisions`, `## 📎 Annexes`) and add these sections:
+   - `## 🩺 Detection and response`: how it was detected, time to detect, time to mitigate, what worked, what was slow.
+   - `## 🧭 What went well, what did not, where we got lucky`: 3 bullets each at most.
+   - Add the `> [!summary] Summary` callout (the page is long) and `🕐 Generated on DD/MM/YYYY at HH:MM` under the title.
+   - Raw logs, ids and queries go in the folded `> [!note]- Evidence, logs and sources` callout.
+7. **Follow-ups**: each corrective action is a task `- [ ] Action @owner 📅 YYYY-MM-DD` in the `## ✅ Open tasks` section of THIS note (a task lives once). Mark prevention (stops it recurring), detection (finds it faster) and mitigation (limits damage) tasks. Anything not accepted by the user yet carries `#to-triage`. If a lasting design choice results, propose an ADR with the `adr` skill instead of deciding it here.
+8. **Link both ways**: link the {{ct.team}} note and any related {{ct.workstream}} or project note from the {{ct.risk}} note, and add a link back in the `## 🚨 {{ct.Risks}}` section of those notes. Do not change their `rag`.
+9. Show the user a short summary: severity, duration, root cause in one line, number of follow-ups, what is unverified.

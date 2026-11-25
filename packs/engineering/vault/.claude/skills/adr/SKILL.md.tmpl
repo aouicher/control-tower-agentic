@@ -1,0 +1,51 @@
+---
+name: adr
+description: Draft an Architecture Decision Record in the current repository (docs/adr/NNNN-slug.md, MADR-lite) and add an index note in work/decisions/. Use when the user says /adr, "ADR", "architecture decision", "record this decision" or a significant technical choice was just made.
+argument-hint: "<decision title or context>"
+---
+
+# ADR
+
+The record lives in the repository it concerns, next to the code. The vault only holds a short index note so decisions show up in the cockpit.
+
+## Steps
+
+1. **Locate the repository**: the current working repository when the skill runs there. If the working folder is the vault, ask which repository (one question) and do not guess.
+2. **Pick the folder and number**: use `docs/adr/` (or `docs/decisions/` if it already exists). Number is the next free four-digit number (`0007`). File name `NNNN-short-slug.md`. If the folder holds an index or template, follow it.
+3. **Gather the context**: read the relevant code and docs read-only, and the conversation. State only what you can show. Unknown consequences are written as open questions.
+4. **Write the ADR** in this layout:
+
+```markdown
+# NNNN. Title in the form of a decision
+
+- Status: proposed | accepted | superseded by NNNN
+- Date: YYYY-MM-DD
+- Deciders: roles or names given by the user
+
+## Context
+What forces are at play: requirements, constraints, current state. A few lines.
+
+## Options considered
+| Option | Pros | Cons |
+|---|---|---|
+
+## Decision
+We will ... (one clear sentence, then the reasons).
+
+## Consequences
+Positive, negative, and what changes for operations, security and cost.
+
+## Follow-ups
+- Action, owner role, date
+```
+
+   Always start with status `proposed`. Only the user changes it to `accepted`. Never edit an accepted ADR: supersede it with a new one and update the old status line only.
+5. **Index note in the vault**: create `work/decisions/<descriptive-slug>.md` from `_system/templates/decision.md`: `decision_status: proposed`, `owner` and `team` (quoted) if known, and a link to the repository file (path and repository name). Keep it to the question, the chosen option in one line and the tasks. Do not paste the ADR body into the vault.
+6. **Tasks**: follow-ups that need the user's attention are written once in the index note as `- [ ] Task @owner 📅 YYYY-MM-DD #to-triage`.
+7. **Do not commit** unless the user asks. Report the file path and the index note.
+
+## Rules
+
+- One decision per ADR. If you find two, write two.
+- No secrets, credentials, customer data or internal hostnames that should not be shared in the ADR.
+- If the decision came out of an {{ct.risk}}, link the {{ct.risk}} note from the index note.

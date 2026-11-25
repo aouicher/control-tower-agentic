@@ -1,0 +1,57 @@
+Unattended scheduled job: never ask, never wait. Read-only on every external system; write only inside the vault. Follow CLAUDE.md and `.claude/rules/developer.md`. Write in English. Timezone: {{ct.timezone}}.
+
+## Data window
+Monday 00:00 to now (Friday) of the current week, in {{ct.timezone}}. Compute the dates with `date`.
+
+## Steps
+1. Code adapter (required): follow `.claude/adapters/code.md`. List pull requests authored by the user and merged in the window, and the user's pull requests still open. Always pass an explicit limit (the default page is 30 for `gh pr list`): use `--limit 100`; if the result reaches it, write "at least N (truncated)". Never report a count from a truncated page.
+2. Tracker adapter (optional): if `.claude/adapters/tracker.md` exists, list tickets assigned to the user and resolved in the window, then tickets still open and assigned to the user. Trackers return at most 100 items per page: paginate, or write "at least N (truncated)". Without a tracker, write "No tracker configured".
+3. Vault context: read this week's daily notes in `journal/daily/<YYYY>/` for `## ⚖️ Decisions`, `## 🚨 {{ct.Risks}} and blockers` and `## 📝 Notes` entries, and the debug journals created this week in `library/`. Link them.
+4. Carry-over: open pull requests, open tickets, and `blocker` values of active notes in `work/`. List them as carry-over, do not move or copy tasks.
+5. For new important findings only, propose at most 5 tasks as `- [ ] text @{{ct.owner_handle}} #to-triage` in the `## ✅ Proposed tasks` section of the report. The job cannot check the vault for duplicate tasks.
+6. If a data source fails, write "Unavailable: <reason>" in its section and continue.
+
+## Output
+File: `journal/reports/dev-weekly-wrap-YYYY-MM-DD.md` (date of the Friday; overwrite if it exists).
+
+```
+---
+title: "Developer weekly wrap YYYY-MM-DD"
+date: YYYY-MM-DD
+type: report
+report_kind: "dev-weekly-wrap"
+tags: [report, dev-weekly-wrap]
+status: active
+---
+
+# Developer weekly wrap YYYY-MM-DD
+🕐 Generated on DD/MM/YYYY at HH:MM
+
+> [!summary] Summary
+> - N pull requests merged, M tickets closed
+> - State: what went well or got stuck, one line
+> - Carry over: the main items for next week
+
+## 📊 Figures
+| Merged pull requests | Closed tickets | Open pull requests | Open tickets |
+
+## ✅ Merged pull requests
+| PR | Title | Merged on |
+
+## 🎫 Closed tickets
+| Ticket | Title | Closed on |
+
+## 🚧 Carry-over
+- items with links
+
+## ⚖️ Decisions and learnings
+- from daily notes and debug journals, with wikilinks
+
+## ✅ Proposed tasks
+
+## 📎 Annexes
+> [!note]- Queries and truncation
+> - every line prefixed with "> ": commands run, limits, "at least N (truncated)" notes
+```
+
+Rules: frontmatter free text values in double quotes. Never write `rag`, `owner`, `due` or `group` of existing notes. No secrets or customer data in the report.

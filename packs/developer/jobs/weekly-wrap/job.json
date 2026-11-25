@@ -1,0 +1,10 @@
+{
+  "id": "weekly-wrap",
+  "name": "Weekly wrap",
+  "description": "Merged pull requests, closed tickets and carry-over for the week, written to a report.",
+  "schedule": {"days": "fri", "time": "16:30"},
+  "model": "sonnet",
+  "capabilities": ["code", "tracker"],
+  "outputs": ["journal/reports/dev-weekly-wrap-YYYY-MM-DD.md"],
+  "permissions": {"allow": [], "deny": []}
+}

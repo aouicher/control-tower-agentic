@@ -1,0 +1,16 @@
+Unattended scheduled job "weekly-digest" (Fridays 16:00, {{ct.timezone}}): the weekly delivery digest for {{ct.owner_name}}. Nobody will answer questions: never ask, never wait. Read-only on every external system (never create, modify or comment on anything there); write only inside the vault at {{ct.vault_path}}. Follow CLAUDE.md and `.claude/rules/engineering.md`. Write in English. Do not spawn subagents.
+
+Read `.claude/skills/weekly-digest/SKILL.md` (skills are not auto-loaded in an unattended run) and follow it fully for the current ISO week, with these constraints:
+
+- Window: Monday 00:00 to now of the current ISO week, in {{ct.timezone}}. Get dates with `date +%G-W%V`, `date +%F` and `date "+%d/%m/%Y at %H:%M"`.
+- Shell permissions may only match single, simple commands: run ONE command per call, with no loops, no `&&`, `;`, `$(...)` or redirections.
+- Data rules (critical):
+  - List commands return a default page size (30 for GitHub CLI `gh pr list`): ALWAYS pass an explicit limit of at least 100, for open and merged PRs alike. If a result has exactly as many items as the limit, split the window (per day, per repository) until every query returns fewer.
+  - Trackers return at most 100 items per page: paginate until there is no next page, or write "at least N (truncated)". Never report a count, ratio or trend taken from a truncated page.
+  - Read the previous `delivery-*.md` in `journal/reports/` before querying, for trends and to avoid repeating findings.
+  - A source that fails is "not verified", never zero: record the exact error in the folded Sources annex and continue.
+- Files you may write: the report `journal/reports/delivery-YYYY-Www.md`, `cockpit/delivery.md` (only between `<!-- delivery -->` and `<!-- /delivery -->`), and in {{ct.workstream}} notes under `work/workstreams/` only the `progress`, `blocker` and `next_step` properties and their progress section. Never write `rag`, `owner`, `due` or `group`. List the {{ct.workstream}} notes with one `ls` per {{ct.team}} folder, then read each with the Read tool.
+- Per-{{ct.person}} load is a set of signals to discuss in 1-1s, never a ranking or a verdict. Do not write anything about a {{ct.person}} in any note under `team/`.
+- Tasks: only `- [ ] ... @{{ct.owner_handle}} #to-triage`, at most 3, only for new important findings. You cannot check the vault for duplicates: do not try.
+
+Final answer: the report's summary callout only, then one line `N {{ct.workstreams}}: X updated, Y unchanged, Z not verified`.

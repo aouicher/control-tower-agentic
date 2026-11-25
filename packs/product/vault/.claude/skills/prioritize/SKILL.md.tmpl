@@ -1,0 +1,28 @@
+---
+name: prioritize
+description: Score the opportunities with RICE or a configurable method and write a ranked table in cockpit/roadmap.md with tie explanations. Use when the user says /prioritize, "rank the opportunities", "what should we build next" or "re-score the backlog".
+argument-hint: "[rice|ice|custom] [stage filter]"
+---
+
+# Prioritize
+
+## Method
+- Default: **RICE** = `reach x impact x confidence / effort`.
+- Alternatives: **ICE** (impact x confidence x ease, each 1 to 10), or a custom formula the user gives in the call. If the vault has `library/prioritization-method.md`, use the method it describes.
+- Always state the method and the formula at the top of the ranking. Never mix methods in one table.
+
+## Steps
+
+1. Read every note in `work/opportunities/` with `stage` of `candidate` or `validated` (or the stage filter given). Ignore `dropped` and `planned` unless asked.
+2. List the opportunities with a missing or invalid input (`reach`, `impact`, `confidence`, `effort`). Do not guess values: show the gap in a table and ask for the numbers, then score only complete ones.
+3. Compute `score` for each complete opportunity, rounded to 2 decimals. Write `score` in the opportunity's frontmatter, nothing else.
+4. Rank by score, highest first. For scores within 10 percent of each other, mark a **tie** and explain what separates them: stronger evidence (more linked interviews), lower effort, strategic fit, dependency, risk. Propose an order, never impose it.
+5. Rewrite the ranking section of `cockpit/roadmap.md` between the markers `<!-- ranking:start -->` and `<!-- ranking:end -->`, leaving the now/next/later sections untouched. Put the `🕐 Updated on DD/MM/YYYY at HH:MM` line, the method, and a table `| # | Opportunity | Score | Reach | Impact | Confidence | Effort | Stage | Evidence |`.
+6. Add a `## Tie notes` list under the table when ties exist, and a folded `> [!note]- Inputs and gaps` callout with the incomplete opportunities.
+7. Reply with the top 5 and the ties.
+
+## Rules
+- **Never change an opportunity's `stage` without asking.** Propose: "Move X from candidate to validated?" and wait for a yes per opportunity.
+- Never edit `reach`, `impact`, `confidence` or `effort` unless the user gives the value in this conversation.
+- Evidence quality matters: flag a high score that rests on a single interview or on a guess.
+- Nothing is deleted. A dropped opportunity stays in its folder.

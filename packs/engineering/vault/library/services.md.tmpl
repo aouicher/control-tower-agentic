@@ -1,0 +1,35 @@
+---
+title: "Services"
+date: 2026-01-01
+tags: [services]
+type: resource
+status: active
+---
+
+# Services
+
+The editable list of services the `service-health` job checks. Fill one row per service. Replace every `<...>` placeholder. The job reads this note and nothing else to know where to look.
+
+Rules for filling it:
+- Give the FULL identifier of each log source (full resource name or ARN, or full index and source). A short name can silently resolve to another environment.
+- List production only. Keep non-production sources out of the table.
+- Name noise you already know (health checks, startup banners) so the job does not report it.
+- A service you leave out is never checked and never reported.
+
+## 🩺 Services to monitor
+
+| Service | {{ct.Team}} | Criticality | Logs (full identifier) | Error project and environment | Error level filter | Known noise to ignore |
+|---|---|---|---|---|---|---|
+| `<service-a>` | `[[<{{ct.team}}-note>]]` | `critical` or `standard` | `<full log source identifier>` | `<project>` / `production` | `<field and value, for example level = error>` | `<pattern or none>` |
+| `<service-b>` | `[[<{{ct.team}}-note>]]` | `standard` | `<full log source identifier>` | `<project>` / `production` | `<field and value>` | `<pattern or none>` |
+
+## 🧭 Classification hints
+
+Criticality `critical` means a silent service or a new error signature is red. Describe here, in your words, which flows are critical (money movement, authentication, data loss, a customer-facing outage):
+
+- `<flow that must never fail>`
+
+## 📎 Annexes
+
+> [!note]- Out of scope
+> - `<decommissioned or idle services the job must never query or report>`

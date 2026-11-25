@@ -111,9 +111,12 @@ adapters/<capability>/
   "permissions_allow": ["mcp__sentry__*"],
   "verify": "one command or prompt the user runs to check the connection",
   "read_only": true,
+  "permissions_deny": ["mcp__sentry__update_issue"],
   "status": "documented"
 }
 ```
+
+`permissions_allow` lists explicit tool names, never a wildcard. If the tool has no read-only mode, set `"read_only": false` and add `"read_only_mitigation"` (for example a view-only account, a read-only token or role). If the official documentation does not list the tool names, leave `permissions_allow` empty and tell the user to review the server's tool list and allow only read-only tools.
 
 `status` is `documented` (written from the official documentation, not exercised by the tests) or `verified` (exercised against a real account). Never claim `verified` without a real test.
 

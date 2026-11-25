@@ -1,0 +1,56 @@
+# Product pack rules
+
+These rules extend `CLAUDE.md`. They never change a core type or property.
+
+## Vocabulary
+- A {{ct.workstream}} is a core `workstream` note (`type: workstream`, in `work/workstreams/<group>/`). It is a product bet with an owner, a goal and a tracker link.
+- {{ct.People}} in `team/` are the {{ct.people}} of the product team. Customers are never notes of type `person`.
+
+## New folders
+- `work/opportunities/`: one note per opportunity.
+- `library/interviews/`: one note per customer interview.
+
+## Note type `opportunity` (folder `work/opportunities/`)
+
+| Property | Meaning |
+|---|---|
+| `problem` | One sentence, customer wording, double-quoted. |
+| `evidence` | Quoted list of links to interviews, reports or data (`["[[interview-note]]"]`). |
+| `reach` | Number of customers or events affected per period (integer). |
+| `impact` | 0.25, 0.5, 1, 2 or 3. |
+| `confidence` | 0 to 1 (0.5 = weak evidence, 1 = strong). |
+| `effort` | Person-weeks (number, above 0). |
+| `score` | Computed by `/prioritize` (RICE = reach x impact x confidence / effort). Empty until scored. |
+| `stage` | `candidate`, `validated`, `planned` or `dropped`. |
+
+Common properties apply: `title`, `date`, `tags`, `type: opportunity`, `status`.
+- Only I change `stage`. Skills and jobs may propose a change in text, never write it.
+- Only `/prioritize` writes `score`, and only after saying which method it used.
+- A dropped opportunity keeps its note (nothing is deleted).
+
+## Note type `interview` (folder `library/interviews/`)
+
+| Property | Meaning |
+|---|---|
+| `customer_segment` | Segment label such as "small business, monthly plan". Never a name. |
+| `interview_date` | `YYYY-MM-DD`. |
+| `source` | How it was collected: "call", "survey", "support thread", "field visit". |
+
+- Never store a customer's name, email, phone, company name, account id or any other personal data. Use the segment and a pseudonym ("Participant 3").
+- Quotes must be anonymised before they are saved.
+
+## Related notes
+- A PRD is a `resource` note named `<initiative>-prd.md`, stored next to its initiative note; initiative and PRD link both ways.
+- Release notes are `report` notes with `report_kind: "release-notes"` in `journal/reports/`.
+- Weekly digests are `report` notes with `report_kind: "product-weekly"`; feedback digests use `"feedback-digest"`.
+- An opportunity that becomes an initiative links to it in a `## Links` section; the initiative links back.
+
+## Metrics discipline
+- Trackers return at most 100 items per page. Paginate, or write "at least N (truncated)". Never present a truncated count as a total.
+- Never report a metric from a sampled or exported subset without saying it is sampled.
+- Compare like with like: same period length, same segment, same definition. Name the two periods.
+- Never state causality from a before/after metric movement; say "coincides with".
+
+## Automation limits
+- Unattended jobs cannot check the vault for duplicate tasks: they only propose `#to-triage` tasks for new, important findings.
+- Jobs never write `rag`, `owner`, `due` or `stage` of existing notes.

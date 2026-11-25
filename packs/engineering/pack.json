@@ -1,0 +1,31 @@
+{
+  "id": "engineering",
+  "name": "Engineering leader",
+  "audience": "Heads of engineering, CTOs, engineering managers",
+  "summary": "Delivery, service health, incidents and architecture decisions in one vault: weekly delivery digest, daily error and quality triage, service health pulse, blameless postmortems, ADRs and questionnaire drafts.",
+  "vocabulary": "vocabulary.json",
+  "skills": ["weekly-digest", "postmortem", "adr", "questionnaire-answer"],
+  "templates": [],
+  "dashboards": ["delivery"],
+  "cockpit_pages": ["pulse", "delivery"],
+  "jobs": ["morning-triage", "service-health", "debt-review", "weekly-digest"],
+  "routines": ["daily-note", "weekly-review", "morning-brief", "overnight-health"],
+  "capabilities": {
+    "required": ["calendar"],
+    "optional": ["tracker", "code", "errors", "quality", "logs"]
+  },
+  "questions": [
+    {"id": "calendar_tool", "ask": "Which calendar do you use?", "capability": "calendar",
+     "choices": ["google-calendar"]},
+    {"id": "tracker_tool", "ask": "Which issue tracker do your squads use?", "capability": "tracker",
+     "choices": ["jira", "linear", "github-issues", "asana", "none"]},
+    {"id": "code_tool", "ask": "Where is your code hosted?", "capability": "code",
+     "choices": ["github", "none"]},
+    {"id": "errors_tool", "ask": "Which error tracker do you use?", "capability": "errors",
+     "choices": ["rollbar", "sentry", "none"]},
+    {"id": "quality_tool", "ask": "Which code quality tool do you use?", "capability": "quality",
+     "choices": ["sonarqube", "none"]},
+    {"id": "logs_tool", "ask": "Where do your service logs live?", "capability": "logs",
+     "choices": ["cloudwatch", "datadog", "none"]}
+  ]
+}

@@ -1,0 +1,28 @@
+---
+name: discovery-notes
+description: Turn a customer interview transcript or raw notes into an anonymised interview note with quotes, pains, jobs to be done, surprises and links to opportunities. Use when the user says /discovery-notes, "process this interview", "write up this customer call" or pastes a transcript.
+argument-hint: "[path or pasted transcript]"
+---
+
+# Discovery notes
+
+## Steps
+
+1. Get the input: a file path, a note in `_inbox/`, or text pasted by the user. If none is given, ask for it.
+2. **Anonymise first.** Replace every name, company, email, phone, account id and identifying detail by a segment label and a pseudonym ("Participant 1"). Never write the original values anywhere in the vault, including the `source` property. If the transcript cannot be anonymised safely, stop and say why.
+3. Ask for, or infer and confirm: `customer_segment`, `interview_date`, `source`.
+4. Write `library/interviews/<YYYY-MM-DD>-<segment-slug>-<n>.md` from `_system/templates/interview.md`:
+   - `## 💬 Quotes`: 3 to 8 verbatim quotes (anonymised), each with a one-line context.
+   - `## 😣 Pains`: what hurts, in the customer's words, with how often and how badly when stated.
+   - `## 🎯 Jobs to be done`: "When ..., I want to ..., so I can ..." statements.
+   - `## 😮 Surprises`: what contradicted our assumptions.
+   - `## 🔗 Opportunities`: wikilinks to existing opportunities this supports or contradicts.
+5. Search `work/opportunities/` for related opportunities. For each match, propose adding this interview to its `evidence` list (ask first). For a pain with no match, propose a new opportunity from `_system/templates/opportunity.md` with `stage: candidate` and empty scoring fields; create it only if the user agrees.
+6. Follow-ups mentioned in the interview become `#to-triage` tasks, written once, in the note of the related initiative or opportunity.
+7. Reply with the file path, the 3 strongest findings and the proposed links.
+
+## Rules
+- Separate what the customer said from your interpretation: interpretation goes in the pains and jobs sections, never inside a quote.
+- Do not invent quotes. If something is paraphrased, it is not in quotation marks.
+- One interview, one note. Never merge two conversations.
+- Free-text frontmatter values are double-quoted.

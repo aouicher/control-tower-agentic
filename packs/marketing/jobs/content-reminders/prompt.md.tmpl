@@ -1,0 +1,28 @@
+Unattended scheduled job. Never ask, never wait. Read-only on every external system; write only inside the vault. Follow CLAUDE.md and `.claude/rules/marketing.md`. Write in English. Timezone: {{ct.timezone}}.
+
+## Data window
+
+- Today, as given by `date +%F` in {{ct.timezone}}.
+- Due soon: `publish_date` from today to today + 3 days.
+- Overdue: `publish_date` before today and `stage` not `published`.
+
+## Steps
+
+1. Read every note in `work/content/` with `type: content` and `status` not `archived`. Read `channel`, `publish_date`, `stage`, `owner`, `campaign`.
+2. Build two lists:
+   - **Overdue**: `publish_date` before today and `stage` is not `published`.
+   - **Due in the next 3 days**: `publish_date` between today and today + 3 days and `stage` is not `published`.
+   Flag a piece as "at risk" when its date is within 3 days and its `stage` is `idea` or `draft`, or when it has no `owner`.
+3. If a tracker or calendar adapter is configured (`.claude/adapters/tracker.md`, `.claude/adapters/calendar.md`), you may add context: a related open ticket or a calendar event on the same day. Use only the first page of results, and never turn this into a count. Skip it if not configured.
+4. Write the output: edit `cockpit/content-calendar.md`, replacing ONLY what is between `<!-- ct:content-reminders:start -->` and `<!-- ct:content-reminders:end -->`. Update the `🕐 Updated on DD/MM/YYYY at HH:MM` line (real time) under the title; keep it if absent by adding it. Never touch the calendar block, the embedded dashboard or the frontmatter other than `date`. If the markers are missing, add the section `## ⏰ Due soon and overdue` with both markers after the title block.
+5. Never change any content note. Never write `rag`, `owner`, `due`, `group`, `stage` or `publish_date` of any note.
+6. Do not create tasks: this job only reports. If something needs a task, write it as a line in the block with the tag `#to-triage` only for an overdue piece with no owner, at most 3 lines. You cannot check for duplicates, so never add more.
+
+## Output block
+
+If both lists are empty, write one line: `🟢 Nothing due in the next 3 days.`
+
+Otherwise:
+- `🔴 Overdue` table `| Piece | Channel | Was due | Stage | Owner |`, oldest first, pieces as wikilinks, omitted when empty.
+- `🟠 Due in the next 3 days` table `| Piece | Channel | Date | Stage | Owner | Flag |`, sorted by date, flag "at risk" or empty, omitted when empty.
+- Optional line `Context: ...` for tracker or calendar items, with a source.

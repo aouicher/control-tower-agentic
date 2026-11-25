@@ -1,0 +1,44 @@
+---
+name: weekly-digest
+description: Build the weekly delivery digest, with PRs merged per {{ct.team}}, sprint status, blocked and in-review items, load per {{ct.person}} as signals for 1-1s, refreshed {{ct.workstream}} notes and the delivery cockpit. Use when the user says /weekly-digest, "delivery digest", "weekly engineering report" or from the Friday scheduled job.
+argument-hint: "[YYYY-Www]"
+---
+
+# Weekly digest
+
+Output: `journal/reports/delivery-<YYYY-Www>.md`, a refreshed `cockpit/delivery.md`, and refreshed {{ct.workstream}} notes. Read `.claude/rules/engineering.md` first: its counting rules are binding.
+
+## Steps
+
+1. Get the ISO week (`date +%G-W%V`, or the argument) and its Monday to Sunday dates, in the user's timezone.
+2. Read the previous delivery report in `journal/reports/` (for trends) and the notes in `team/` of `type: team`: their `tracker` property gives the issue key prefixes per {{ct.team}}.
+3. **Merged PRs** (capability `code`, see `.claude/adapters/code.md`): for each repository, list PRs merged in the week with an explicit limit of at least 100. If the result length equals the limit, split the window by day until each query returns fewer items. Attribute each PR to a {{ct.team}} through the key prefix in its title or branch; the rest is "unattributed".
+4. **Stale open PRs**: open PRs older than 7 days, with an explicit limit, listed by age.
+5. **Sprint status** (capability `tracker`, see `.claude/adapters/tracker.md`): per {{ct.team}}, the active sprint: committed, done, in progress, in review, blocked. Paginate until no next page; otherwise write "at least N (truncated)". Never report a count from a truncated page.
+6. **Blocked and in review**: list items blocked, and PRs awaiting review, with age.
+7. **Load per {{ct.person}}**: PRs authored, reviews given, open items. These are signals to discuss in 1-1s, never a ranking and never a verdict. Group bots separately. Add one line saying PR counts do not measure value.
+8. **Topics**: list `work/workstreams/**` notes with `status: active`. For each, compare its `tracker` keys with step 3 and 5 data and refresh only `progress`, `blocker`, `next_step` and its progress section. Never touch `rag`, `owner`, `due`, `group`. If the note has no `tracker` or the data could not be fetched, leave it unchanged and mark it "not verified". Proposed RAG goes in the report only.
+9. Write the report and the cockpit block (layout below). If a source fails, write the exact error in the annex and continue: a failed source is "not verified", never zero.
+10. Propose at most 3 `#to-triage` tasks, for new important findings only (for example a PR stuck for two weeks, a {{ct.team}} with half its sprint blocked). Write each once, in the note of the {{ct.team}} or {{ct.workstream}} concerned. You cannot reliably check for duplicates: read the previous report and skip findings already raised.
+
+## Report layout (`journal/reports/delivery-<YYYY-Www>.md`)
+
+Frontmatter: `title: "Delivery digest <YYYY-Www>"`, `type: report`, `report_kind: delivery`, `tags: [report, delivery]`, `status: active`.
+
+- Under the title: `🕐 Generated on DD/MM/YYYY at HH:MM` (real time).
+- `> [!summary] Summary`: headline with 🟢🟠🔴, merged PR total (or "at least N (truncated)"), the main signal. 3 bullets max.
+- `## 📊 Figures`: table `| {{ct.Team}} | Merged PRs | Sprint done | In progress | In review | Blocked |`, plus the line "unattributed" and the total.
+- `## 🚧 Blocked and in review`: table `| Item | {{ct.Team}} | State | Age |`, oldest first.
+- `## 👥 Load per {{ct.person}} (signals, not verdicts)`: table `| {{ct.Person}} | PRs authored | Reviews | Open items | Talking point |`. Phrase talking points as questions ("review queue building up?").
+- `## 🚧 {{ct.Workstreams}}`: table with ONE row per {{ct.workstream}} note: `| [[{{ct.workstream}}]] | Progress | Blocker | Next step | Proposed RAG | Refresh |` where Refresh is exactly `updated`, `unchanged` or `not verified`. Then one line: `N {{ct.workstreams}}: X updated, Y unchanged, Z not verified`.
+- `## ✅ Actions`: proposed `#to-triage` tasks.
+- `> [!note]- Sources and coverage` (folded, every line prefixed with `> `): per source, the query form, items returned, pages fetched, truncated or not, any error.
+- `> [!note]- PR list` (folded): number, title, {{ct.team}}.
+
+## Cockpit (`cockpit/delivery.md`)
+
+Replace only the text between `<!-- delivery -->` and `<!-- /delivery -->`: a `🕐 Updated on DD/MM/YYYY at HH:MM` line, the headline with 🟢🟠🔴, one line per {{ct.team}} (`[[{{ct.team}}]]: merged, sprint done/committed, blocked`), and a link to the report. Keep everything else in the file.
+
+## Final answer
+
+The summary callout, then one line: `N {{ct.workstreams}}: X updated, Y unchanged, Z not verified`.

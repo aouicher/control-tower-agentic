@@ -1,0 +1,10 @@
+{
+  "id": "feedback-digest",
+  "name": "Feedback digest",
+  "description": "Monday digest of customer feedback and metric changes from the past week.",
+  "schedule": {"days": "mon", "time": "08:30"},
+  "model": "sonnet",
+  "capabilities": ["crm", "analytics", "tracker"],
+  "outputs": ["journal/reports/feedback-digest-YYYY-Www.md"],
+  "permissions": {"allow": [], "deny": []}
+}

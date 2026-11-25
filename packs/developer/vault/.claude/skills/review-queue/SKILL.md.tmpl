@@ -1,0 +1,29 @@
+---
+name: review-queue
+description: Show pull requests waiting for the user's review, the user's open pull requests with review and CI state, and stale ones. Use when the user says /review-queue, "what do I need to review", "my pull requests" or "what is stuck".
+argument-hint: "[repo]"
+---
+
+# Review queue
+
+Read-only on the code host. Output goes in the reply; write a note only if the user asks.
+
+## Steps
+
+1. Use the code adapter described in `.claude/adapters/code.md`. Always pass an explicit limit: list commands return a default page (30 for `gh pr list`). Use `--limit 100` and, if the result count equals the limit, report "at least N (truncated)".
+2. Waiting for my review: open pull requests where the user is a requested reviewer, drafts excluded.
+3. My open pull requests: authored by the user, with review state (none, requested, changes requested, approved), CI state (passing, failing, pending) and age.
+4. Stale: open pull requests (mine or waiting on me) with no activity for more than 3 working days, or waiting for review for more than 2 working days.
+5. Present three tables with `| PR | Title | Age | State |` and links. Order by age, oldest first. Mark: 🔴 failing CI or changes requested, 🟠 stale, 🟢 approved and green.
+6. Suggest an order: unblock others first (reviews waiting), then own pull requests with changes requested, then the rest.
+
+## Tasks
+
+- Do not create tasks except by explicit request. When proposing one, only as `- [ ] Review <PR title> @{{ct.owner_handle}} #to-triage` in the note of the related project, area or {{ct.workstream}}, never in a daily note.
+- A pull request note in `work/pull-requests/` is created only when the user asks.
+
+## Rules
+
+- Never comment, approve, merge or push: read-only.
+- No secrets or customer data in output.
+- If the code adapter is missing or fails, say so in one line and stop.

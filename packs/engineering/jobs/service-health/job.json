@@ -1,0 +1,25 @@
+{
+  "id": "service-health",
+  "name": "Service health",
+  "description": "Log and error health per service listed in library/services.md, classified red, amber or noise, with a coverage table and a refreshed pulse page.",
+  "schedule": {
+    "days": "mon-fri",
+    "time": "08:10"
+  },
+  "model": "sonnet",
+  "capabilities": [
+    "logs",
+    "errors"
+  ],
+  "outputs": [
+    "journal/reports/health-YYYY-MM-DD.md",
+    "cockpit/pulse.md"
+  ],
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit({{ct.vault_path}}/**)"
+    ],
+    "deny": []
+  }
+}

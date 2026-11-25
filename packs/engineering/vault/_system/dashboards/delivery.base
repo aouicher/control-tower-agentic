@@ -1,0 +1,23 @@
+filters:
+  and:
+    - file.inFolder("journal/reports")
+    - type == "report"
+    - report_kind == "delivery"
+properties:
+  report_kind:
+    displayName: Kind
+  status:
+    displayName: Status
+  date:
+    displayName: Created
+views:
+  - type: table
+    name: "Delivery reports"
+    order:
+      - file.name
+      - date
+      - status
+    sort:
+      - property: date
+        direction: DESC
+    limit: 12

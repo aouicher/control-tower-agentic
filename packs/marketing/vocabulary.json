@@ -1,0 +1,6 @@
+{
+  "team": { "singular": "team", "plural": "teams" },
+  "workstream": { "singular": "campaign", "plural": "campaigns" },
+  "risk": { "singular": "risk", "plural": "risks" },
+  "person": { "singular": "teammate", "plural": "teammates" }
+}

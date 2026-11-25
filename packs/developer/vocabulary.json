@@ -1,0 +1,6 @@
+{
+  "team": { "singular": "team", "plural": "teams" },
+  "workstream": { "singular": "epic", "plural": "epics" },
+  "risk": { "singular": "blocker", "plural": "blockers" },
+  "person": { "singular": "teammate", "plural": "teammates" }
+}

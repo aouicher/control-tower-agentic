@@ -1,0 +1,25 @@
+{
+  "id": "debt-review",
+  "name": "Debt review",
+  "description": "Weekly review of code quality and dependency alerts, written into the technical debt area note.",
+  "schedule": {
+    "days": "fri",
+    "time": "10:00"
+  },
+  "model": "sonnet",
+  "capabilities": [
+    "quality",
+    "code"
+  ],
+  "outputs": [
+    "journal/reports/debt-YYYY-MM-DD.md",
+    "work/areas/technical-debt.md"
+  ],
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit({{ct.vault_path}}/**)"
+    ],
+    "deny": []
+  }
+}

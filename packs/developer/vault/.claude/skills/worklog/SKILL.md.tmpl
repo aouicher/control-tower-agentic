@@ -1,0 +1,31 @@
+---
+name: worklog
+description: Append a dated entry to today's daily note (a decision, a debugging finding or a link). Use when the user says /worklog, "log this", "note that I decided", "write this down" or shares a finding worth keeping.
+argument-hint: "<entry text>"
+---
+
+# Worklog
+
+Target: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`, section `## 📝 Notes`.
+
+## Steps
+
+1. Get the date and time with `date "+%F %H:%M"` (timezone {{ct.timezone}}).
+2. If the daily note is missing, create it from `_system/templates/daily.md` (replace the `{{date:...}}` placeholders with real values). Re-read the note before editing: the vault may sync.
+3. Build the entry from the argument or the conversation. A good entry:
+   - starts with `HH:MM` and a verb (decided, found, shipped, blocked, learned);
+   - holds the reason, not just the action;
+   - ends with a link: pull request URL, ticket key or URL, or a wikilink.
+4. Classify it:
+   - decision: append under `## ⚖️ Decisions`;
+   - blocker: append under `## 🚨 {{ct.Risks}} and blockers`;
+   - anything else: append under `## 📝 Notes`.
+5. Append as a bullet at the end of that section, in time order. Never rewrite earlier lines.
+6. If the entry is a blocker that will outlive today, suggest a note in `work/risks/` instead of creating it.
+
+## Rules
+
+- Never paste logs, stack traces, diffs, secrets or customer data: summarise and link.
+- If the entry implies a follow-up, do not create a task here unless it is for today only. Otherwise write it in the note of its project, area or {{ct.workstream}} and tell the user.
+- A new task from this skill carries `#to-triage` unless the user dictated it.
+- Show the user the appended line, nothing more.
