@@ -140,6 +140,10 @@ class GuardTests(unittest.TestCase):
                 self.assertIsNotNone(ev('Glob', {'pattern': pat}))
         self.assertIsNotNone(ev('Grep', {'pattern': 'x', 'path': os.path.join(self.vault, 'l'), 'glob': '.env*'}))
         self.assertIsNone(ev('Glob', {'pattern': 'l/*.md'}), 'a symlink to a readable folder is readable')
+        for pat in ('/**/*.md', '/*', '/*/id_rsa'):  # absolute patterns with no fixed part are rooted at /
+            with self.subTest(pat=pat):
+                self.assertIsNotNone(ev('Glob', {'pattern': pat}))
+        self.assertIsNone(ev('Glob', {'pattern': '**/*.md'}), 'a relative wildcard from the vault root is fine')
         # literal secret names under a readable folder, through every route
         os.makedirs(os.path.join(self.vault, '.claude', 'skills', 'a'), exist_ok=True)
         for tool, inp in (('Grep', {'pattern': 'x', 'path': self.vault, 'glob': '.claude/skills/.env'}),
