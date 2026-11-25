@@ -53,34 +53,36 @@ DATE_FLAGS = re.compile(r'^(-u|--utc|-j|-R|-I\w*|--iso-8601(=\w+)?|--rfc-3339=\w
 
 
 def date_reason(cmd):
+    """Refuse any `date` call whose arguments are not display formats or date arithmetic. Conservative on purpose."""
     if not re.search(r'\bdate\b', cmd):
         return None
+    if re.search(r'\bdate\b[^|;&\n]*\s(-\w*[fr]\w*|--file|--reference)', cmd):  # fail-safe, independent of the tokeniser
+        return 'date reading a file'
     try:
-        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lex = shlex.shlex(cmd.replace('\r', '\n').replace('\n', ' ; '), posix=True, punctuation_chars=True)
         lex.whitespace_split = True
         tokens = list(lex)
     except ValueError:
         return 'cannot parse a command that calls date'
-    seps = {';', '&&', '||', '|', '&', '(', '$(', ')', '`'}
-    i, at_start = 0, True
+    seps = {';', '&&', '||', '|', '&', '(', ')', '$(', '`', ';;', '|&'}
+    i = 0
     while i < len(tokens):
         tok = tokens[i]
-        if tok in seps or tok.endswith('(') and set(tok) <= set('$('):
-            at_start = True
-            i += 1
-            continue
-        if at_start and tok == 'date':
+        if tok != 'date' and os.path.basename(tok) != 'date' and re.search(r'\bdate\b', tok):
+            return 'date inside a quoted or nested command'  # sh -c "date ...", `date ...`, $(date...) glued to text
+        if tok == 'date' or os.path.basename(tok) == 'date':
             i += 1
             while i < len(tokens) and tokens[i] not in seps:
                 arg = tokens[i]
                 if arg in ('-d', '--date'):
-                    i += 2  # the next token is a date expression, not a file
+                    if i + 1 >= len(tokens) or tokens[i + 1] in seps or tokens[i + 1].startswith('-'):
+                        return 'date -d needs a date expression'
+                    i += 2
                     continue
                 if not (arg.startswith('+') or DATE_FLAGS.match(arg)):
                     return f'date is limited to formats and date arithmetic, refused argument "{arg}"'
                 i += 1
             continue
-        at_start = False
         i += 1
     return None
 

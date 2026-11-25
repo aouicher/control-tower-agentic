@@ -322,6 +322,8 @@ class ScheduleTests(unittest.TestCase):
                 self.assertIsNotNone(g.tool('Write', os.path.join(g.vault, rel)), rel)
             for cmd in ('date -f ~/.config/gh/hosts.yml', 'date --file=/etc/passwd', 'date -uf /etc/hosts', 'date -f/etc/hosts',
                         'date -r /etc/hosts', 'date --reference=/etc/hosts', 'echo x; date -f /etc/hosts', 'cat ~/.claude/.credentials.json',
+                        'echo x\ndate -f /etc/hosts', '/bin/date -f /etc/hosts', 'env date -f /etc/hosts', "sh -c 'date -f /etc/hosts'",
+                        'date -d ; cat /etc/hosts', 'x=`date -f /etc/hosts`',
                         'cat ~/.kube/config'):
                 self.assertIsNotNone(g.bash(cmd), cmd)
             for cmd in ('date', 'date +%F', 'date -u +%Y-%m-%dT%H:%M', 'date "+%d/%m/%Y at %H:%M"', 'date +%G-W%V',
