@@ -323,11 +323,12 @@ class ScheduleTests(unittest.TestCase):
             for cmd in ('date -f ~/.config/gh/hosts.yml', 'date --file=/etc/passwd', 'date -uf /etc/hosts', 'date -f/etc/hosts',
                         'date -r /etc/hosts', 'date --reference=/etc/hosts', 'echo x; date -f /etc/hosts', 'cat ~/.claude/.credentials.json',
                         'echo x\ndate -f /etc/hosts', '/bin/date -f /etc/hosts', 'env date -f /etc/hosts', "sh -c 'date -f /etc/hosts'",
-                        'date -d ; cat /etc/hosts', 'x=`date -f /etc/hosts`',
+                        'date -d ; cat /etc/hosts', 'x=`date -f /etc/hosts`', 'date -d "$(cat ~/.ssh/id_rsa)"',
+                        "date '-f' /etc/hosts", 'date "-r" /etc/hosts', 'date +%F # x\ncat /etc/hosts', 'date -f</etc/hosts', 'echo $(date +%F)',
                         'cat ~/.kube/config'):
                 self.assertIsNotNone(g.bash(cmd), cmd)
             for cmd in ('date', 'date +%F', 'date -u +%Y-%m-%dT%H:%M', 'date "+%d/%m/%Y at %H:%M"', 'date +%G-W%V',
-                        "date -d 'last monday' +%F", 'date -v-7d +%F', 'date -j -v-mon +%F', 'date -I', 'echo $(date +%F)'):
+                        "date -d 'last monday' +%F", 'date -v-7d +%F', 'date -j -v-mon +%F', 'date -I', 'date +%G-W%V && ls'):
                 self.assertIsNone(g.bash(cmd), cmd)
         finally:
             g.tearDown()

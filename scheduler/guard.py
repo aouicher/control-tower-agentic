@@ -56,11 +56,14 @@ def date_reason(cmd):
     """Refuse any `date` call whose arguments are not display formats or date arithmetic. Conservative on purpose."""
     if not re.search(r'\bdate\b', cmd):
         return None
-    if re.search(r'\bdate\b[^|;&\n]*\s(-\w*[fr]\w*|--file|--reference)', cmd):  # fail-safe, independent of the tokeniser
+    if re.search(r'[$`<>#\n\r]', cmd):  # substitution, redirection, comments, several lines: nothing a job needs around date
+        return 'date combined with substitution, redirection, a comment or several lines'
+    if re.search(r'\bdate\b[^|;&]*\s(-\w*[fr]\w*|--file|--reference)', re.sub(r'[\\\'"]', '', cmd)):  # fail-safe, quotes removed
         return 'date reading a file'
     try:
-        lex = shlex.shlex(cmd.replace('\r', '\n').replace('\n', ' ; '), posix=True, punctuation_chars=True)
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
+        lex.commenters = ''
         tokens = list(lex)
     except ValueError:
         return 'cannot parse a command that calls date'
