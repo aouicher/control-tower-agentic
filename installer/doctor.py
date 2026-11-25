@@ -153,6 +153,9 @@ def check(vault, ct_home, claude_bin='claude'):
             r.add('ok' if guard and ok_scope else 'FAIL', f'job {j}', 'guard hook and vault-scoped writes' if guard and ok_scope else 'missing guard hook or unscoped write permission')
         except (ValueError, KeyError):
             r.add('FAIL', f'job {j}', 'settings.json is not valid')
+    for risky in ('.claude/settings.json', '.claude/settings.local.json', '.mcp.json'):
+        if os.path.isfile(os.path.join(vault, risky)):
+            r.add('warn', f'vault file {risky}', 'unattended jobs load the vault settings: anything allowed there widens what jobs can do, review it')
     sched = os.path.join(ct_home, 'schedule')
     if os.path.isdir(os.path.join(sched, 'launchd')) and shutil.which('plutil'):
         for f in sorted(os.listdir(os.path.join(sched, 'launchd'))):

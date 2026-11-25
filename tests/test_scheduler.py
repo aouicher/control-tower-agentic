@@ -67,6 +67,22 @@ class GuardTests(unittest.TestCase):
         for rel in ('.obsidian/app.json', '_system/templates/daily.md', 'CLAUDE.md'):
             self.assertIsNotNone(self.tool('Edit', os.path.join(self.vault, rel)), rel)
 
+    def test_job_cannot_rewrite_its_own_configuration(self):
+        for rel in ('.claude/settings.json', '.claude/settings.local.json', '.claude/skills/today/SKILL.md', '.claude/rules/x.md',
+                    '.control-tower/manifest.json', '.mcp.json', 'CLAUDE.local.md', 'Claude.md', 'CLAUDE.MD', '.OBSIDIAN/app.json',
+                    '_SYSTEM/Templates/daily.md'):
+            with self.subTest(rel=rel):
+                self.assertIsNotNone(self.tool('Edit', os.path.join(self.vault, rel)), f'must block: {rel}')
+        self.assertIsNone(self.tool('Edit', os.path.join(self.vault, 'work/projects/ok.md')))
+
+    def test_reads_are_confined_to_the_vault(self):
+        home = os.path.expanduser('~')
+        for tool in ('Read', 'Grep', 'Glob'):
+            for p in (f'{home}/.ssh', f'{home}/.aws/credentials', f'{home}/.config/gh/hosts.yml', f'{home}/.claude/settings.json', '/etc/passwd'):
+                with self.subTest(tool=tool, path=p):
+                    self.assertIsNotNone(self.tool(tool, p))
+        self.assertIsNone(self.tool('Read', os.path.join(self.vault, 'cockpit.md')))
+
     def test_symlink_cannot_escape_the_vault(self):
         outside = os.path.join(self.tmp.name, 'secret-dir')
         os.makedirs(outside)

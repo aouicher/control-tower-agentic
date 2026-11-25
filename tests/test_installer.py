@@ -100,6 +100,8 @@ class InstallTests(unittest.TestCase):
                 hook = st['hooks']['PreToolUse'][0]['hooks'][0]['command']
                 self.assertIn('guard.py', hook)
                 self.assertIn('Agent', st['permissions']['deny'])
+                for protected in ('.claude/**', '.control-tower/**', '.obsidian/**'):
+                    self.assertIn(f'Edit({os.path.abspath(a["vault_path"])}/{protected})', st['permissions']['deny'], f'{j["id"]}: {protected} must be protected')
                 self.assertTrue(os.path.isfile(os.path.join(a['ct_home'], 'bin', 'guard.py')))
 
     def test_user_schedule_overrides(self):
