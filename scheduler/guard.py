@@ -55,6 +55,44 @@ def inside(path, root):
     path, root = real(path), real(root)
     return path == root or path.startswith(root + os.sep)
 
+GLOB_META = re.compile(r'[{}\[\]\\]')
+SECRET_SEGMENT = re.compile(r'^(\.env.*|\.netrc|\.npmrc|\.git-credentials|id_rsa.*|id_ed25519.*|credentials.*|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude)$', re.I)
+
+
+def search_scope_reason(tool, inp, event, vault):
+    """Glob and Grep: the search root (path, else the hook's cwd) and the static prefix of the glob must stay inside the vault.
+
+    Patterns are not judged by their text alone: brace, bracket and backslash syntax can rebuild a path that escapes, so they are refused
+    outright. Fails closed when no search root can be worked out.
+    """
+    pat = inp.get('pattern') if tool == 'Glob' else inp.get('glob')
+    base = inp.get('path') or event.get('cwd')
+    if not base:
+        return 'search root unknown: refusing to search'
+    if not inside(base, vault):
+        return f'search starts outside the vault: {base}'
+    if not pat:
+        return None
+    pat = str(pat)
+    if GLOB_META.search(pat):
+        return f'glob syntax not allowed in jobs ({{ }} [ ] \\): {pat}'
+    if pat.startswith('~'):
+        return f'pattern escapes the vault: {pat}'
+    segments = [x for x in pat.replace('\\', '/').split('/') if x]
+    if any(x == '..' for x in segments):
+        return f'pattern escapes the vault: {pat}'
+    static = []
+    for x in segments:
+        if re.search(r'[*?]', x):
+            break
+        static.append(x)
+    target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
+    if not inside(target, vault):
+        return f'pattern escapes the vault: {pat}'
+    if any(SECRET_SEGMENT.match(x) for x in segments):
+        return f'pattern targets a secret file: {pat}'
+    return None
+
 
 def check(event, vault):
     """Return a human-readable reason when the call must be blocked, else None."""
@@ -67,12 +105,9 @@ def check(event, vault):
                 return f'{reason}: {cmd[:120]}'
         return None
     if tool in ('Glob', 'Grep'):
-        # path-like patterns can point anywhere even when `path` is absent or inside the vault
-        pat = inp.get('pattern') if tool == 'Glob' else inp.get('glob')
-        if pat and (str(pat).startswith(('/', '~')) or '..' in str(pat).replace('\\', '/').split('/')):
-            return f'pattern escapes the vault: {pat}'
-        if not inp.get('path') and event.get('cwd') and not inside(event['cwd'], vault):
-            return f'search starts outside the vault: {event["cwd"]}'  # no path means the working directory
+        reason = search_scope_reason(tool, inp, event, vault)
+        if reason:
+            return reason
     path = inp.get('file_path') or inp.get('notebook_path') or inp.get('path')
     if not path:
         return None

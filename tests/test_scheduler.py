@@ -91,7 +91,19 @@ class GuardTests(unittest.TestCase):
         self.assertIsNotNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x', 'glob': '/etc/*'}}, self.vault))
         self.assertIsNotNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x'}, 'cwd': '/etc'}, self.vault))
         self.assertIsNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': '/etc/passwd'}, 'cwd': self.vault}, self.vault))
-        self.assertIsNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': 'work/**/*.md'}}, self.vault))
+        self.assertIsNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': 'work/**/*.md'}, 'cwd': self.vault}, self.vault))
+
+    def test_glob_syntax_tricks_and_secret_patterns_are_refused(self):
+        home = os.path.expanduser('~')
+        cases = [{'pattern': '{/etc,work}/*'}, {'pattern': '[.][.]/x'}, {'pattern': 'work/{a,..}/*'}, {'pattern': 'a\\\\..\\\\b'},
+                 {'pattern': '**/.env*'}, {'pattern': '**/id_rsa*'}, {'pattern': '.ssh/*'}, {'pattern': f'{home}/*'},
+                 {'pattern': 'work/../../x/*'}, {'pattern': '*.md', 'path': '/etc'}]
+        for inp in cases:
+            with self.subTest(inp=inp):
+                self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': inp, 'cwd': self.vault}, self.vault))
+        self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': '*.md'}}, self.vault), 'unknown root must fail closed')
+        self.assertIsNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': 'work/**/*.md'}, 'cwd': self.vault}, self.vault))
+        self.assertIsNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x', 'glob': f'{self.vault}/work/*.md'}, 'cwd': self.vault}, self.vault))
 
     def test_symlink_cannot_escape_the_vault(self):
         outside = os.path.join(self.tmp.name, 'secret-dir')
