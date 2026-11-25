@@ -9,7 +9,12 @@
   "env": [
     "GH_TOKEN"
   ],
-  "permissions_allow": [],
+  "permissions_allow": [
+    "Bash(gh issue list:*)",
+    "Bash(gh issue view:*)",
+    "Bash(gh pr list:*)",
+    "Bash(gh pr view:*)"
+  ],
   "permissions_deny": [
     "Bash(gh issue create:*)",
     "Bash(gh issue edit:*)",

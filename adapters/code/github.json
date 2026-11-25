@@ -9,7 +9,12 @@
   "env": [
     "GH_TOKEN"
   ],
-  "permissions_allow": [],
+  "permissions_allow": [
+    "Bash(gh pr list:*)",
+    "Bash(gh pr view:*)",
+    "Bash(gh release list:*)",
+    "Bash(gh release view:*)"
+  ],
   "permissions_deny": [
     "Bash(gh pr merge:*)",
     "Bash(gh pr close:*)",

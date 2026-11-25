@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Remove the control tower runtime and, optionally, the files the installer created in the vault.
+
+    python3 installer/uninstall.py --ct-home ~/.control-tower [--vault ~/my-vault] [--remove-vault-files] [--yes]
+
+Safe by default:
+  * without --yes it only lists what it would do;
+  * your notes are never removed. With --remove-vault-files, only files that the installer created AND that you
+    have not edited since (same checksum as in the manifest) are deleted, then empty folders;
+  * scheduled jobs are unloaded (launchd) or removed from the crontab block "control-tower".
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+
+def sha(path):
+    with open(path, 'rb') as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--ct-home', default='~/.control-tower')
+    ap.add_argument('--vault')
+    ap.add_argument('--remove-vault-files', action='store_true')
+    ap.add_argument('--launch-agents-dir')
+    ap.add_argument('--no-launchctl', action='store_true')
+    ap.add_argument('--yes', action='store_true')
+    args = ap.parse_args()
+    ct = os.path.abspath(os.path.expanduser(args.ct_home))
+    plan = []
+
+    # scheduled jobs
+    la = os.path.abspath(os.path.expanduser(args.launch_agents_dir or '~/Library/LaunchAgents'))
+    plists = [os.path.join(la, f) for f in sorted(os.listdir(la)) if f.startswith('com.control-tower.')] if os.path.isdir(la) else []
+    for p in plists:
+        plan.append(('unload', p))
+    if sys.platform.startswith('linux') and shutil.which('crontab'):
+        cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
+        if '# BEGIN control-tower' in cur:
+            plan.append(('crontab', 'remove the control-tower block'))
+    if os.path.isdir(ct):
+        plan.append(('rmtree', ct))
+
+    # vault files
+    removable, modified = [], []
+    if args.vault and args.remove_vault_files:
+        vault = os.path.abspath(os.path.expanduser(args.vault))
+        mp = os.path.join(vault, '.control-tower', 'manifest.json')
+        if not os.path.isfile(mp):
+            print('no manifest in the vault: nothing will be removed there', file=sys.stderr)
+        else:
+            for rel, checksum in json.load(open(mp, encoding='utf-8')).get('files', {}).items():
+                p = os.path.join(vault, rel)
+                if not os.path.isfile(p):
+                    continue
+                (removable if checksum and sha(p) == checksum else modified).append(rel)
+            plan.append(('remove-files', f'{len(removable)} unmodified installed file(s)'))
+            plan.append(('keep-files', f'{len(modified)} file(s) you edited are kept'))
+
+    for kind, what in plan:
+        print(f'{"would " if not args.yes else ""}{kind}: {what}')
+    if not plan:
+        print('nothing to do')
+    if not args.yes:
+        print('\nDry run. Add --yes to apply.')
+        return
+    for kind, what in plan:
+        if kind == 'unload':
+            if not args.no_launchctl and shutil.which('launchctl'):
+                label = os.path.basename(what)[:-6]
+                subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'], capture_output=True)
+            os.remove(what)
+        elif kind == 'crontab':
+            cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
+            new = re.sub(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
+            subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)
+        elif kind == 'rmtree':
+            shutil.rmtree(what)
+    if removable:
+        vault = os.path.abspath(os.path.expanduser(args.vault))
+        parents = set()
+        for rel in removable:
+            os.remove(os.path.join(vault, rel))
+            parents.add(os.path.dirname(os.path.join(vault, rel)))
+        for d in sorted(parents, key=len, reverse=True):  # only folders that held installed files, deepest first
+            while d != vault and os.path.isdir(d) and not os.listdir(d):
+                os.rmdir(d)
+                d = os.path.dirname(d)
+        shutil.rmtree(os.path.join(vault, '.control-tower'), ignore_errors=True)
+    print('\nDone.')
+
+
+if __name__ == '__main__':
+    main()
