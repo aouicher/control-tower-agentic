@@ -181,11 +181,11 @@ def search_reason(tool, inp, event, vault):
         if re.search(r'[*?]', x):
             break
         static.append(x)
-    if static:
-        target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
-        reason = read_reason(target, vault)
-        if reason:
-            return f'pattern {reason}: {pat}'
+    # always judged, even when empty: an absolute pattern that starts with a wildcard (`/**/x`) is rooted at `/`, outside the vault
+    target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
+    reason = read_reason(target, vault)
+    if reason:
+        return f'pattern {reason}: {pat}'
     if any(secret_segment(x, wildcard=True) for x in segments[len(static):]):
         return f'pattern targets a secret file: {pat}'
     return None
