@@ -101,6 +101,9 @@ class GuardTests(unittest.TestCase):
         for inp in cases:
             with self.subTest(inp=inp):
                 self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': inp, 'cwd': self.vault}, self.vault))
+        for wild in ('**/.*', '**/.e*', '**/*env*', '**/id_*', '**/.s?h/*', '**/cred*'):
+            with self.subTest(wild=wild):
+                self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': wild}, 'cwd': self.vault}, self.vault))
         self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': '*.md'}}, self.vault), 'unknown root must fail closed')
         self.assertIsNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': 'work/**/*.md'}, 'cwd': self.vault}, self.vault))
         self.assertIsNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x', 'glob': f'{self.vault}/work/*.md'}, 'cwd': self.vault}, self.vault))

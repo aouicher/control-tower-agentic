@@ -258,6 +258,7 @@ def job_settings(repo, answers, job):
     vault = expand(answers['vault_path'])
     allow = list(BASE_ALLOW) + [render.render_text(p, {'vault_path': vault}, job['id'], []) for p in job['meta']['permissions'].get('allow', [])]
     deny = list(BASE_DENY) + list(job['meta']['permissions'].get('deny', []))
+    deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
     # defence in depth (the guard hook enforces the same): jobs can never edit their own settings, the vault rules or the installer state
     deny += [f'Edit({vault}/{p}/**)' for p in ('.claude', '.control-tower', '.obsidian', '_system/templates')] + [f'Edit({vault}/CLAUDE.md)', f'Edit({vault}/.mcp.json)']
     for cap in job['meta']['capabilities']:

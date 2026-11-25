@@ -11,6 +11,7 @@ Exit code 0 lets the call through. Standard library only.
 Usage in a hook:  python3 guard.py --vault /path/to/vault
 """
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -55,6 +56,7 @@ def inside(path, root):
     path, root = real(path), real(root)
     return path == root or path.startswith(root + os.sep)
 
+SECRET_NAMES = ('.env', '.env.local', '.env.production', '.netrc', '.npmrc', '.git-credentials', 'id_rsa', 'id_ed25519', 'credentials', '.ssh', '.aws', '.gnupg', '.kube', '.docker', '.claude')
 GLOB_META = re.compile(r'[{}\[\]\\]')
 SECRET_SEGMENT = re.compile(r'^(\.env.*|\.netrc|\.npmrc|\.git-credentials|id_rsa.*|id_ed25519.*|credentials.*|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude)$', re.I)
 
@@ -89,8 +91,10 @@ def search_scope_reason(tool, inp, event, vault):
     target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
     if not inside(target, vault):
         return f'pattern escapes the vault: {pat}'
-    if any(SECRET_SEGMENT.match(x) for x in segments):
-        return f'pattern targets a secret file: {pat}'
+    for x in segments:
+        # a wildcard segment is refused when it could match a secret name (".*", "*env*", ".e*" ...), not only when it spells one
+        if SECRET_SEGMENT.match(x) or (re.search(r'[*?]', x) and not re.fullmatch(r'\*+', x) and any(re.match(fnmatch.translate(x), n, re.I) for n in SECRET_NAMES)):
+            return f'pattern targets a secret file: {pat}'
     return None
 
 

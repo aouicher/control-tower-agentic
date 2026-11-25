@@ -1,0 +1,17 @@
+{
+  "owner_name": "Sam Rivera",
+  "owner_handle": "sam",
+  "timezone": "Europe/London",
+  "vault_path": "~/control-tower-product",
+  "ct_home": "~/.control-tower",
+  "packs": [
+    "product"
+  ],
+  "tools": {
+    "calendar": "google-calendar",
+    "tracker": "jira",
+    "analytics": "google-analytics",
+    "crm": "hubspot"
+  },
+  "scheduler": "auto"
+}

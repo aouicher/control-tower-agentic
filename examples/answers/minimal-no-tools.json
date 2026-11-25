@@ -1,0 +1,17 @@
+{
+  "owner_name": "Sam Rivera",
+  "owner_handle": "sam",
+  "timezone": "Europe/London",
+  "vault_path": "~/control-tower-minimal",
+  "ct_home": "~/.control-tower",
+  "packs": [
+    "product"
+  ],
+  "tools": {
+    "calendar": "none",
+    "tracker": "none",
+    "analytics": "none",
+    "crm": "none"
+  },
+  "scheduler": "none"
+}

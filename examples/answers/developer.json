@@ -1,0 +1,17 @@
+{
+  "owner_name": "Sam Rivera",
+  "owner_handle": "sam",
+  "timezone": "Europe/London",
+  "vault_path": "~/control-tower-developer",
+  "ct_home": "~/.control-tower",
+  "packs": [
+    "developer"
+  ],
+  "tools": {
+    "code": "github",
+    "tracker": "jira",
+    "errors": "rollbar",
+    "calendar": "google-calendar"
+  },
+  "scheduler": "auto"
+}

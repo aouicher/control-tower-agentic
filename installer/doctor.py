@@ -156,6 +156,14 @@ def check(vault, ct_home, claude_bin='claude'):
     for risky in ('.claude/settings.json', '.claude/settings.local.json', '.mcp.json'):
         if os.path.isfile(os.path.join(vault, risky)):
             r.add('warn', f'vault file {risky}', 'unattended jobs load the vault settings: anything allowed there widens what jobs can do, review it')
+    outside = []
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = [d for d in dirs if d not in ('.obsidian', '.git')]
+        for n in dirs + files:
+            p = os.path.join(root, n)
+            if os.path.islink(p) and not os.path.realpath(p).startswith(os.path.realpath(vault) + os.sep):
+                outside.append(os.path.relpath(p, vault))
+    r.add('ok' if not outside else 'warn', 'no symlink leaves the vault', 'jobs search through symlinks, remove: ' + ', '.join(outside[:5]) if outside else '')
     sched = os.path.join(ct_home, 'schedule')
     if os.path.isdir(os.path.join(sched, 'launchd')) and shutil.which('plutil'):
         for f in sorted(os.listdir(os.path.join(sched, 'launchd'))):

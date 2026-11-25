@@ -1,0 +1,19 @@
+{
+  "owner_name": "Sam Rivera",
+  "owner_handle": "sam",
+  "timezone": "Europe/London",
+  "vault_path": "~/control-tower-engineering",
+  "ct_home": "~/.control-tower",
+  "packs": [
+    "engineering"
+  ],
+  "tools": {
+    "calendar": "google-calendar",
+    "tracker": "jira",
+    "code": "github",
+    "errors": "rollbar",
+    "quality": "sonarqube",
+    "logs": "cloudwatch"
+  },
+  "scheduler": "auto"
+}
