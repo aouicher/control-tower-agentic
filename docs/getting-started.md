@@ -30,7 +30,8 @@ In Claude Code type `/install-control-tower`. It will:
 3. ask which tool you use for each capability (tracker, code, calendar...),
 4. run a **dry run** and show what will be created,
 5. install only after you say yes,
-6. run the health check and list what is left for you to do.
+6. run the health check and list what is left for you to do,
+7. offer the cloud routines that fit your tools and create the ones you tick on your claude.ai account.
 
 It never asks for passwords, tokens or API keys, and never changes your Claude Code settings or loads a schedule without an explicit yes.
 
@@ -71,7 +72,8 @@ Fields: `owner_name`, `owner_handle`, `timezone`, `vault_path`, `ct_home`, `pack
 python3 ~/.control-tower/bin/run_job.py --job morning-prs --ct-home ~/.control-tower
 ```
 
-6. When you are happy, apply the schedule:
+6. Optional: create cloud routines with `/install-control-tower routines` (see [scheduling](scheduling.md#cloud-routines)).
+7. When you are happy, apply the schedule:
 
 ```bash
 python3 installer/install.py --answers my-answers.json --apply-schedule

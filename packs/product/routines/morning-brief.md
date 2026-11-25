@@ -1,9 +1,29 @@
+---
+id: morning-brief
+name: "Morning brief"
+days: mon-fri
+time: "07:45"
+connectors_required: []
+connectors_optional: [calendar, tracker, analytics]
+vault: write
+after: ""
+---
+
 # Routine: morning brief
 
-Paste into a claude.ai cloud routine, scheduled on weekdays at 07:45 ({{ct.timezone}}).
+Regenerates the today page: agenda with preparation, due tasks, items to triage and product signals.
 
-```
-Unattended routine: never ask, never wait. Read-only on every external system; write only inside the vault at {{ct.vault_path}}. Follow CLAUDE.md. Write in English.
+| Setting | Value |
+|---|---|
+| Schedule | mon-fri at 07:45 ({{ct.timezone}}) |
+| Connectors | required: none; optional: `calendar`, `tracker`, `analytics` |
+| Vault | Needs the vault repository attached to the routine (it writes notes). |
+
+The guided installer can create this routine for you (`/install-control-tower`). To create it by hand, paste everything under **Prompt** into a new claude.ai routine.
+
+## Prompt
+
+Unattended routine: never ask, never wait. Read-only on every external system; write only inside the vault repository attached to this routine. Follow CLAUDE.md. Write in English.
 
 Write cockpit/today.md (regenerate it fully, with "🕐 Generated on DD/MM/YYYY at HH:MM" from `date`) with:
 1. Agenda: today's meetings from the calendar adapter (.claude/adapters/calendar.md), each with prep: the linked {{ct.workstream}}, the last interview or decision related to it.
@@ -13,4 +33,3 @@ Write cockpit/today.md (regenerate it fully, with "🕐 Generated on DD/MM/YYYY 
 5. One suggestion: the most valuable discovery or prioritisation action for today.
 
 Propose tasks only as #to-triage and only for new, important findings (you cannot check for duplicates). Never write rag, owner, due or stage of existing notes.
-```

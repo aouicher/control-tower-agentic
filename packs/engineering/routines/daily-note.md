@@ -1,11 +1,29 @@
+---
+id: daily-note
+name: "Daily note"
+days: mon-fri
+time: "07:30"
+connectors_required: [calendar]
+connectors_optional: []
+vault: write
+after: ""
+---
+
 # Routine: daily note
 
-Paste the prompt below into a claude.ai cloud routine. Suggested schedule: weekdays at 07:30 ({{ct.timezone}}). Prerequisites: the vault device is linked to the routine, and the `calendar` connector is enabled.
+Creates or completes today's daily note with the agenda and the day's priorities.
+
+| Setting | Value |
+|---|---|
+| Schedule | mon-fri at 07:30 ({{ct.timezone}}) |
+| Connectors | required: `calendar`; optional: none |
+| Vault | Needs the vault repository attached to the routine (it writes notes). |
+
+The guided installer can create this routine for you (`/install-control-tower`). To create it by hand, paste everything under **Prompt** into a new claude.ai routine.
 
 ## Prompt
 
-```text
-Scheduled routine "daily-note" for {{ct.owner_name}}. Nobody answers questions: never ask, never wait. Read and write the vault at {{ct.vault_path}} through the linked device; follow its CLAUDE.md and .claude/rules/engineering.md. Read-only on every other system. Write in English.
+Scheduled routine "daily-note" for {{ct.owner_name}}. Nobody answers questions: never ask, never wait. Read and write the vault repository attached to this routine; follow its CLAUDE.md and .claude/rules/engineering.md. Read-only on every other system. Write in English.
 
 1. Get today's date and time in {{ct.timezone}}.
 2. If journal/daily/<YYYY>/<YYYY-MM-DD>.md already exists, do nothing and stop. Otherwise create it from _system/templates/daily.md.
@@ -14,4 +32,3 @@ Scheduled routine "daily-note" for {{ct.owner_name}}. Nobody answers questions: 
 5. Add today's tasks ONLY if they are due today and live in a daily-only context. Never copy tasks from other notes: a task lives once, in its project, area, {{ct.team}}, {{ct.workstream}} or {{ct.risk}} note. The cockpit shows the rest.
 6. Never create tasks, except proposals tagged #to-triage in the Actions section, at most 2, and only when the calendar shows a meeting with no preparation note.
 7. Do not modify any other note. Final answer: one line with the note path.
-```

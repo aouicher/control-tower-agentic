@@ -1,6 +1,25 @@
+---
+id: weekly-review
+name: "Weekly review"
+days: fri
+time: "16:00"
+connectors_required: []
+connectors_optional: []
+vault: write
+after: ""
+---
+
 # Routine: weekly review
 
-For a claude.ai cloud routine. Suggested schedule: Friday, 16:00. Needs access to the vault.
+Writes the weekly review: done, carried over, signals and next week's top three.
+
+| Setting | Value |
+|---|---|
+| Schedule | fri at 16:00 ({{ct.timezone}}) |
+| Connectors | required: none; optional: none |
+| Vault | Needs the vault repository attached to the routine (it writes notes). |
+
+The guided installer can create this routine for you (`/install-control-tower`). To create it by hand, paste everything under **Prompt** into a new claude.ai routine.
 
 ## Prompt
 

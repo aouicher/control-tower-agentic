@@ -174,6 +174,32 @@ class PackTests(unittest.TestCase):
                 self.assertIsNone(FRENCH.search(text))
 
 
+class RoutineTests(unittest.TestCase):
+    def test_routines_are_well_formed(self):
+        sys.path.insert(0, os.path.join(ROOT, 'installer'))
+        import install
+        caps = set(install.CAPABILITIES)
+        for pid in sorted(os.listdir(PACKS_DIR)):
+            mp = os.path.join(PACKS_DIR, pid, 'pack.json')
+            if not os.path.isfile(mp):
+                continue
+            for rid in json.load(open(mp, encoding='utf-8')).get('routines', []):
+                with self.subTest(pack=pid, routine=rid):
+                    meta, prompt = install.read_routine(os.path.join(PACKS_DIR, pid, 'routines', rid + '.md'))
+                    self.assertEqual(meta['id'], rid)
+                    self.assertTrue(meta.get('name'))
+                    self.assertTrue(install.parse_days(meta['days']))
+                    self.assertRegex(meta['time'], r'^([01]\d|2[0-3]):[0-5]\d$')
+                    self.assertIn(meta['vault'], ('write', 'optional'))
+                    for key in ('connectors_required', 'connectors_optional'):
+                        self.assertIsInstance(meta[key], list)
+                        self.assertTrue(set(meta[key]) <= caps, f'{key}: unknown capability')
+                    self.assertGreater(len(prompt), 200)
+                    self.assertIn('never ask', prompt.lower())
+                    self.assertNotIn('```', prompt, 'the prompt is pasted as is: no code fence')
+                    self.assertNotIn('{{ct.vault_path}}', prompt, 'a cloud routine cannot see a local path')
+
+
 class AdapterTests(unittest.TestCase):
     def test_every_capability_has_a_contract_and_a_tool(self):
         tools = adapter_tools()

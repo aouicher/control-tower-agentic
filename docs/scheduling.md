@@ -32,13 +32,27 @@ A laptop that is asleep misses its run. If that matters, use a cloud routine.
 
 ## Cloud routines
 
-Each pack ships prompts in `packs/<id>/routines/`. To use one:
+Routines run on claude.ai on a schedule, even when your computer is off. Each pack ships some in `packs/<id>/routines/`: a frontmatter (schedule, connectors, vault need) and the prompt under `## Prompt`.
 
-1. Open claude.ai, Routines (scheduled agents), create a new routine.
-2. Paste the prompt below the `---` line, set the suggested schedule and the connectors it lists.
-3. Attach the vault repository only if you want the routine to write into it.
+The installer renders the ones that fit your tools into `~/.control-tower/routines/` (one `<pack>--<id>.prompt.md` per routine, plus `routines.json`) and lists them. **It does not create them.** To create them:
 
-Cloud routines cannot be created or edited by the installer: they are configured by you on claude.ai.
+```bash
+claude
+```
+
+then, in the control tower repository, `/install-control-tower routines`. The assistant:
+
+1. shows each routine with its schedule, connectors and vault need,
+2. asks for the vault's GitHub repository when a routine writes notes (a cloud routine cannot see a folder on your computer),
+3. skips routines that already exist on your account, so running it twice creates no duplicates,
+4. asks one question, which routines to create, and creates exactly the ones you tick,
+5. gives you the claude.ai link and next run time of each one.
+
+What it needs from you: Claude Code signed in to your claude.ai account, the vault in a GitHub repository for routines marked `vault: write`, and the listed connectors connected on claude.ai.
+
+What it never does: update or delete a routine (an update through the API replaces the whole configuration; change routines on claude.ai), handle your credentials, or create a routine you did not tick. `uninstall.py` does not remove cloud routines: delete them on claude.ai.
+
+By hand instead: open claude.ai routines, create one, paste the content of the `.prompt.md` file, set the schedule and connectors.
 
 ## Writing rules for unattended prompts
 

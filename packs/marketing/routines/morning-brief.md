@@ -1,6 +1,25 @@
+---
+id: morning-brief
+name: "Morning brief"
+days: mon-fri
+time: "07:45"
+connectors_required: []
+connectors_optional: [calendar, analytics]
+vault: write
+after: ""
+---
+
 # Routine: morning brief
 
-For a claude.ai cloud routine. Suggested schedule: weekdays, 07:45. Needs access to the vault and, if you have them, your calendar and analytics connectors.
+Content due in the next three days, today's meetings and yesterday's traffic against last week.
+
+| Setting | Value |
+|---|---|
+| Schedule | mon-fri at 07:45 ({{ct.timezone}}) |
+| Connectors | required: none; optional: `calendar`, `analytics` |
+| Vault | Needs the vault repository attached to the routine (it writes notes). |
+
+The guided installer can create this routine for you (`/install-control-tower`). To create it by hand, paste everything under **Prompt** into a new claude.ai routine.
 
 ## Prompt
 

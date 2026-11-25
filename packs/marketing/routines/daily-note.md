@@ -1,6 +1,25 @@
+---
+id: daily-note
+name: "Daily note"
+days: mon-fri
+time: "07:30"
+connectors_required: []
+connectors_optional: [calendar]
+vault: write
+after: ""
+---
+
 # Routine: daily note
 
-For a claude.ai cloud routine. Suggested schedule: weekdays, 07:30. Needs access to the vault (connect the repository or folder that holds it).
+Creates or completes today's daily note: content going live, overdue items, meetings.
+
+| Setting | Value |
+|---|---|
+| Schedule | mon-fri at 07:30 ({{ct.timezone}}) |
+| Connectors | required: none; optional: `calendar` |
+| Vault | Needs the vault repository attached to the routine (it writes notes). |
+
+The guided installer can create this routine for you (`/install-control-tower`). To create it by hand, paste everything under **Prompt** into a new claude.ai routine.
 
 ## Prompt
 

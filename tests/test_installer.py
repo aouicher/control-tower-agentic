@@ -104,6 +104,38 @@ class InstallTests(unittest.TestCase):
                     self.assertIn(f'Edit({os.path.abspath(a["vault_path"])}/{protected})', st['permissions']['deny'], f'{j["id"]}: {protected} must be protected')
                 self.assertTrue(os.path.isfile(os.path.join(a['ct_home'], 'bin', 'guard.py')))
 
+    def test_routines_are_rendered_and_indexed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['engineering'])
+            report = install.install(a)
+            index = json.load(open(os.path.join(a['ct_home'], 'routines', 'routines.json')))
+            self.assertEqual({r['key'] for r in index}, {r['key'] for r in report['routines']})
+            self.assertTrue(index)
+            for r in index:
+                prompt = open(r['prompt_file'], encoding='utf-8').read()
+                self.assertNotIn('{{ct.', prompt)
+                self.assertRegex(r['cron'], r'^\d{1,2} \d{1,2} \* \* [0-6](,[0-6])*$')
+                self.assertEqual(r['timezone'], 'UTC')
+            prompts = ''.join(open(r['prompt_file'], encoding='utf-8').read() for r in index)
+            self.assertIn('Test User', prompts, 'answers must be rendered into the prompts')
+            note = open(os.path.join(a['vault_path'], 'library', 'setup-next-steps.md'), encoding='utf-8').read()
+            self.assertIn('/install-control-tower routines', note)
+
+    def test_routines_need_their_connectors_and_dry_run_writes_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['engineering'], tools={'calendar': 'none', 'tracker': 'none', 'code': 'none', 'errors': 'none', 'quality': 'none', 'logs': 'none'})
+            report = install.install(a, dry_run=True)
+            skipped = {r['id'] for r in report['routines_skipped']}
+            self.assertIn('engineering--daily-note', skipped, 'daily-note needs the calendar connector')
+            self.assertIn('engineering--weekly-review', {r['key'] for r in report['routines']})
+            self.assertFalse(os.path.exists(a['ct_home']))
+
+    def test_routine_names_are_unique_across_packs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = install.install(answers_for(tmp, install.list_packs()), dry_run=True)
+            names = [r['name'] for r in report['routines']]
+            self.assertEqual(len(names), len(set(names)), names)
+
     def test_user_schedule_overrides(self):
         with tempfile.TemporaryDirectory() as tmp:
             a = answers_for(tmp, ['developer'], scheduler='cron')
@@ -212,7 +244,8 @@ class SkillTests(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertIn('name: install-control-tower', m.group(1))
         self.assertIn('description:', m.group(1))
-        for needle in ('--dry-run', 'doctor.py', 'NEVER ask for', 'claude mcp add', 'explicit "yes"', 'uninstall'):
+        for needle in ('--dry-run', 'doctor.py', 'NEVER ask for', 'claude mcp add', 'explicit "yes"', 'uninstall',
+                       'routines.json', 'must not create duplicates', 'never updated or deleted', 'prompt_file'):
             self.assertIn(needle, text, f'the install skill must mention: {needle}')
         self.assertIsNone(__import__('re').search(r'[àâäçéèêëîïôöùûüÿœ]', text, __import__('re').I), 'English only')
 

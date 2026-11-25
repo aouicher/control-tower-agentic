@@ -182,6 +182,42 @@ def eligible_jobs(repo, packs, tools):
     return jobs
 
 
+def read_routine(path):
+    """Split a routine file into its frontmatter (dict) and the prompt (text under '## Prompt')."""
+    with open(path, encoding='utf-8') as fh:
+        text = fh.read()
+    m = re.match(r'---\n(.*?)\n---\n', text, re.S)
+    if not m or '\n## Prompt\n' not in text:
+        raise InstallError(f'{path}: a routine needs a frontmatter and a "## Prompt" section')
+    meta = {}
+    for line in m.group(1).split('\n'):
+        k, _, v = line.partition(':')
+        v = v.strip()
+        if v.startswith('[') and v.endswith(']'):
+            v = [x.strip() for x in v[1:-1].split(',') if x.strip()]
+        elif len(v) >= 2 and v[0] == v[-1] == '"':
+            v = v[1:-1]
+        meta[k.strip()] = v
+    return meta, text.split('\n## Prompt\n', 1)[1].strip() + '\n'
+
+
+def eligible_routines(repo, packs, tools):
+    """Cloud routines of the chosen packs; a routine is offered only if its required connectors have a tool."""
+    out = []
+    for p in packs:
+        for rid in jload(os.path.join(repo, 'packs', p, 'pack.json')).get('routines', []):
+            meta, prompt = read_routine(os.path.join(repo, 'packs', p, 'routines', rid + '.md'))
+            missing = [c for c in meta.get('connectors_required', []) if tools.get(c, 'none') == 'none']
+            out.append({'pack': p, 'id': rid, 'meta': meta, 'prompt': prompt, 'missing': missing})
+    return out
+
+
+def routine_cron(days, hhmm):
+    """Cron expression in the user's own timezone (the routine is created with that timezone)."""
+    h, m = map(int, hhmm.split(':'))
+    return f"{m} {h} * * {','.join(str(d) for d in parse_days(days))}"
+
+
 def adapter_doc(repo, capability, tool):
     with open(os.path.join(repo, 'adapters', capability, 'contract.md'), encoding='utf-8') as fh:
         contract = fh.read()
@@ -192,7 +228,7 @@ def adapter_doc(repo, capability, tool):
             f'# {capability.capitalize()} adapter: {tool}\n\n## Contract\n\n{contract}\n\n---\n\n{doc}\n')
 
 
-def next_steps(repo, answers, jobs_on, jobs_off):
+def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
     lines = ['---', 'title: "Setup next steps"', f'date: {datetime.date.today().isoformat()}', 'tags: [setup]',
              'type: resource', 'status: active', '---', '', '# Setup next steps', '',
              'The installer created your vault, jobs and notes. A few things must be done by you, because they change your own '
@@ -228,9 +264,17 @@ def next_steps(repo, answers, jobs_on, jobs_off):
                   '```bash', f"python3 {answers['ct_home']}/bin/run_job.py --job {jobs_on[0]['id']} --ct-home {answers['ct_home']}", '```', '']
     for j in jobs_off:
         lines.append(f"- `{j['id']}` was not installed: no tool chosen for {', '.join(j['missing'])}.")
-    lines += ['', '## 4. Cloud routines (optional)', '',
-              'Prompts for claude.ai cloud routines are in each pack under `routines/` of the control tower repository. '
-              'Create them in claude.ai and link your computer so they can read this vault.', '',
+    lines += ['', '## 4. Cloud routines (optional)', '']
+    if routines:
+        lines += ['Cloud routines run on claude.ai, even when your computer is off. Most of them write notes, so they need this vault '
+                  'in a GitHub repository attached to the routine. Available for your answers:', '',
+                  '| Routine | When |', '|---|---|'] + [f"| {r['name']} | {r['days']} at {r['time']} |" for r in routines] + [
+                  '', 'To create them, start Claude Code in the control tower repository and run `/install-control-tower routines`: '
+                  'it proposes each routine and creates only the ones you accept. Or paste a prompt by hand from '
+                  f"`{answers['ct_home']}/routines/<name>.prompt.md` into a new routine on claude.ai.", '']
+    else:
+        lines += ['No cloud routine is available for the tools you chose.', '']
+    lines += [
               '## 5. Health check', '', '```bash', f"python3 <repository>/installer/doctor.py --vault {answers['vault_path']} --ct-home {answers['ct_home']}", '```', '']
     return '\n'.join(lines)
 
@@ -433,6 +477,35 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         if man.get('access') == 'mcp' and not man.get('permissions_allow') and not (a.get('permissions') or {}).get(cap):
             report['warnings'].append(f'{cap}/{tool}: jobs cannot call this MCP server until you list its read-only tools in the answers '
                                       f'("permissions": {{"{cap}": ["mcp__<server>__<tool>", ...]}}) and re-run the installer')
+    # 3b. cloud routines: rendered prompts and an index the guided installer reads to create them on request
+    report['routines'], report['routines_skipped'] = [], []
+    many = len(a['packs']) > 1
+    index = []
+    for r in eligible_routines(repo, a['packs'], a['tools']):
+        if r['missing']:
+            report['routines_skipped'].append({'id': f"{r['pack']}--{r['id']}", 'missing': r['missing']})
+            continue
+        key = f"{r['pack']}--{r['id']}"
+        meta = r['meta']
+        errs = []
+        prompt = render.render_text(r['prompt'], table, key, errs)
+        if errs:
+            raise InstallError('; '.join(errs))
+        entry = {'key': key, 'pack': r['pack'], 'id': r['id'],
+                 'name': f"{meta['name']} ({r['pack']})" if many else meta['name'],
+                 'days': meta['days'], 'time': meta['time'], 'timezone': a['timezone'], 'cron': routine_cron(meta['days'], meta['time']),
+                 'connectors_required': {c: a['tools'][c] for c in meta.get('connectors_required', [])},
+                 'connectors_optional': {c: a['tools'][c] for c in meta.get('connectors_optional', []) if a['tools'].get(c, 'none') != 'none'},
+                 'vault': meta.get('vault', 'write'), 'after': meta.get('after', ''),
+                 'prompt_file': os.path.join(ct_home, 'routines', key + '.prompt.md')}
+        index.append(entry)
+        report['routines'].append({'key': key, 'name': entry['name'], 'days': entry['days'], 'time': entry['time']})
+        if not dry_run:
+            os.makedirs(os.path.join(ct_home, 'routines'), exist_ok=True)
+            with open(entry['prompt_file'], 'w', encoding='utf-8') as fh:
+                fh.write(prompt)
+    if not dry_run:
+        jdump(os.path.join(ct_home, 'routines', 'routines.json'), index) if index else None
     # 4. notes that depend on the answers
     ns_rel = 'library/setup-next-steps.md'
     ns = os.path.join(vault, ns_rel)
@@ -442,7 +515,7 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         if not dry_run:
             os.makedirs(os.path.dirname(ns), exist_ok=True)
             with open(ns, 'w', encoding='utf-8') as fh:
-                fh.write(next_steps(repo, a, on, off))
+                fh.write(next_steps(repo, a, on, off, report['routines']))
     if not dry_run:
         for rel in obsidian_seed(vault):
             files[rel] = None
@@ -500,7 +573,15 @@ def print_report(report, dry_run):
         print(f"  skipped {j['id']}: " + (f"needs a tool for {', '.join(j['missing'])}" if j['missing'] else 'disabled'))
     s = report['schedule']
     if s:
-        print(f"Schedule: {s['kind']} ({'applied' if s['applied'] else 'generated, not applied: re-run with --apply-schedule'})")
+        if s['kind'] == 'none':
+            print('Schedule: none (jobs run only when you start them)')
+        else:
+            print(f"Schedule: {s['kind']} ({'applied' if s['applied'] else 'generated, not applied: re-run with --apply-schedule'})")
+    if report.get('routines'):
+        print('Cloud routines available (not created): ' + ', '.join(r['key'] for r in report['routines'])
+              + '. Run /install-control-tower routines to create them on claude.ai.')
+    for r in report.get('routines_skipped', []):
+        print(f"  routine {r['id']} not offered: needs a tool for {', '.join(r['missing'])}")
     for w in report['warnings']:
         print('warning: ' + w)
     if not dry_run:

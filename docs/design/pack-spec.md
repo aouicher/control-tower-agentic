@@ -19,7 +19,9 @@ packs/<id>/
   jobs/<job-id>/
     job.json                schedule, capabilities, permissions (schema below)
     prompt.md.tmpl          the prompt of the unattended job
-  routines/<id>.md          prompts to paste into claude.ai cloud routines (optional)
+  routines/<id>.md          claude.ai cloud routines (optional): frontmatter id, name, days, time,
+                            connectors_required, connectors_optional, vault (write|optional), after;
+                            then the prompt under `## Prompt`, unfenced, with no local path
 ```
 
 `{{ct.*}}` tokens are rendered by `installer/render.py` using `core/vocabulary.json` then `packs/<id>/vocabulary.json`. Never hardcode a vocabulary word that has a token. Obsidian's `{{title}}` and `{{date:...}}` stay untouched.

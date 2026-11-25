@@ -64,6 +64,9 @@ def scenario(packs):
             step(f'job {j} runs and the guard holds', r.returncode == 0 and 'rc=0' in text and 'e2e ok' in text, (text or r.stderr)[-300:])
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
+        idx = os.path.join(ct, 'routines', 'routines.json')
+        routines = json.load(open(idx)) if os.path.exists(idx) else []
+        step('cloud routines rendered and indexed', bool(routines) and all(os.path.isfile(r['prompt_file']) and '{{ct.' not in open(r['prompt_file']).read() for r in routines))
         sched = os.path.join(ct, 'schedule')
         step('schedule generated, not loaded', os.path.isdir(sched))
         if sys.platform == 'darwin' and shutil.which('plutil') and os.path.isdir(os.path.join(sched, 'launchd')):
