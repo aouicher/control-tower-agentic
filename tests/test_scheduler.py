@@ -129,6 +129,32 @@ class GuardTests(unittest.TestCase):
         self.assertIsNotNone(self.tool('Write', os.path.join(self.vault, '.claude', 'adapters', 'tracker.md')))
         self.assertIsNotNone(self.tool('Read', os.path.expanduser('~/.claude/settings.json')))
 
+    def test_secret_globs_through_absolute_or_symlinked_paths(self):
+        # regression: segments were sliced with realpath depths, so a literal path of another depth skipped the secret check
+        os.makedirs(os.path.join(self.vault, '.claude', 'adapters'), exist_ok=True)
+        os.symlink(os.path.join(self.vault, '.claude', 'adapters'), os.path.join(self.vault, 'l'))
+        ev = lambda tool, inp: guard.check({'tool_name': tool, 'tool_input': inp, 'cwd': self.vault}, self.vault)
+        literal = os.path.join(self.vault, '.claude', 'adapters')  # under /var (not /private/var) on macOS
+        for pat in (literal + '/.env*', literal + '/id_*', os.path.realpath(literal) + '/.env*', 'l/.env*', 'l/id_*'):
+            with self.subTest(pat=pat):
+                self.assertIsNotNone(ev('Glob', {'pattern': pat}))
+        self.assertIsNotNone(ev('Grep', {'pattern': 'x', 'path': os.path.join(self.vault, 'l'), 'glob': '.env*'}))
+        self.assertIsNone(ev('Glob', {'pattern': 'l/*.md'}), 'a symlink to a readable folder is readable')
+        for pat in ('/**/*.md', '/*', '/*/id_rsa'):  # absolute patterns with no fixed part are rooted at /
+            with self.subTest(pat=pat):
+                self.assertIsNotNone(ev('Glob', {'pattern': pat}))
+        self.assertIsNone(ev('Glob', {'pattern': '**/*.md'}), 'a relative wildcard from the vault root is fine')
+        # literal secret names under a readable folder, through every route
+        os.makedirs(os.path.join(self.vault, '.claude', 'skills', 'a'), exist_ok=True)
+        for tool, inp in (('Grep', {'pattern': 'x', 'path': self.vault, 'glob': '.claude/skills/.env'}),
+                          ('Grep', {'pattern': 'x', 'path': self.vault, 'glob': '.claude/skills/a/.ssh/*'}),
+                          ('Grep', {'pattern': 'x', 'path': os.path.join(self.vault, '.claude', 'skills'), 'glob': '.env'}),
+                          ('Glob', {'pattern': '.claude/skills/a/.ssh/id_rsa'}),
+                          ('Glob', {'pattern': os.path.join(self.vault, '.claude', 'skills', 'a', '.ss*', '*')})):
+            with self.subTest(tool=tool, inp=inp):
+                self.assertIsNotNone(ev(tool, inp))
+        self.assertIsNotNone(ev('Glob', {'pattern': '*.md', 'path': os.path.join(self.vault, '.claude')}), 'root .claude is not readable')
+
     def test_symlink_cannot_escape_the_vault(self):
         outside = os.path.join(self.tmp.name, 'secret-dir')
         os.makedirs(outside)

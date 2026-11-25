@@ -42,11 +42,14 @@ def main():
         settings_before = open(os.path.join(vault, '.claude', 'settings.json')).read() if os.path.exists(os.path.join(vault, '.claude', 'settings.json')) else None
         r = subprocess.run([sys.executable, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'morning-prs', '--ct-home', ct], capture_output=True, text=True)
         log = open(os.path.join(ct, 'logs', 'morning-prs.log')).read() if os.path.exists(os.path.join(ct, 'logs', 'morning-prs.log')) else r.stderr
+        # the probe must copy the adapter note's real first heading: proof it read the file, not a guess
+        heading = next((l.lstrip('#').strip() for l in open(os.path.join(vault, '.claude', 'adapters', 'code.md'), encoding='utf-8')
+                        if l.startswith('#')), '')
         checks = [
             ('the job ran (rc=0)', r.returncode == 0),
             ('report written inside the vault', os.path.isfile(os.path.join(vault, 'journal', 'reports', 'smoke.md'))),
-            ('the job could read its adapter note', os.path.isfile(os.path.join(vault, 'journal', 'reports', 'smoke.md'))
-             and 'UNREADABLE' not in open(os.path.join(vault, 'journal', 'reports', 'smoke.md')).read()),
+            ('the job could read its adapter note', heading and os.path.isfile(os.path.join(vault, 'journal', 'reports', 'smoke.md'))
+             and heading in open(os.path.join(vault, 'journal', 'reports', 'smoke.md')).read()),
             ('.claude/settings.json untouched', (open(os.path.join(vault, '.claude', 'settings.json')).read() if os.path.exists(os.path.join(vault, '.claude', 'settings.json')) else None) == settings_before),
             ('nothing written outside the vault', not os.path.exists(os.path.join(tmp, 'outside.md'))),
         ]
