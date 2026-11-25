@@ -7,19 +7,20 @@
     "time": "16:00"
   },
   "model": "sonnet",
-  "capabilities": [
-    "tracker",
-    "code"
-  ],
+  "capabilities": {
+    "required": [
+      "code"
+    ],
+    "optional": [
+      "tracker"
+    ]
+  },
   "outputs": [
     "journal/reports/delivery-YYYY-Www.md",
     "cockpit/delivery.md"
   ],
   "permissions": {
-    "allow": [
-      "Read",
-      "Edit({{ct.vault_path}}/**)"
-    ],
+    "allow": [],
     "deny": []
   }
 }

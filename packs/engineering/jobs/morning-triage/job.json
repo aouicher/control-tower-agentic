@@ -7,18 +7,19 @@
     "time": "08:00"
   },
   "model": "sonnet",
-  "capabilities": [
-    "errors",
-    "quality"
-  ],
+  "capabilities": {
+    "required": [
+      "errors"
+    ],
+    "optional": [
+      "quality"
+    ]
+  },
   "outputs": [
     "journal/reports/triage-YYYY-MM-DD.md"
   ],
   "permissions": {
-    "allow": [
-      "Read",
-      "Edit({{ct.vault_path}}/**)"
-    ],
+    "allow": [],
     "deny": []
   }
 }

@@ -94,14 +94,14 @@ class InstallTests(unittest.TestCase):
                 allow = st['permissions']['allow']
                 self.assertNotIn('Write', allow)
                 self.assertNotIn('Bash', allow)
-                for rule in allow:
-                    if rule.startswith('Edit('):
-                        self.assertIn(os.path.basename(vault), rule)
+                edits = [r for r in allow if r.startswith('Edit(')]
+                self.assertEqual(edits, [f"Edit(/{os.path.abspath(a['vault_path'])}/**)"], 'one absolute (//) vault-wide write rule')
                 hook = st['hooks']['PreToolUse'][0]['hooks'][0]['command']
                 self.assertIn('guard.py', hook)
                 self.assertIn('Agent', st['permissions']['deny'])
-                for protected in ('.claude/**', '.control-tower/**', '.obsidian/**'):
-                    self.assertIn(f'Edit({os.path.abspath(a["vault_path"])}/{protected})', st['permissions']['deny'], f'{j["id"]}: {protected} must be protected')
+                for protected in ('.claude/**', '.control-tower/**', '.obsidian/**', '.git/**'):
+                    self.assertIn(f'Edit(/{os.path.abspath(a["vault_path"])}/{protected})', st['permissions']['deny'], f'{j["id"]}: {protected} must be protected')
+                self.assertTrue(all(r.startswith('Edit(//') for r in st['permissions']['deny'] if r.startswith('Edit(')))
                 self.assertTrue(os.path.isfile(os.path.join(a['ct_home'], 'bin', 'guard.py')))
 
     def test_routines_are_rendered_and_indexed(self):
@@ -145,9 +145,10 @@ class InstallTests(unittest.TestCase):
             self.assertEqual((job['time'], job['days']), ('07:15', 'mon,wed'))
             cron = open(os.path.join(a['ct_home'], 'schedule', 'crontab.txt'), encoding='utf-8').read()
             self.assertIn('# BEGIN control-tower', cron)
-            local = install.local_time('07:15', 'UTC')[0]  # the schedule uses machine time: expected value depends on the machine
+            local, shift, _ = install.local_time('07:15', 'UTC')  # the schedule uses machine time
             h, m = (int(x) for x in local.split(':'))
-            self.assertRegex(cron, rf'{m} {h} \* \* 1,3 python3 .*run_job\.py --job morning-prs')
+            dow = ','.join(str(d) for d in install.shift_days([1, 3], shift))
+            self.assertRegex(cron, rf'{m} {h} \* \* {dow} \S*python\S* .*run_job\.py --job morning-prs')
 
     def test_apply_schedule_links_plists_without_loading_them(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,7 +214,77 @@ class InstallTests(unittest.TestCase):
             self.assertIn('unknown pack', bad.stderr)
 
 
+class RobustnessTests(unittest.TestCase):
+    def test_bad_days_fail_before_anything_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['developer'])
+            a['jobs'] = {'morning-prs': {'days': 'funday'}}
+            with self.assertRaises(install.InstallError) as ctx:
+                install.install(a)
+            self.assertIn('unknown day', str(ctx.exception))
+            self.assertFalse(os.path.exists(a['vault_path']))
+            a['jobs'] = {'morning-prs': '08:00'}
+            with self.assertRaises(install.InstallError):
+                install.install(a)
+
+    def test_invalid_json_answers_give_a_plain_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, 'answers.json')
+            open(p, 'w').write('{"packs": [')
+            r = subprocess.run([sys.executable, INSTALL, '--answers', p], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('not valid JSON', r.stderr)
+            self.assertNotIn('Traceback', r.stderr)
+            r = subprocess.run([sys.executable, INSTALL, '--answers', os.path.join(tmp, 'missing.json')], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertNotIn('Traceback', r.stderr)
+
+    def test_disabled_job_leaves_the_schedule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['developer'], scheduler='launchd')
+            la = os.path.join(tmp, 'LA')
+            install.install(a, apply_schedule=True, launch_agents_dir=la, no_launchctl=True)
+            self.assertTrue(os.path.lexists(os.path.join(la, 'com.control-tower.morning-prs.plist')))
+            a['jobs'] = {'morning-prs': {'enabled': False}}
+            install.install(a, apply_schedule=True, launch_agents_dir=la, no_launchctl=True)
+            self.assertFalse(os.path.lexists(os.path.join(la, 'com.control-tower.morning-prs.plist')))
+            self.assertFalse(os.path.exists(os.path.join(a['ct_home'], 'jobs', 'morning-prs')))
+            self.assertTrue(os.path.lexists(os.path.join(la, 'com.control-tower.weekly-wrap.plist')))
+
+    def test_optional_capabilities_do_not_block_a_job(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['developer'], tools={'code': 'github', 'tracker': 'none', 'errors': 'none', 'calendar': 'none'})
+            ids = {j['id'] for j in install.install(a, dry_run=True)['jobs']}
+            self.assertEqual(ids, {'morning-prs', 'weekly-wrap'}, 'a developer with GitHub only gets the jobs')
+            a = answers_for(tmp, ['marketing'], tools={'analytics': 'none', 'crm': 'none', 'tracker': 'none', 'calendar': 'none'})
+            ids = {j['id'] for j in install.install(a, dry_run=True)['jobs']}
+            self.assertEqual(ids, {'content-reminders'}, 'a vault-only job needs no tool')
+
+    def test_hook_command_survives_spaces_and_quotes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['developer'])
+            a['vault_path'] = os.path.join(tmp, "my vault's notes")
+            a['ct_home'] = os.path.join(tmp, 'ct home')
+            report = install.install(a)
+            st = json.load(open(os.path.join(a['ct_home'], 'jobs', report['jobs'][0]['id'], 'settings.json')))
+            cmd = st['hooks']['PreToolUse'][0]['hooks'][0]['command']
+            ok = {'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(a['vault_path'], 'journal', 'reports', 'r.md')}, 'cwd': a['vault_path']}
+            bad = {'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(a['vault_path'], '.git', 'config')}, 'cwd': a['vault_path']}
+            self.assertEqual(subprocess.run(cmd, shell=True, input=json.dumps(ok), text=True, capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run(cmd, shell=True, input=json.dumps(bad), text=True, capture_output=True).returncode, 2)
+
+
 class UninstallTests(unittest.TestCase):
+    def test_uninstall_refuses_a_folder_it_did_not_create(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            precious = os.path.join(tmp, 'precious')
+            os.makedirs(precious)
+            open(os.path.join(precious, 'notes.md'), 'w').write('keep me')
+            r = subprocess.run([sys.executable, UNINSTALL, '--ct-home', precious, '--yes', '--launch-agents-dir', os.path.join(tmp, 'la'), '--no-launchctl'],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertTrue(os.path.isfile(os.path.join(precious, 'notes.md')))
+
     def test_uninstall_keeps_edited_files_and_removes_the_rest(self):
         with tempfile.TemporaryDirectory() as tmp:
             a = answers_for(tmp, ['developer'], scheduler='none')

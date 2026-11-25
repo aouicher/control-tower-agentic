@@ -2,9 +2,23 @@
   "id": "content-reminders",
   "name": "Content reminders",
   "description": "Every weekday morning, content due in the next 3 days or overdue, written to the content calendar page.",
-  "schedule": {"days": "mon-fri", "time": "08:00"},
+  "schedule": {
+    "days": "mon-fri",
+    "time": "08:00"
+  },
   "model": "sonnet",
-  "capabilities": ["tracker", "calendar"],
-  "outputs": ["cockpit/content-calendar.md"],
-  "permissions": {"allow": [], "deny": []}
+  "capabilities": {
+    "required": [],
+    "optional": [
+      "calendar"
+    ]
+  },
+  "outputs": [
+    "cockpit/content-calendar.md"
+  ],
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "vault_only": true
 }

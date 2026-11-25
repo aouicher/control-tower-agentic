@@ -20,7 +20,9 @@ import datetime
 import hashlib
 import json
 import os
+import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -39,6 +41,9 @@ CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'ana
 DAYS = {'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0}
 BASE_ALLOW = ['Read', 'Grep', 'Glob', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)']
 BASE_DENY = ['Agent']
+PROTECTED_DIRS = ('.claude', '.control-tower', '.obsidian', '_system/templates', '_system/dashboards', '.git', '.github', '.vscode')
+PROTECTED_FILES = ('CLAUDE.md', 'CLAUDE.local.md', '.mcp.json')
+DAY_ALIASES = {'weekdays': 'mon-fri', 'weekends': 'sat-sun', 'daily': 'mon-sun', 'every day': 'mon-sun', '*': 'mon-sun'}
 GUARD_MATCHER = 'Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob'
 
 
@@ -105,10 +110,26 @@ def validate(answers, repo=REPO):
             errors.append(f'answers: no adapter "{tool}" for capability "{cap}" (available: {", ".join(list_tools(cap, repo))}, none)')
     if answers.get('scheduler', 'auto') not in ('auto', 'launchd', 'cron', 'none'):
         errors.append('answers: "scheduler" must be auto, launchd, cron or none')
-    for jid, cfg in (answers.get('jobs') or {}).items():
-        t = (cfg or {}).get('time')
+    if not isinstance(answers.get('packs', []), list):
+        errors.append('answers: "packs" must be a list, for example ["marketing"]')
+    if not isinstance(answers.get('tools') or {}, dict):
+        errors.append('answers: "tools" must be an object, for example {"calendar": "google-calendar"}')
+    jobs = answers.get('jobs') or {}
+    if not isinstance(jobs, dict):
+        errors.append('answers: "jobs" must be an object, for example {"morning-prs": {"time": "07:15"}}')
+        jobs = {}
+    for jid, cfg in jobs.items():
+        if not isinstance(cfg, dict):
+            errors.append(f'answers: job "{jid}" must be an object such as {{"time": "07:15", "days": "mon-fri"}}')
+            continue
+        t = cfg.get('time')
         if t is not None and not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', str(t)):
             errors.append(f'answers: job "{jid}" time must be HH:MM')
+        if cfg.get('days') is not None:
+            try:
+                parse_days(str(cfg['days']))
+            except ValueError as exc:
+                errors.append(f'answers: job "{jid}": {exc}')
     if errors:
         raise InstallError('\n'.join(errors))
 
@@ -170,6 +191,14 @@ def static_collisions(repo, packs):
     return clash
 
 
+def job_capabilities(meta):
+    """(required, optional) capabilities of a job. A plain list means every capability is required."""
+    caps = meta.get('capabilities', [])
+    if isinstance(caps, dict):
+        return list(caps.get('required', [])), list(caps.get('optional', []))
+    return list(caps), []
+
+
 def eligible_jobs(repo, packs, tools):
     """Jobs whose capabilities all have a chosen tool."""
     jobs = []
@@ -177,7 +206,10 @@ def eligible_jobs(repo, packs, tools):
         manifest = jload(os.path.join(repo, 'packs', p, 'pack.json'))
         for j in manifest.get('jobs', []):
             meta = jload(os.path.join(repo, 'packs', p, 'jobs', j, 'job.json'))
-            missing = [c for c in meta['capabilities'] if tools.get(c, 'none') == 'none']
+            req, opt = job_capabilities(meta)
+            missing = [c for c in req if tools.get(c, 'none') == 'none']
+            if not missing and not req and opt and not meta.get('vault_only') and all(tools.get(c, 'none') == 'none' for c in opt):
+                missing = ['one of ' + ' / '.join(opt)]
             jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing})
     return jobs
 
@@ -275,7 +307,7 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
     else:
         lines += ['No cloud routine is available for the tools you chose.', '']
     lines += [
-              '## 5. Health check', '', '```bash', f"python3 <repository>/installer/doctor.py --vault {answers['vault_path']} --ct-home {answers['ct_home']}", '```', '']
+              '## 5. Health check', '', '```bash', f"python3 {shlex.quote(os.path.join(repo, 'installer', 'doctor.py'))} --vault {shlex.quote(answers['vault_path'])} --ct-home {shlex.quote(answers['ct_home'])}", '```', '']
     return '\n'.join(lines)
 
 
@@ -298,72 +330,100 @@ def obsidian_seed(vault):
 
 
 # ----------------------------------------------------------------------------- jobs and schedule
+def abs_rule(tool, path):
+    """Permission rule for an absolute path: Claude Code reads `//abs/path` as absolute, `/path` as relative to the settings file."""
+    return f'{tool}(/{path})' if path.startswith('/') else f'{tool}({path})'
+
+
+def fix_rule(rule):
+    """Upgrade `Edit(/abs/...)` written by a pack to the absolute form `Edit(//abs/...)`."""
+    m = re.fullmatch(r'(Edit|Write|Read|MultiEdit)\((/[^/].*)\)', rule)
+    return f'{m.group(1)}(/{m.group(2)})' if m else rule
+
+
 def job_settings(repo, answers, job):
     vault = expand(answers['vault_path'])
-    allow = list(BASE_ALLOW) + [render.render_text(p, {'vault_path': vault}, job['id'], []) for p in job['meta']['permissions'].get('allow', [])]
-    deny = list(BASE_DENY) + list(job['meta']['permissions'].get('deny', []))
+    req, opt = job_capabilities(job['meta'])
+    allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')]  # every job writes its report in the vault
+    allow += [fix_rule(render.render_text(p, {'vault_path': vault}, job['id'], [])) for p in job['meta']['permissions'].get('allow', [])]
+    deny = list(BASE_DENY) + [fix_rule(p) for p in job['meta']['permissions'].get('deny', [])]
     deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
-    # defence in depth (the guard hook enforces the same): jobs can never edit their own settings, the vault rules or the installer state
-    deny += [f'Edit({vault}/{p}/**)' for p in ('.claude', '.control-tower', '.obsidian', '_system/templates')] + [f'Edit({vault}/CLAUDE.md)', f'Edit({vault}/.mcp.json)']
-    for cap in job['meta']['capabilities']:
+    # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
+    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES]
+    for cap in req + opt:
         tool = answers['tools'].get(cap, 'none')
         if tool != 'none':
             man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
             allow += man.get('permissions_allow', [])
             allow += list((answers.get('permissions') or {}).get(cap, []))
             deny += man.get('permissions_deny', [])
-    guard = f"python3 {expand(answers['ct_home'])}/bin/guard.py --vault {vault}"
+    guard = ' '.join(shlex.quote(x) for x in (python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault))
     return {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
             'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
 
 
+def python_bin(answers):
+    """Absolute interpreter for hooks and schedules: launchd and cron have a minimal PATH."""
+    return answers.get('python_bin') or sys.executable or 'python3'
+
+
 def parse_days(spec):
-    spec = spec.lower().strip()
-    if spec in ('daily', 'every day', '*'):
-        return [1, 2, 3, 4, 5, 6, 0]
+    """'mon-fri', 'mon,wed', 'weekdays', 'daily' -> cron weekday numbers (0 = Sunday). Raises ValueError with a readable message."""
+    spec = DAY_ALIASES.get(spec.lower().strip(), spec.lower().strip())
     out = []
+    def day(x):
+        x = x.strip()[:3]
+        if x not in DAYS:
+            raise ValueError(f'unknown day "{x}" in "{spec}" (use mon, tue, wed, thu, fri, sat, sun, ranges like mon-fri, or weekdays)')
+        return DAYS[x]
     for part in spec.split(','):
         part = part.strip()
         if '-' in part:
-            a, b = part.split('-')
-            i, j = DAYS[a[:3]], DAYS[b[:3]]
+            a, b = part.split('-', 1)
+            i, j = day(a), day(b)
             order = [1, 2, 3, 4, 5, 6, 0]
             ia, ib = order.index(i), order.index(j)
             out += order[ia:ib + 1] if ia <= ib else order[ia:] + order[:ib + 1]
         else:
-            out.append(DAYS[part[:3]])
+            out.append(day(part))
     return sorted(set(out), key=lambda d: (d + 6) % 7)
 
 
-def local_time(hhmm, timezone):
-    """Convert a time in the user's timezone to the machine's local time, returning (HH:MM, warning or None)."""
+def local_time(hhmm, timezone, machine_tz=None):
+    """Convert a time in the user's timezone to machine time.
+
+    Returns (HH:MM, day_shift, warning or None). day_shift is -1, 0 or +1 when the conversion crosses midnight:
+    the weekdays of the schedule must move by the same amount.
+    """
     tz = zoneinfo.ZoneInfo(timezone)  # validated before; never fall back silently to machine time
     h, m = map(int, hhmm.split(':'))
     now = datetime.datetime.now(tz)
     target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    local = target.astimezone()
-    if local.utcoffset() == now.utcoffset():
-        return hhmm, None
-    return local.strftime('%H:%M'), (f'{hhmm} {timezone} converted to {local.strftime("%H:%M")} machine time '
-                                     '(today\'s offsets; re-run the installer after a daylight-saving change)')
+    local = target.astimezone(machine_tz)
+    shift = (local.date() - target.date()).days
+    if local.strftime('%H:%M') == hhmm and shift == 0:
+        return hhmm, 0, None
+    return local.strftime('%H:%M'), shift, (f'{hhmm} {timezone} runs at {local.strftime("%H:%M")} machine time'
+                                            + (f' ({"next" if shift > 0 else "previous"} day)' if shift else '')
+                                            + ' (today\'s offsets; re-run the installer after a daylight-saving change)')
+
+
+def shift_days(days, shift):
+    return sorted({(d + shift) % 7 for d in days}, key=lambda d: (d + 6) % 7)
 
 
 def launchd_plist(label, args, days, hhmm, log):
     h, m = map(int, hhmm.split(':'))
-    cal = ''.join(f'<dict><key>Weekday</key><integer>{d}</integer><key>Hour</key><integer>{h}</integer><key>Minute</key><integer>{m}</integer></dict>' for d in days)
-    arr = ''.join(f'<string>{a}</string>' for a in args)
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n'
-            f'  <key>Label</key><string>{label}</string>\n  <key>ProgramArguments</key>\n  <array>{arr}</array>\n'
-            f'  <key>StartCalendarInterval</key>\n  <array>{cal}</array>\n'
-            f'  <key>StandardOutPath</key><string>{log}</string>\n  <key>StandardErrorPath</key><string>{log}</string>\n'
-            '  <key>ProcessType</key><string>Background</string>\n</dict>\n</plist>\n')
+    data = {'Label': label, 'ProgramArguments': list(args),
+            'StartCalendarInterval': [{'Weekday': d, 'Hour': h, 'Minute': m} for d in days],
+            'StandardOutPath': log, 'StandardErrorPath': log, 'ProcessType': 'Background'}
+    return plistlib.dumps(data, sort_keys=False).decode('utf-8')  # escapes &, < and quotes in paths
 
 
 def cron_line(args, days, hhmm):
     h, m = map(int, hhmm.split(':'))
     dow = ','.join(str(d) for d in days)
-    return f'{m} {h} * * {dow} ' + ' '.join(a if re.fullmatch(r'[\w./:=-]+', a) else "'" + a + "'" for a in args)
+    return f'{m} {h} * * {dow} ' + ' '.join(shlex.quote(a).replace('%', '\\%') for a in args)  # cron reads % as a newline
 
 
 def pick_scheduler(choice):
@@ -433,6 +493,14 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         jdump(os.path.join(ct_home, 'install.json'), {'vault': vault, 'claude_bin': a.get('claude_bin', 'claude'),
                                                        'timezone': a['timezone'], 'version': VERSION})
     sched_dir = os.path.join(ct_home, 'schedule')
+    if not dry_run:
+        # the schedule and the job folders always mirror the current answers: a job that was disabled or lost its tool disappears
+        shutil.rmtree(sched_dir, ignore_errors=True)
+        jobs_root = os.path.join(ct_home, 'jobs')
+        keep = {j['id'] for j in on}
+        for old in (os.listdir(jobs_root) if os.path.isdir(jobs_root) else []):
+            if old not in keep:
+                shutil.rmtree(os.path.join(jobs_root, old), ignore_errors=True)
     kind = pick_scheduler(a.get('scheduler', 'auto'))
     plist_paths, cron_lines = [], []
     for j in on:
@@ -448,9 +516,9 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
                                      rename=lambda r: {'prompt.md': 'prompt.md'}.get(r, r))
             jdump(os.path.join(jdir, 'job.json'), json.loads(render.render_text(json.dumps(meta), {**table}, j['id'], [])))
             jdump(os.path.join(jdir, 'settings.json'), job_settings(repo, a, {'id': j['id'], 'meta': json.loads(render.render_text(json.dumps(meta), table, j['id'], []))}))
-        args = ['python3', os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home]
-        days = parse_days(sched['days'])
-        lt, warn = local_time(sched['time'], a['timezone'])
+        args = [python_bin(a), os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home]
+        lt, shift, warn = local_time(sched['time'], a['timezone'])
+        days = shift_days(parse_days(sched['days']), shift)
         if warn:
             report['warnings'].append(f"{j['id']}: {warn}")
         if kind == 'launchd':
@@ -463,13 +531,15 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
                     fh.write(launchd_plist(label, args, days, lt, os.path.join(ct_home, 'logs', j['id'] + '.launchd.log')))
         elif kind == 'cron':
             cron_lines.append(f'# {j["id"]}\n' + cron_line(args, days, lt))
-    if kind == 'cron' and cron_lines and not dry_run:
+    if kind == 'cron' and not dry_run:  # an empty block is written too, so applying it removes jobs that are gone
         os.makedirs(sched_dir, exist_ok=True)
         with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:
             fh.write('# BEGIN control-tower\n' + '\n'.join(cron_lines) + '\n# END control-tower\n')
     report['schedule'] = {'kind': kind, 'applied': False, 'dir': sched_dir}
     if apply_schedule and not dry_run and kind != 'none':
         report['schedule']['applied'] = apply(kind, plist_paths, os.path.join(sched_dir, 'crontab.txt'), launch_agents_dir, no_launchctl, report)
+    elif apply_schedule and not dry_run and kind == 'none':
+        report['warnings'].append('--apply-schedule ignored: scheduler is "none" in the answers')
     for cap, tool in a['tools'].items():
         if tool == 'none':
             continue
@@ -479,20 +549,24 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
                                       f'("permissions": {{"{cap}": ["mcp__<server>__<tool>", ...]}}) and re-run the installer')
     # 3b. cloud routines: rendered prompts and an index the guided installer reads to create them on request
     report['routines'], report['routines_skipped'] = [], []
-    many = len(a['packs']) > 1
     index = []
+    seen_ids = {}
     for r in eligible_routines(repo, a['packs'], a['tools']):
+        if r['id'] in seen_ids and not r['missing']:
+            report['routines_skipped'].append({'id': f"{r['pack']}--{r['id']}", 'missing': [], 'duplicate_of': seen_ids[r['id']]})
+            continue
         if r['missing']:
             report['routines_skipped'].append({'id': f"{r['pack']}--{r['id']}", 'missing': r['missing']})
             continue
         key = f"{r['pack']}--{r['id']}"
+        seen_ids[r['id']] = key
         meta = r['meta']
         errs = []
         prompt = render.render_text(r['prompt'], table, key, errs)
         if errs:
             raise InstallError('; '.join(errs))
         entry = {'key': key, 'pack': r['pack'], 'id': r['id'],
-                 'name': f"{meta['name']} ({r['pack']})" if many else meta['name'],
+                 'name': meta['name'],
                  'days': meta['days'], 'time': meta['time'], 'timezone': a['timezone'], 'cron': routine_cron(meta['days'], meta['time']),
                  'connectors_required': {c: a['tools'][c] for c in meta.get('connectors_required', [])},
                  'connectors_optional': {c: a['tools'][c] for c in meta.get('connectors_optional', []) if a['tools'].get(c, 'none') != 'none'},
@@ -540,6 +614,13 @@ def apply(kind, plist_paths, cron_file, launch_agents_dir, no_launchctl, report)
     if kind == 'launchd':
         dest = launch_agents_dir or os.path.expanduser('~/Library/LaunchAgents')
         os.makedirs(dest, exist_ok=True)
+        current = {label for label, _ in plist_paths}
+        for f in os.listdir(dest):  # unload and remove jobs that are no longer installed
+            label = f[:-6] if f.endswith('.plist') else f
+            if f.startswith('com.control-tower.') and label not in current:
+                if not no_launchctl and shutil.which('launchctl'):
+                    subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'], capture_output=True)
+                os.remove(os.path.join(dest, f))
         for label, path in plist_paths:
             link = os.path.join(dest, label + '.plist')
             if os.path.lexists(link):
@@ -553,12 +634,17 @@ def apply(kind, plist_paths, cron_file, launch_agents_dir, no_launchctl, report)
                     report['warnings'].append(f'launchctl bootstrap {label}: {r.stderr.strip()}')
         return True
     if kind == 'cron':
-        if not os.path.exists(cron_file) or not shutil.which('crontab'):
+        if not shutil.which('crontab'):
             report['warnings'].append('crontab not available: add the lines of schedule/crontab.txt yourself')
             return False
-        cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
-        cur = re.sub(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
-        new = cur.rstrip('\n') + ('\n' if cur.strip() else '') + open(cron_file, encoding='utf-8').read()
+        got = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+        if got.returncode != 0 and 'no crontab' not in got.stderr.lower():
+            report['warnings'].append(f'could not read your crontab, nothing changed: {got.stderr.strip()}')
+            return False
+        cur = got.stdout if got.returncode == 0 else ''
+        cur = re(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
+        block = open(cron_file, encoding='utf-8').read() if os.path.exists(cron_file) else ''
+        new = cur.rstrip('\n') + ('\n' if cur.strip() else '') + block
         r = subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)
         return r.returncode == 0
     return False
@@ -581,7 +667,8 @@ def print_report(report, dry_run):
         print('Cloud routines available (not created): ' + ', '.join(r['key'] for r in report['routines'])
               + '. Run /install-control-tower routines to create them on claude.ai.')
     for r in report.get('routines_skipped', []):
-        print(f"  routine {r['id']} not offered: needs a tool for {', '.join(r['missing'])}")
+        why = f"same routine as {r['duplicate_of']}" if r.get('duplicate_of') else f"needs a tool for {', '.join(r['missing'])}"
+        print(f"  routine {r['id']} not offered: {why}")
     for w in report['warnings']:
         print('warning: ' + w)
     if not dry_run:
@@ -609,6 +696,12 @@ def main():
                          launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl)
     except (InstallError, render.RenderError) as exc:
         print(f'error: {exc}', file=sys.stderr)
+        sys.exit(2)
+    except json.JSONDecodeError as exc:
+        print(f'error: {args.answers} is not valid JSON (line {exc.lineno}, column {exc.colno}: {exc.msg})', file=sys.stderr)
+        sys.exit(2)
+    except OSError as exc:
+        print(f'error: {exc.strerror or exc}: {exc.filename or ""}', file=sys.stderr)
         sys.exit(2)
     if args.json:
         print(json.dumps(report, indent=2))

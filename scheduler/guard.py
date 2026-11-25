@@ -28,7 +28,8 @@ BASH_RULES = [
     (r':\(\)\s*\{', 'fork bomb'),
     (r'\b(printenv|env)\s*($|[|;&>])', 'environment dump'),
     (r'(^|[\s/])\.env(\.[\w-]+)?\b', 'reads an .env file'),
-    (r'\.ssh\b|id_(rsa|ed25519)|\.aws/credentials|\.netrc|\.npmrc|\.git-credentials|security\s+find-', 'reads credentials'),
+    (r'\.ssh\b|id_(rsa|ed25519)|\.aws/credentials|\.netrc|\.npmrc|\.git-credentials|security\s+find-|\.config/gh\b|\.claude/|\.docker/config|\.kube/config|\.config/gcloud', 'reads credentials'),
+    (r'\bdate\b[^|;&]*\s(-f|--file|-r|--reference)\b', 'date reading a file'),
     (r'\bgh\s+(pr|issue)\s+(create|merge|close|reopen|comment|edit|review|ready)\b', 'GitHub write (pull request or issue)'),
     (r'\bgh\s+(repo|release|workflow|secret|variable)\s+(create|delete|edit|run|set|remove)\b', 'GitHub write (repository)'),
     (r'\bgh\s+api\b.*(\s-X\b|--method|\s-f\s|\s-F\s|--field|--raw-field|--input)', 'GitHub API write'),
@@ -43,7 +44,8 @@ READ_SECRET = re.compile(r'(^|/)(\.env(\.[\w-]+)?|\.netrc|\.npmrc|\.git-credenti
                          r'|/\.(ssh|aws|gnupg|kube|docker|config/gh|config/gcloud|claude)(/|$)', re.I)
 # Areas that an unattended job must never modify. `.claude` and `.control-tower` matter most: the vault's Claude settings are loaded by
 # the job runner, so a job able to edit them could widen its own permissions or hooks for the next run.
-PROTECTED = ('.obsidian', '_system/templates', '_system/dashboards', '.claude', '.control-tower', '.control-tower-backup')
+# `.git` matters as much: a hook or `core.fsmonitor` written there would run as the user at the next git command.
+PROTECTED = ('.obsidian', '_system/templates', '_system/dashboards', '.claude', '.control-tower', '.control-tower-backup', '.git', '.github', '.vscode')
 PROTECTED_FILES = ('claude.md', 'claude.local.md', '.mcp.json')
 WRITE_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
 
@@ -135,9 +137,10 @@ def main():
     args = ap.parse_args()
     try:
         event = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        sys.exit(0)  # not a hook event: do not block
-    reason = check(event, args.vault)
+        reason = check(event, args.vault)
+    except Exception as exc:  # fail closed: an event the guard cannot read is refused (exit 1 would let it through)
+        print(f'BLOCKED by control-tower guard: cannot check this call ({type(exc).__name__})', file=sys.stderr)
+        sys.exit(2)
     if reason:
         print(f'BLOCKED by control-tower guard: {reason}', file=sys.stderr)
         sys.exit(2)

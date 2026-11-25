@@ -23,8 +23,10 @@ import datetime
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 DEFAULT_TIMEOUT = 1800
 EXTRA_PATH = ['~/.local/bin', '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
@@ -56,8 +58,17 @@ def acquire_lock(lock_dir):
             pid = -1
         if pid > 0 and pid_alive(pid):
             return False
+        if pid == -1:
+            try:  # another runner may be between mkdir and writing its pid: a fresh lock without pid is held
+                if time.time() - os.stat(lock_dir).st_mtime < 60:
+                    return False
+            except OSError:
+                pass
         shutil.rmtree(lock_dir, ignore_errors=True)
-        os.mkdir(lock_dir)
+        try:
+            os.mkdir(lock_dir)
+        except FileExistsError:
+            return False  # lost the race to another runner
     with open(os.path.join(lock_dir, 'pid'), 'w') as fh:
         fh.write(str(os.getpid()))
     return True
@@ -66,7 +77,8 @@ def acquire_lock(lock_dir):
 def notify(title, message):
     try:
         if sys.platform == 'darwin' and shutil.which('osascript'):
-            subprocess.run(['osascript', '-e', f'display notification "{message}" with title "{title}"'],
+            esc = lambda s: s.replace('\\', '\\\\').replace('"', '\\"')
+            subprocess.run(['osascript', '-e', f'display notification "{esc(message)}" with title "{esc(title)}"'],
                            capture_output=True, timeout=10)
         elif shutil.which('notify-send'):
             subprocess.run(['notify-send', title, message], capture_output=True, timeout=10)
@@ -90,6 +102,10 @@ def main():
     home = os.path.abspath(os.path.expanduser(args.ct_home))
     install = load(os.path.join(home, 'install.json'))
     jdir = os.path.join(home, 'jobs', args.job)
+    if not os.path.isfile(os.path.join(jdir, 'job.json')):
+        installed = sorted(os.listdir(os.path.join(home, 'jobs'))) if os.path.isdir(os.path.join(home, 'jobs')) else []
+        print(f'unknown job "{args.job}". Installed jobs: {", ".join(installed) or "none"}', file=sys.stderr)
+        return 2
     job = load(os.path.join(jdir, 'job.json'))
     with open(os.path.join(jdir, 'prompt.md'), encoding='utf-8') as fh:
         prompt = fh.read()
@@ -117,11 +133,19 @@ def main():
     env['PATH'] = os.pathsep.join([os.path.expanduser(p) for p in EXTRA_PATH] + [env.get('PATH', '')])
     started = now()
     try:
-        proc = subprocess.run(cmd, cwd=vault, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                              timeout=int(job.get('timeout', DEFAULT_TIMEOUT)))
-        rc, out, errtxt = proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired:
-        rc, out, errtxt = 124, '', 'timed out'
+        # own process group, so a timeout also stops what claude started (shell commands, MCP servers)
+        proc = subprocess.Popen(cmd, cwd=vault, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, start_new_session=True)
+        try:
+            out, errtxt = proc.communicate(timeout=int(job.get('timeout', DEFAULT_TIMEOUT)))
+            rc = proc.returncode
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            proc.communicate()
+            rc, out, errtxt = 124, '', 'timed out'
     except FileNotFoundError:
         rc, out, errtxt = 127, '', f'executable not found: {claude_bin}'
     except OSError as exc:  # not executable, bad interpreter...

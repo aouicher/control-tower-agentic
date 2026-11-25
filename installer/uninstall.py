@@ -35,14 +35,27 @@ def main():
     args = ap.parse_args()
     ct = os.path.abspath(os.path.expanduser(args.ct_home))
     plan = []
+    # the runtime folder is removed recursively: only accept one the installer made
+    vault_abs = os.path.realpath(os.path.expanduser(args.vault)) if args.vault else None
+    if os.path.isdir(ct):
+        marker = os.path.join(ct, 'install.json')
+        bad = os.path.realpath(ct) in (os.path.realpath(os.path.expanduser('~')), '/') or os.path.realpath(ct) == vault_abs
+        try:
+            ok = not bad and 'vault' in json.load(open(marker, encoding='utf-8'))
+        except (OSError, ValueError):
+            ok = False
+        if not ok:
+            print(f'refusing: {ct} is not a control tower runtime folder (no install.json from the installer). Nothing was removed.',
+                  file=sys.stderr)
+            sys.exit(2)
 
     # scheduled jobs
     la = os.path.abspath(os.path.expanduser(args.launch_agents_dir or '~/Library/LaunchAgents'))
     plists = [os.path.join(la, f) for f in sorted(os.listdir(la)) if f.startswith('com.control-tower.')] if os.path.isdir(la) else []
     for p in plists:
         plan.append(('unload', p))
-    if sys.platform.startswith('linux') and shutil.which('crontab'):
-        cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
+    if shutil.which('crontab'):
+        cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout  # empty when there is none
         if '# BEGIN control-tower' in cur:
             plan.append(('crontab', 'remove the control-tower block'))
     if os.path.isdir(ct):
@@ -78,7 +91,11 @@ def main():
                 subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'], capture_output=True)
             os.remove(what)
         elif kind == 'crontab':
-            cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
+            got = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+            if got.returncode != 0:
+                print(f'could not read the crontab, left unchanged: {got.stderr.strip()}', file=sys.stderr)
+                continue
+            cur = got.stdout
             new = re.sub(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
             subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)
         elif kind == 'rmtree':

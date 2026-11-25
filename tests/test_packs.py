@@ -118,8 +118,11 @@ class PackTests(unittest.TestCase):
             for perm in job['permissions'].get('allow', []):
                 self.assertNotIn(perm, ('Write', 'Edit', 'Bash', 'WebFetch'), f'{pid}/{j}: unscoped permission "{perm}" (scope it to the vault, for example Edit({{{{ct.vault_path}}}}/**))')
                 self.assertNotIn('*', perm.replace('/**)', ')'), f'{pid}/{j}: wildcard permission "{perm}"')
-            for c in job['capabilities']:
+            caps = job['capabilities']
+            self.assertIsInstance(caps, dict, f'{pid}/{j}: capabilities must be {{"required": [...], "optional": [...]}}')
+            for c in caps.get('required', []) + caps.get('optional', []):
                 self.assertIn(c, CAPABILITIES, f'{pid}/{j}: unknown capability {c}')
+            self.assertTrue(caps.get('required') or caps.get('optional') or job.get('vault_only'), f'{pid}/{j}: no capability and not vault_only')
 
         # capabilities and questions
         caps = manifest['capabilities']

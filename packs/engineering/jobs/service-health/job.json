@@ -7,19 +7,20 @@
     "time": "08:10"
   },
   "model": "sonnet",
-  "capabilities": [
-    "logs",
-    "errors"
-  ],
+  "capabilities": {
+    "required": [
+      "logs"
+    ],
+    "optional": [
+      "errors"
+    ]
+  },
   "outputs": [
     "journal/reports/health-YYYY-MM-DD.md",
     "cockpit/pulse.md"
   ],
   "permissions": {
-    "allow": [
-      "Read",
-      "Edit({{ct.vault_path}}/**)"
-    ],
+    "allow": [],
     "deny": []
   }
 }

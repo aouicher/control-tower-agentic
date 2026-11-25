@@ -37,7 +37,7 @@ def scenario(packs):
     with tempfile.TemporaryDirectory() as home:
         env = dict(os.environ, HOME=home, CT_CLAUDE_BIN=FAKE, FAKE_CLAUDE_LOG=os.path.join(home, 'fake.log'))
         env.pop('CT_HOME', None)
-        vault, ct = os.path.join(home, 'vault'), os.path.join(home, '.control-tower')
+        vault, ct = os.path.join(home, "My Vault's notes"), os.path.join(home, '.control-tower')  # a space and a quote on purpose
         tools = {}
         for p in packs:
             for q in json.load(open(os.path.join(ROOT, 'packs', p, 'pack.json')))['questions']:

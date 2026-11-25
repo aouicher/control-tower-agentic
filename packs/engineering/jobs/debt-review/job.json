@@ -7,19 +7,20 @@
     "time": "10:00"
   },
   "model": "sonnet",
-  "capabilities": [
-    "quality",
-    "code"
-  ],
+  "capabilities": {
+    "required": [
+      "quality"
+    ],
+    "optional": [
+      "code"
+    ]
+  },
   "outputs": [
     "journal/reports/debt-YYYY-MM-DD.md",
     "work/areas/technical-debt.md"
   ],
   "permissions": {
-    "allow": [
-      "Read",
-      "Edit({{ct.vault_path}}/**)"
-    ],
+    "allow": [],
     "deny": []
   }
 }

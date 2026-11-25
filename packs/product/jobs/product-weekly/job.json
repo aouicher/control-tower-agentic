@@ -2,9 +2,24 @@
   "id": "product-weekly",
   "name": "Product weekly",
   "description": "Friday digest of what shipped, is in progress or blocked, metric movements and decisions needed.",
-  "schedule": {"days": "fri", "time": "15:00"},
+  "schedule": {
+    "days": "fri",
+    "time": "15:00"
+  },
   "model": "sonnet",
-  "capabilities": ["tracker", "analytics"],
-  "outputs": ["journal/reports/product-weekly-YYYY-Www.md"],
-  "permissions": {"allow": [], "deny": []}
+  "capabilities": {
+    "required": [
+      "tracker"
+    ],
+    "optional": [
+      "analytics"
+    ]
+  },
+  "outputs": [
+    "journal/reports/product-weekly-YYYY-Www.md"
+  ],
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
 }

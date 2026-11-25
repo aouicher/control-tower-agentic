@@ -128,7 +128,7 @@ class GuardTests(unittest.TestCase):
         self.assertIn('BLOCKED', blocked.stderr)
         self.assertEqual(run({'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}).returncode, 0)
         self.assertEqual(subprocess.run([sys.executable, os.path.join(ROOT, 'scheduler', 'guard.py'), '--vault', self.vault],
-                                        input='not json', capture_output=True, text=True).returncode, 0)
+                                        input='not json', capture_output=True, text=True).returncode, 2, 'unreadable events fail closed')
 
 
 FAKE_CLAUDE = '''#!/usr/bin/env python3
@@ -207,6 +207,28 @@ class RunJobTests(unittest.TestCase):
         self.assertIn('cannot run', open(os.path.join(self.home, 'logs', 'demo.stderr.log')).read())
         self.assertFalse(os.path.exists(os.path.join(self.home, 'locks', 'demo.lock')), 'the lock must be released')
 
+    def test_unknown_job_is_explained(self):
+        r = subprocess.run([sys.executable, RUN_JOB, '--job', 'nope', '--ct-home', self.home], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('Installed jobs: demo', r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+
+    def test_timeout_kills_the_whole_process_group(self):
+        marker = os.path.join(self.tmp.name, 'child.pid')
+        with open(self.fake, 'w') as fh:
+            fh.write('#!/bin/sh\n(sleep 30; touch ' + marker + '.late) &\necho $! > ' + marker + '\nsleep 30\n')
+        r = self.run_job(timeout_override=1)
+        self.assertEqual(r.returncode, 124)
+        import time
+        time.sleep(0.3)
+        child = int(open(marker).read().strip())
+        alive = True
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            alive = False
+        self.assertFalse(alive, 'a child started by claude must not survive the timeout')
+
     def test_dry_run_does_not_execute(self):
         r = self.run_job(extra=['--dry-run'])
         self.assertEqual(r.returncode, 0)
@@ -263,9 +285,46 @@ class ScheduleTests(unittest.TestCase):
             os.unlink(fh.name)
 
     def test_time_conversion_keeps_same_zone(self):
-        local, warn = install.local_time('08:00', 'UTC')
-        # when the machine is not in UTC the time is converted and a warning is returned; otherwise unchanged
-        self.assertTrue(warn is None or 'converted' in warn)
+        utc = install.zoneinfo.ZoneInfo('UTC')
+        self.assertEqual(install.local_time('08:00', 'UTC', machine_tz=utc), ('08:00', 0, None))
+
+    def test_days_move_when_the_conversion_crosses_midnight(self):
+        utc = install.zoneinfo.ZoneInfo('UTC')
+        local, shift, warn = install.local_time('08:00', 'Asia/Tokyo', machine_tz=utc)  # 08:00 JST = 23:00 UTC the day before
+        self.assertEqual((local, shift), ('23:00', -1))
+        self.assertIn('previous day', warn)
+        self.assertEqual(set(install.shift_days(install.parse_days('mon-fri'), shift)), {0, 1, 2, 3, 4}, 'Sunday to Thursday in UTC')
+        local, shift, _ = install.local_time('22:30', 'America/Los_Angeles', machine_tz=utc)  # next day in UTC
+        self.assertEqual(shift, 1)
+        self.assertEqual(install.shift_days([5], shift), [6], 'Friday evening in Los Angeles is Saturday in UTC')
+
+    def test_day_specs(self):
+        self.assertEqual(install.parse_days('Mon - Fri'), [1, 2, 3, 4, 5])
+        self.assertEqual(install.parse_days('weekdays'), [1, 2, 3, 4, 5])
+        self.assertEqual(install.parse_days('fri-mon'), [1, 5, 6, 0])
+        with self.assertRaises(ValueError):
+            install.parse_days('funday')
+
+    def test_cron_and_plist_survive_awkward_paths(self):
+        import plistlib
+        args = ['/usr/bin/python3', "/tmp/my vault's & 100%/bin/run_job.py", '--job', 'x']
+        line = install.cron_line(args, [1], '08:00')
+        self.assertIn('\\%', line)
+        self.assertNotIn(' 100%/', line.replace('\\%', ''))
+        data = plistlib.loads(install.launchd_plist('com.control-tower.x', args, [1], '08:00', '/tmp/a&b.log').encode())
+        self.assertEqual(data['ProgramArguments'][1], args[1])
+
+    def test_guard_blocks_git_internals_and_date_file_reads(self):
+        g = GuardTests('test_hook_protocol_exit_codes')
+        g.setUp()
+        try:
+            for rel in ('.git/hooks/post-commit', '.git/config', '.github/workflows/x.yml'):
+                self.assertIsNotNone(g.tool('Write', os.path.join(g.vault, rel)), rel)
+            for cmd in ('date -f ~/.config/gh/hosts.yml', 'date --file=/etc/passwd', 'cat ~/.claude/.credentials.json', 'cat ~/.kube/config'):
+                self.assertIsNotNone(g.bash(cmd), cmd)
+            self.assertIsNone(g.bash('date +%F'))
+        finally:
+            g.tearDown()
 
 
 if __name__ == '__main__':

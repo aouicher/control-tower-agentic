@@ -19,6 +19,11 @@ if log:
     with open(log, 'a') as fh:
         fh.write(json.dumps({'cwd': os.getcwd(), 'mode': mode, 'settings': settings, 'model': args[args.index('--model') + 1]}) + '\n')
 st = json.load(open(settings))
+# the real CLI reads Edit(/x) as relative to the settings file and Edit(//x) as absolute: the vault rule must be absolute
+vault_rules = [r for r in st['permissions']['allow'] if r.startswith('Edit(//')]
+if not any(os.path.realpath(r[6:-4]) == os.path.realpath(os.getcwd()) for r in vault_rules if r.endswith('/**)')):
+    print(json.dumps({'is_error': True, 'result': f'no absolute Edit rule for the vault in {st["permissions"]["allow"]}'}))
+    sys.exit(1)
 hook = st['hooks']['PreToolUse'][0]['hooks'][0]['command']
 cwd = os.getcwd()
 hostile = [

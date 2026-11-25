@@ -119,7 +119,8 @@ def check(vault, ct_home, claude_bin='claude'):
         for cap, tool in (manifest.get('tools') or {}).items():
             if tool != 'none':
                 ok = os.path.isfile(os.path.join(vault, '.claude', 'adapters', f'{cap}.md'))
-                r.add('ok' if ok else 'FAIL', f'adapter note {cap} ({tool})')
+                r.add('ok' if ok else 'FAIL', f'adapter note {cap} ({tool})',
+                      'installed; the connection itself is not checked: follow library/setup-next-steps.md' if ok else 'missing')
     # obsidian
     obs = os.path.join(vault, '.obsidian')
     if os.path.isdir(obs):
@@ -149,8 +150,9 @@ def check(vault, ct_home, claude_bin='claude'):
             st = json.loads(read(os.path.join(jd, 'settings.json')))
             guard = bool(st.get('hooks', {}).get('PreToolUse'))
             writes = [a for a in st['permissions']['allow'] if a.startswith(('Write', 'Edit(')) or a in ('Write', 'Edit', 'Bash')]
-            ok_scope = all(a.startswith('Edit(' + vault) for a in writes)
-            r.add('ok' if guard and ok_scope else 'FAIL', f'job {j}', 'guard hook and vault-scoped writes' if guard and ok_scope else 'missing guard hook or unscoped write permission')
+            ok_scope = bool(writes) and all(a.startswith('Edit(/' + vault + '/') for a in writes)
+            r.add('ok' if guard and ok_scope else 'FAIL', f'job {j}', 'guard hook and vault-scoped writes' if guard and ok_scope
+                  else 'missing guard hook, or write permission missing or not scoped to the vault (re-run the installer)')
         except (ValueError, KeyError):
             r.add('FAIL', f'job {j}', 'settings.json is not valid')
     for risky in ('.claude/settings.json', '.claude/settings.local.json', '.mcp.json'):
@@ -180,11 +182,17 @@ def check(vault, ct_home, claude_bin='claude'):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--vault', required=True)
-    ap.add_argument('--ct-home', default='~/.control-tower')
+    ap.add_argument('--ct-home', help='runtime folder (default: the one recorded in the vault, else ~/.control-tower)')
     ap.add_argument('--claude-bin', default='claude')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
-    rep = check(args.vault, args.ct_home, args.claude_bin)
+    ct_home = args.ct_home
+    if not ct_home:
+        try:
+            ct_home = json.load(open(os.path.join(os.path.expanduser(args.vault), '.control-tower', 'answers.json'), encoding='utf-8'))['ct_home']
+        except (OSError, ValueError, KeyError):
+            ct_home = '~/.control-tower'
+    rep = check(args.vault, ct_home, args.claude_bin)
     if args.json:
         print(json.dumps(rep.items, indent=2))
     else:

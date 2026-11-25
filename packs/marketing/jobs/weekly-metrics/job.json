@@ -2,9 +2,24 @@
   "id": "weekly-metrics",
   "name": "Weekly marketing metrics",
   "description": "Every Monday, last week's analytics and CRM figures compared with the week before.",
-  "schedule": {"days": "mon", "time": "08:30"},
+  "schedule": {
+    "days": "mon",
+    "time": "08:30"
+  },
   "model": "sonnet",
-  "capabilities": ["analytics", "crm"],
-  "outputs": ["journal/reports/marketing-metrics-YYYY-Www.md"],
-  "permissions": {"allow": [], "deny": []}
+  "capabilities": {
+    "required": [
+      "analytics"
+    ],
+    "optional": [
+      "crm"
+    ]
+  },
+  "outputs": [
+    "journal/reports/marketing-metrics-YYYY-Www.md"
+  ],
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
 }
