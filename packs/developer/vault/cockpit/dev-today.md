@@ -8,10 +8,7 @@ status: active
 
 # 🧑‍💻 Developer today
 
-Reading page for a developer's day. Back to [[cockpit]] and [[today]].
-
-## 🗣️ Standup
-![[today#🗣️ Standup]]
+Reading page for a developer's day. Back to [[cockpit]] and [[today]]. Your standup is written by `/standup` in today's daily note, section `🧍 Standup`.
 
 ## ✅ Due today and overdue
 ```tasks

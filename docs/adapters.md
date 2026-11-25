@@ -24,7 +24,7 @@ The installer renders the notes into `<vault>/.claude/adapters/` and writes the 
 ## Connecting a tool
 
 1. Open `library/setup-next-steps.md`.
-2. Run the listed `claude mcp add ...` command yourself (or install the CLI the note names, for example `gh`).
+2. Run the listed `claude mcp add ...` command yourself (or install the CLI the note names, for example `gh`). The commands use `--scope user`, so the server is visible from the vault and from scheduled jobs. A tool without a single command (HubSpot) lists its setup steps instead.
 3. Authenticate when asked (usually in `/mcp` inside Claude Code). Never paste secrets into notes or chat.
 4. Run the `verify` step from the adapter note.
 5. Re-run `doctor.py`.

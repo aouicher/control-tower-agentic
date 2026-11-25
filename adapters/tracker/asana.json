@@ -4,7 +4,7 @@
   "access": "mcp",
   "setup_url": "https://developers.asana.com/docs/using-asanas-mcp-server",
   "install": [
-    "claude mcp add --transport http --client-id YOUR_CLIENT_ID --client-secret --callback-port 8080 asana https://mcp.asana.com/v2/mcp"
+    "claude mcp add --scope user --transport http --client-id YOUR_CLIENT_ID --client-secret --callback-port 8080 asana https://mcp.asana.com/v2/mcp"
   ],
   "env": [],
   "permissions_allow": [],

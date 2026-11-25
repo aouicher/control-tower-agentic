@@ -30,7 +30,7 @@ due:
 
 | {{ct.Workstream}} | Owner | State |
 |---|---|---|
-| [[ ]] |  | ⚪ |
+| link to a note |  | ⚪ |
 
 ## ✅ Tasks
 

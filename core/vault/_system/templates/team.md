@@ -28,11 +28,11 @@ members: []
 
 | {{ct.Person}} | Role | Signal |
 |---|---|---|
-| [[ ]] |  | ⚪ |
+| link to a note |  | ⚪ |
 
 ## 🚧 Work in progress
 
-- [[ ]]
+- link to a note
 
 ## ✅ Tasks
 

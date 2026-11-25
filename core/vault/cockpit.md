@@ -43,3 +43,8 @@ tags include #deadline
 sort by due
 limit 6
 ```
+
+## 🧭 Pages
+Every reading page of this vault, including the ones your profile packs added.
+
+![[pages.base]]

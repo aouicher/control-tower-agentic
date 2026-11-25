@@ -5,7 +5,7 @@
 Each installed job lives in `~/.control-tower/jobs/<id>/` (`prompt.md`, `job.json`, `settings.json`). The runner is `~/.control-tower/bin/run_job.py`:
 
 ```bash
-python3 ~/.control-tower/bin/run_job.py --job morning-prs --ct-home ~/.control-tower
+python3 ~/.control-tower/bin/run_job.py --job <job id from library/setup-next-steps.md> --ct-home ~/.control-tower
 ```
 
 It starts `claude -p` in the vault with:
@@ -26,7 +26,7 @@ Try each job by hand first.
 | `cron` | writes `~/.control-tower/schedule/crontab.txt` (a `# BEGIN control-tower` block) |
 | `none` | no schedule files |
 
-Files are generated but **not loaded** until you run the installer with `--apply-schedule` (symlinks plists into `~/Library/LaunchAgents` and loads them, or installs the crontab block). `uninstall.py` reverses both. Times in `job.json` use your timezone; the generated schedule uses the machine's local time.
+Files are generated but **not loaded** until you run `python3 installer/install.py --answers <vault>/.control-tower/answers.json --apply-schedule` (the installer saved your answers there) (symlinks plists into `~/Library/LaunchAgents` and loads them, or installs the crontab block). `uninstall.py` reverses both. Times in `job.json` use your timezone; the generated schedule uses the machine's local time.
 
 A laptop that is asleep misses its run. If that matters, use a cloud routine.
 
@@ -53,6 +53,10 @@ What it needs from you: Claude Code signed in to your claude.ai account, the vau
 What it never does: update or delete a routine (an update through the API replaces the whole configuration; change routines on claude.ai), handle your credentials, or create a routine you did not tick. `uninstall.py` does not remove cloud routines: delete them on claude.ai.
 
 By hand instead: open claude.ai routines, create one, paste the content of the `.prompt.md` file, set the schedule and connectors.
+
+### Cloud routines and your local vault
+
+A routine sees the vault only through its GitHub repository, never the folder on your computer. Routines that read job reports (those with `after:`, such as a morning brief) need the local vault pushed first: install the Obsidian Git plugin and set it to commit and push automatically every few minutes, or push by hand. Routines that write (`vault: write`) commit and push to the default branch of that repository: pull it (Obsidian Git does this too) to see what they wrote. A routine that finds a report missing or older than today says the vault was not synced and continues with what it has.
 
 ## Writing rules for unattended prompts
 

@@ -31,7 +31,7 @@ stage: candidate
 
 ## 💬 Evidence
 
-- [[interview-note]]
+- link to an interview note
 
 ## ⚖️ Decisions
 

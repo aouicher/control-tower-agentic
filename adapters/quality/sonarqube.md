@@ -7,7 +7,7 @@ Official documentation: https://docs.sonarsource.com/sonarqube-mcp-server/ (setu
 SonarQube Cloud (add `SONARQUBE_URL=https://sonarqube.us` for the US region only):
 
 ```bash
-claude mcp add sonarqube \
+claude mcp add --scope user sonarqube \
   --env SONARQUBE_TOKEN=$SONARQUBE_TOKEN \
   --env SONARQUBE_ORG=$SONARQUBE_ORG \
   --env SONARQUBE_READ_ONLY=true \

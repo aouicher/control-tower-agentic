@@ -4,7 +4,7 @@ date: 2026-11-05
 type: decision
 tags: [decision]
 status: active
-decision_status: decided
+decision_status: made
 owner: "sam"
 team: "Payments"
 ---

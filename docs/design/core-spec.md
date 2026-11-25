@@ -81,12 +81,13 @@ The installer replaces these tokens in every file under `core/` and `packs/`. Ob
 | `{{ct.Risk}}` / `{{ct.Risks}}` | Risk / Risks | capitalised |
 | `{{ct.person}}` / `{{ct.people}}` | person / people | e.g. direct report, teammate |
 | `{{ct.Person}}` / `{{ct.People}}` | Person / People | capitalised |
+| `{{ct.a_team}}`, `{{ct.a_workstream}}`, `{{ct.a_risk}}`, `{{ct.a_person}}` | a team, a workstream... | singular with "a" or "an" ("an initiative"); `{{ct.A_...}}` at a sentence start; a vocabulary entry may set `"article"` for exceptions ("an hour") |
 | `{{ct.owner_name}}` | (from answers) | the user's name |
 | `{{ct.owner_handle}}` | (from answers) | handle used in tasks, default `me` |
 | `{{ct.timezone}}` | (from answers) | IANA name, e.g. `Europe/Paris` |
 | `{{ct.vault_path}}` | (from answers) | absolute vault path |
 
-Rule: never hardcode a vocabulary word that has a token. Property values, folder names, tags used by dashboards and task tags are stable and are NOT tokenised.
+Rule: never hardcode a vocabulary word that has a token, and never write "a" or "an" before a token: use the `a_` form. Property values, folder names, tags used by dashboards and task tags are stable and are NOT tokenised.
 
 ## 6. Page style (every page)
 

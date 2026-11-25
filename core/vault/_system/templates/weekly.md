@@ -9,56 +9,41 @@ status: active
 # Week {{date:gggg-[W]ww}}
 
 > [!summary] Summary
-> - What this week was about, in one line
-> - State: overall health and the main thing that moved
-> - Next week: the top priority and what needs a decision
+> - Done: how many tasks were finished, and the main one
+> - Carried over: how many tasks slipped, and why
+> - Signal: the one thing that needs attention next week
 
-## 📊 Figures
+## ✅ Done
 
-| Metric | This week | Last week | Comment |
+- 
+
+## 🚧 Not done (carried over)
+
+| Task | Note | Due | Since |
 |---|---|---|---|
 |  |  |  |  |
 
-## 🚧 Work in progress
-
-| Item | Health | Progress this week | Next step |
-|---|---|---|---|
-| [[ ]] | ⚪ |  |  |
-
-## 🩺 Health
-
-| Area | Signal | Why |
-|---|---|---|
-| Delivery | ⚪ |  |
-| {{ct.Teams}} | ⚪ |  |
-| {{ct.Risks}} | ⚪ |  |
-
-## 👥 {{ct.Teams}} and {{ct.people}}
+## 🩺 Trends and signals
 
 - 
 
-## ⚖️ Decisions
-
-- Made: 
-- Still open: 
-
-## 🚨 {{ct.Risks}}
+## 🏆 Wins and lessons
 
 - 
 
-## ✅ Open tasks
+## 🎯 Next week: top 3
 
-Review the cockpit queries instead of copying tasks here. List only what you decide to commit to for next week.
+1. 
+2. 
+3. 
 
-- [ ] 
+## 🔁 Duplicates to tidy
 
-## 🔁 Retrospective
-
-| Keep | Change | Try |
+| Task | Notes | Proposal |
 |---|---|---|
 |  |  |  |
 
 ## 📎 Annexes
 
-> [!note]- Sources and raw numbers
+> [!note]- Sources
 > - 

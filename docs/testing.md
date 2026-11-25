@@ -9,6 +9,14 @@ Every test runs in throwaway directories. None touches your real vault, `~/.clau
 | Clean Linux | `docker build -f tests/e2e/Dockerfile -t control-tower-e2e . && docker run --rm --network none control-tower-e2e` | The same on a fresh Debian with Python 3.9, unprivileged user, no network, and the crontab block really loaded then removed |
 | Leaks | `python3 tools/scan-leaks.py --strict` | No secret patterns, no private terms (from your local `.denylist.local`), English only |
 
+## The real `claude` (opt-in)
+
+```bash
+CT_REAL_CLAUDE=1 python3 tests/e2e/smoke_real_claude.py
+```
+
+Installs the developer pack in a temporary folder whose path holds a space and a quote, swaps one job's prompt for a short probe and runs it with the real CLI on Haiku (about one cent). It checks what Claude Code itself allowed: the report is written in the vault, `.claude/settings.json` is refused, a write outside the vault is blocked. It is the only test that exercises Claude Code's permission rules; run it after changing permissions or upgrading Claude Code.
+
 ## The fake `claude`
 
 `tests/e2e/fake_claude.py` replaces Claude Code (through `CT_CLAUDE_BIN`). It reads the job's settings, replays hostile tool calls through the guard hook those settings declare (git push, credential reads, edits to `.claude/settings.json`, writes outside the vault, secret globs) and fails if one is not blocked. It then writes one allowed report and prints the JSON the runner expects.

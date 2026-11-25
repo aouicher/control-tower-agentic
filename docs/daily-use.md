@@ -6,7 +6,7 @@ Installing takes ten minutes. This page is about everything after that: what to 
 
 | Window | What you do there |
 |---|---|
-| **Obsidian**, on your vault | Read: `cockpit.md` is your home page. Tick tasks, edit notes, drop quick thoughts in `_inbox/`. |
+| **Obsidian**, on your vault | Read: `cockpit.md` is your home page; its *Pages* section lists every reading page, including your profile's (`pulse`, `roadmap`, `content-calendar`...). Tick tasks, edit notes, drop quick thoughts in `_inbox/`. |
 | **Claude Code**, started in the vault folder | Ask: type a skill like `/today`, or just say what you want in plain words. |
 
 Start Claude Code in the vault, so it reads the vault's rules (`CLAUDE.md`) and skills:
@@ -28,7 +28,7 @@ start my day
 ### Morning (5 minutes)
 
 1. **Open `cockpit.md` in Obsidian.** Overnight jobs and routines have already written their reports in `journal/reports/`, and the cockpit shows what is overdue, what is due today, and your projects with their status (🟢🟠🔴).
-2. **In Claude Code, run `/today`.** It creates today's daily note and refreshes `cockpit/today.md`:
+2. **In Claude Code, run `/today`.** It creates today's daily note (agenda and focus) and rewrites `cockpit/today.md`, a page only `/today` writes:
 
    ```text
    > /today
@@ -107,7 +107,7 @@ Nothing moves until you confirm, nothing is deleted (old material goes to `_syst
 
 ### Once a month
 
-- Archive finished projects: set `status: done`, then move the note to `_system/archive/` (or ask Claude "archive the projects marked done"). Nothing is ever deleted.
+- Archive finished projects: set `status: archived`, then move the note to `_system/archive/` (or ask Claude "archive the finished projects"). Nothing is ever deleted.
 - Run the health check: `python3 <repository>/installer/doctor.py --vault <vault> --ct-home ~/.control-tower`.
 
 ## What runs without you
@@ -115,7 +115,7 @@ Nothing moves until you confirm, nothing is deleted (old material goes to `_syst
 | Kind | Where results land | How to tell it ran |
 |---|---|---|
 | Local jobs (your computer) | `journal/reports/` | `~/.control-tower/logs/<job>.log`; nothing runs while the computer sleeps |
-| Cloud routines (claude.ai) | `journal/reports/` or the daily note, in the vault repository | The routine's page on claude.ai |
+| Cloud routines (claude.ai) | `journal/reports/` or the daily note, pushed to the vault's GitHub repository: pull it to see them (see [scheduling](scheduling.md#cloud-routines-and-your-local-vault)) | The routine's page on claude.ai |
 
 A report always says when data was missing ("not verified", "at least N (truncated)"). Silence never means "all green".
 
@@ -129,7 +129,7 @@ A report always says when data was missing ("not verified", "at least N (truncat
 | New campaign | `/campaign-brief launch the spring offer to existing customers, budget 20k` | A campaign note with audience, message, channels, budget, KPIs, timeline and risks |
 | Every morning | Read the morning brief | Content going live in the next three days, yesterday's traffic against the same day last week |
 | Mid-week | `/competitor-watch Acme Rival, last 30 days` | A sourced note in `library/` with launches, pricing and campaign moves |
-| Monday (job) | `weekly-metrics` report | Traffic, conversion, best and worst content, three observations |
+| Monday (job) | `weekly-metrics` report, named after last week (`marketing-metrics-YYYY-Www`) | Traffic, conversion, draft and active campaigns, best and worst content, three observations |
 | Friday | `/weekly-review` | Done, slipped content, next week's top 3 |
 
 Templates you will use: `content-piece`, `launch-plan`, `campaign-retro` (in Obsidian: command palette, *Templates: Insert template*).
@@ -141,19 +141,20 @@ Templates you will use: `content-piece`, `launch-plan`, `campaign-retro` (in Obs
 | After a customer call | `/discovery-notes` and paste the transcript | An anonymised interview note: quotes, pains, jobs to be done, linked opportunities |
 | Planning | `/prioritize rice` | A ranked table in `cockpit/roadmap.md`, with why two items tie |
 | New initiative | `/prd-draft bulk export for admins` | A PRD note: problem, users, goals and non-goals, requirements, metrics, open questions |
+| Monday (job) | `feedback-digest` report, named after last week | Feedback themes, metric changes, emerging issues |
 | Friday (job) | `product-weekly` report | Shipped, in progress, blocked, metric movements, decisions needed |
-| Friday | `/weekly-review` | Includes the product loop: interviews this week, opportunities by stage |
+| Friday | `/weekly-review`, or the `weekly-review` routine | The routine adds the product loop: interviews this week, opportunities by stage |
 
 ### Developer
 
 | When | Do | Example |
 |---|---|---|
-| Before standup | `/standup` | Yesterday from your commits and closed tickets, today's plan, blockers |
-| Between tasks | `/review-queue` | Pull requests waiting for you, yours with their review and CI state, stale ones |
+| Before standup | `/standup` | Yesterday from your commits and closed tickets, today's plan, blockers, in the `🧍 Standup` section of today's daily note |
+| Between tasks | `/review-queue` | Pull requests waiting for you, yours with their review and CI state, stale ones; it offers a note per open pull request for the `my-pull-requests` dashboard |
 | While working | `/worklog decided to cache the price list for 5 min, see PR 412` | A dated line in today's note |
 | After a hard bug | `/debug-journal checkout timeout on large carts` | Symptom, hypotheses tried, root cause, fix, how to detect it next time |
 | Every morning (job) | `morning-prs` report | Reviews to do and your open pull requests |
-| Friday (job) | `weekly-wrap` report | Merged, closed, carried over |
+| Friday (job) | `weekly-wrap` report (`dev-weekly-wrap-YYYY-Www`) | Merged, closed, carried over |
 
 ### Engineering leader
 
@@ -178,8 +179,8 @@ Templates you will use: `content-piece`, `launch-plan`, `campaign-retro` (in Obs
 
 | Feels like | Usually |
 |---|---|
-| The cockpit is empty | No project notes yet, or the Tasks plugin is not enabled. Create one project and reload. |
-| A report is missing this morning | The computer was asleep at the job's time. Run it by hand: `python3 ~/.control-tower/bin/run_job.py --job <id> --ct-home ~/.control-tower`. |
+| The cockpit is empty | No project notes yet, the Tasks plugin is not enabled, or Obsidian is older than 1.9 (no Bases). Create one project and reload. |
+| A report is missing this morning | The computer was asleep at the job's time. For a cloud routine, the vault was not pushed or pulled. Run it by hand: `python3 ~/.control-tower/bin/run_job.py --job <id> --ct-home ~/.control-tower`. |
 | The same task shows twice | It was copied into two notes. Keep one; `/weekly-review` lists duplicates. |
 | A report says "not verified" | A tool was not reachable. Check the connection (see [adapters](adapters.md)). |
 

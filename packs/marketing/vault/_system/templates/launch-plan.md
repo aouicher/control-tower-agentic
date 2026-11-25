@@ -39,7 +39,7 @@ due:
 
 | Channel | Content | Publish date | Owner |
 |---|---|---|---|
-|  | [[ ]] |  |  |
+|  | link to the content note |  |  |
 
 ## ✅ Tasks
 

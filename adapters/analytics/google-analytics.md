@@ -7,7 +7,7 @@ Official documentation: https://developers.google.com/analytics/devguides/MCP (s
 Google publishes an MCP server as the PyPI package `analytics-mcp`. Requirements: Python 3.10+ and `pipx` or `uv`. Documented run command for Claude: `pipx run analytics-mcp`. In Claude Code:
 
 ```
-claude mcp add analytics-mcp -- pipx run analytics-mcp
+claude mcp add --scope user analytics-mcp -- pipx run analytics-mcp
 ```
 
 The server name is a local choice. Enable the APIs `analyticsadmin.googleapis.com` and `analyticsdata.googleapis.com` in the Google Cloud project, and set `GOOGLE_CLOUD_PROJECT` to its id.

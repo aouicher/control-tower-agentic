@@ -8,10 +8,19 @@
 | Python 3.9+ | The installer and the job runner use only the standard library (`zoneinfo` converts job times) | `python3 --version` |
 | git | Cloning this repository | `git --version` |
 | [Claude Code](https://claude.com/claude-code) | Skills, guided installer and scheduled jobs | `claude --version` |
-| [Obsidian](https://obsidian.md) | Reading and editing the vault | open the app |
-| Obsidian **Tasks** plugin | Task queries in the cockpit (Community plugins) | Settings, Community plugins |
+| [Obsidian](https://obsidian.md) 1.9 or newer | Reading and editing the vault; the dashboards use the core **Bases** plugin, added in 1.9 | Settings, About |
+| Obsidian **Tasks** plugin | Task queries in the cockpit. Install it from `obsidian://show-plugin?id=obsidian-tasks-plugin` (paste it in your browser with Obsidian open) | Settings, Community plugins |
 
 Optional: accounts for the tools you want to connect (see [adapters](adapters.md)). You can start with none and add them later.
+
+> **New to the terminal?**
+> 1. Open the Terminal app (macOS: Applications > Utilities > Terminal).
+> 2. Install Claude Code by following its official guide: https://claude.com/claude-code
+> 3. Type `claude` once and sign in with your Claude account when asked.
+> 4. To work in your vault later: `cd ~/control-tower-vault && claude`.
+> 5. Prefer an app? The Claude desktop app can also open the vault folder.
+
+**Where to put the vault (macOS).** Prefer a folder in your home directory, such as `~/control-tower-vault`. A vault inside iCloud Drive, Documents or Desktop may be blocked for scheduled jobs by the macOS privacy rules, and the jobs then fail without a window to ask you.
 
 ## Install
 
@@ -69,15 +78,17 @@ Fields: `owner_name`, `owner_handle`, `timezone`, `vault_path`, `ct_home`, `pack
 5. Run a job by hand once before scheduling it:
 
 ```bash
-python3 ~/.control-tower/bin/run_job.py --job morning-prs --ct-home ~/.control-tower
+python3 ~/.control-tower/bin/run_job.py --job <job id from library/setup-next-steps.md> --ct-home ~/.control-tower
 ```
 
 6. Optional: create cloud routines with `/install-control-tower routines` (see [scheduling](scheduling.md#cloud-routines)).
 7. When you are happy, apply the schedule:
 
 ```bash
-python3 installer/install.py --answers my-answers.json --apply-schedule
+python3 installer/install.py --answers <vault>/.control-tower/answers.json --apply-schedule
 ```
+
+The installer saved your answers in `<vault>/.control-tower/answers.json`, whichever install option you used.
 
 ## Health check
 

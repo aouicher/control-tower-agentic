@@ -14,15 +14,10 @@ status: active
 > - What was decided or agreed
 > - What happens next and who owns it
 
-## 📅 Agenda
-
-| Time | Topic | Lead |
-|---|---|---|
-|  |  |  |
-
-## 👥 Attendees
-
-- 
+| | |
+|---|---|
+| Participants |  |
+| Context |  |
 
 ## 📝 Notes
 
@@ -30,11 +25,17 @@ status: active
 
 ## ⚖️ Decisions
 
-- 
+| Decision | Decider | Link |
+|---|---|---|
+|  |  |  |
 
 ## ✅ Actions
 
-- [ ] 
+Each action lives in the note it belongs to: this table only points to it.
+
+| Action | Owner | Due | Where it lives |
+|---|---|---|---|
+|  |  |  |  |
 
 ## 🚨 {{ct.Risks}} raised
 

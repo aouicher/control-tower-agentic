@@ -9,7 +9,7 @@ A pack is a profile: it overlays the core vault with extra skills, templates, da
 | `product` | Product managers | discovery-notes, prioritize, prd-draft, product-weekly | product-weekly, feedback-digest | calendar; optional tracker, analytics, crm |
 | `marketing` | Marketing leads | campaign-brief, content-calendar, weekly-metrics, competitor-watch | weekly-metrics, content-reminders | none required; optional analytics, crm, tracker, calendar |
 
-Every pack also ships cloud routines (`daily-note`, `weekly-review`, `morning-brief`; engineering adds `overnight-health`) in `packs/<id>/routines/`, and a README in its folder. A routine is offered only when its required connectors have a tool; `/install-control-tower routines` creates the ones you choose on claude.ai (see [scheduling](scheduling.md#cloud-routines)).
+Every pack also ships cloud routines (`daily-note`, `weekly-review`, `morning-brief`; engineering adds `overnight-health`, which only reports the services the local `service-health` job did not cover) in `packs/<id>/routines/`, and a README in its folder. A routine is offered only when its required connectors have a tool; `/install-control-tower routines` creates the ones you choose on claude.ai (see [scheduling](scheduling.md#cloud-routines)).
 
 ## Vocabulary
 

@@ -18,7 +18,7 @@ last_one_to_one:
 | Field | Value |
 |---|---|
 | Role |  |
-| {{ct.Team}} | [[ ]] |
+| {{ct.Team}} | link to a note |
 | Strengths |  |
 | Growth areas |  |
 
@@ -30,7 +30,7 @@ last_one_to_one:
 
 ## 🚧 Work in progress
 
-- [[ ]]
+- link to a note
 
 ## ✅ Tasks
 

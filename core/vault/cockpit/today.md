@@ -8,7 +8,7 @@ status: active
 
 # 📅 Today
 
-🕐 Not generated yet. The `today` skill rewrites this page every morning.
+🕐 Not generated yet. This page is rewritten by `/today` (run it each morning, or let a routine do it).
 
 ## 📅 Agenda
 - Nothing yet.

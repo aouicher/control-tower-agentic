@@ -2,7 +2,7 @@ filters:
   and:
     - file.inFolder("work")
     - type == "workstream"
-    - status == "active"
+    - status != "archived"
 formulas:
   rag_rank: if(rag == "red", 0, if(rag == "amber", 1, if(rag == "green", 2, 3)))
   rag_icon: if(rag == "red", "🔴", if(rag == "amber", "🟠", if(rag == "green", "🟢", "⚪")))

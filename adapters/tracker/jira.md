@@ -7,7 +7,7 @@ Capability: `tracker`. Official documentation: https://support.atlassian.com/atl
 The getting-started page documents, for Claude Code:
 
 ```
-claude mcp add --transport http atlassian https://mcp.atlassian.com/v2/mcp
+claude mcp add --scope user --transport http atlassian https://mcp.atlassian.com/v2/mcp
 ```
 
 then run `/mcp` in a Claude Code session to authenticate. The page mentions a v1 URL that will start using v2 tools on a date it states: check the page for the current URL. If you use Claude Code's sandbox, the Atlassian documentation lists network domains to allow: check the official documentation.

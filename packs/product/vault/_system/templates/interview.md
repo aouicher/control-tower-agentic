@@ -31,7 +31,7 @@ source: ""
 
 ## 🔗 Opportunities
 
-- [[opportunity-note]]
+- link to an opportunity note
 
 ## ✅ Actions
 

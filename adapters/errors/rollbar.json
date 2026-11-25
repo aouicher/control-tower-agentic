@@ -4,7 +4,7 @@
   "access": "mcp",
   "setup_url": "https://docs.rollbar.com/docs/mcp-server-setup",
   "install": [
-    "Add to .mcp.json: {\"mcpServers\": {\"rollbar\": {\"type\": \"stdio\", \"command\": \"npx\", \"args\": [\"-y\", \"@rollbar/mcp-server@latest\"], \"env\": {\"ROLLBAR_ACCOUNT_ACCESS_TOKEN\": \"<read-scope account token>\"}}}}"
+    "claude mcp add --scope user rollbar --env ROLLBAR_ACCOUNT_ACCESS_TOKEN=$ROLLBAR_ACCOUNT_ACCESS_TOKEN -- npx -y @rollbar/mcp-server@latest"
   ],
   "env": [
     "ROLLBAR_ACCOUNT_ACCESS_TOKEN",

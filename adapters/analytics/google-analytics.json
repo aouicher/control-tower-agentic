@@ -4,7 +4,7 @@
   "access": "mcp",
   "setup_url": "https://developers.google.com/analytics/devguides/MCP",
   "install": [
-    "claude mcp add analytics-mcp -- pipx run analytics-mcp"
+    "claude mcp add --scope user analytics-mcp -- pipx run analytics-mcp"
   ],
   "env": [
     "GOOGLE_APPLICATION_CREDENTIALS",

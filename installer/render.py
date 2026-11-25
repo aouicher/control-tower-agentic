@@ -53,6 +53,10 @@ def build_table(vocab_files, answers):
         for name, word in ((key, forms['singular']), (plural_name, forms['plural'])):
             table[name] = word
             table[name[0].upper() + name[1:]] = word[0].upper() + word[1:]
+        # article-aware singular: {{ct.a_workstream}} -> "an initiative" / "a campaign"; {{ct.A_workstream}} at a sentence start
+        article = forms.get('article') or ('an' if forms['singular'][:1].lower() in 'aeiou' else 'a')
+        table['a_' + key] = f"{article} {forms['singular']}"
+        table['A_' + key] = f"{article.capitalize()} {forms['singular']}"
     for key in SCALARS:
         if key in answers:
             table[key] = str(answers[key])

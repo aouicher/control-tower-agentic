@@ -274,6 +274,43 @@ class RobustnessTests(unittest.TestCase):
             self.assertEqual(subprocess.run(cmd, shell=True, input=json.dumps(bad), text=True, capture_output=True).returncode, 2)
 
 
+class CrontabTests(unittest.TestCase):
+    """apply() against a fake `crontab` binary: the user's own lines survive, the block is replaced, read errors abort."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.bin = os.path.join(self.tmp.name, 'bin')
+        os.makedirs(self.bin)
+        self.store = os.path.join(self.tmp.name, 'crontab.store')
+        open(self.store, 'w').write('0 1 * * * my-own-backup\n')
+        fake = os.path.join(self.bin, 'crontab')
+        open(fake, 'w').write('#!/bin/sh\nif [ -n "$FAIL_READ" ] && [ "$1" = "-l" ]; then echo "permission denied" >&2; exit 1; fi\n'
+                              f'if [ "$1" = "-l" ]; then cat {self.store}; else cat > {self.store}; fi\n')
+        os.chmod(fake, 0o755)
+        self.path = os.environ['PATH']
+        os.environ['PATH'] = self.bin + os.pathsep + self.path
+
+    def tearDown(self):
+        os.environ['PATH'] = self.path
+        os.environ.pop('FAIL_READ', None)
+        self.tmp.cleanup()
+
+    def test_block_is_installed_and_replaced_keeping_user_lines(self):
+        a = answers_for(self.tmp.name, ['developer'], scheduler='cron')
+        report = install.install(a, apply_schedule=True)
+        self.assertTrue(report['schedule']['applied'], report['warnings'])
+        cur = open(self.store).read()
+        self.assertIn('my-own-backup', cur)
+        self.assertEqual(cur.count('# BEGIN control-tower'), 1)
+        install.install(a, apply_schedule=True)
+        self.assertEqual(open(self.store).read().count('# BEGIN control-tower'), 1, 'a second apply replaces the block')
+
+    def test_read_error_leaves_the_crontab_alone(self):
+        os.environ['FAIL_READ'] = '1'
+        report = install.install(answers_for(self.tmp.name, ['developer'], scheduler='cron'), apply_schedule=True)
+        self.assertFalse(report['schedule']['applied'])
+        self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n')
+
+
 class UninstallTests(unittest.TestCase):
     def test_uninstall_refuses_a_folder_it_did_not_create(self):
         with tempfile.TemporaryDirectory() as tmp:

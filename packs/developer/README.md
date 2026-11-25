@@ -6,12 +6,12 @@ For individual software developers. It turns the neutral control tower into a da
 
 | Piece | What it does |
 |---|---|
-| `standup` skill | Prepares the daily standup from git history and closed tickets: done, plan, {{ct.risks}} |
+| `standup` skill | Prepares the daily standup from git history and closed tickets (done, plan, blockers) in today's daily note |
 | `review-queue` skill | Pull requests waiting for your review, your open pull requests with review and CI state, stale ones |
 | `worklog` skill | Appends a dated entry (decision, finding, link) to today's daily note |
 | `debug-journal` skill | Turns a debugging session into a note in `library/` |
 | Templates | `debug-journal`, `pull-request-notes`, `spike` |
-| Dashboard | `my-pull-requests` (reads note properties) |
+| Dashboard | `my-pull-requests`: your pull request notes in `work/pull-requests/`, created by `/review-queue` (it offers one per open pull request) or by hand from the `pull-request-notes` template |
 | Cockpit page | `cockpit/dev-today.md` |
 | Jobs | `morning-prs` (08:30 Mon-Fri), `weekly-wrap` (Friday 16:30) |
 | Routines | `daily-note`, `weekly-review`, `morning-brief` for claude.ai cloud routines |

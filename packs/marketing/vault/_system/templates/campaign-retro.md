@@ -12,7 +12,7 @@ status: active
 🕐 Generated on {{date:DD/MM/YYYY}} at {{time:HH:mm}}
 
 > [!summary] Summary
-> - Campaign: [[ ]] and the period it ran
+> - Campaign: link to the campaign note, and the period it ran
 > - Result: did it reach its goal, in one line
 > - Next time: the one thing to keep and the one to change
 

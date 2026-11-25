@@ -38,4 +38,4 @@ due:
 
 ## 📎 Annexes
 
-- Related: [[ ]]
+- Related: link to a note

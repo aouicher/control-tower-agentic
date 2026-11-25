@@ -23,10 +23,10 @@ Also: nothing is deleted, retired notes go to `_system/archive/`.
 | A quick thought or link | `_inbox/` |
 | Something with an end date | `work/projects/` |
 | An ongoing responsibility | `work/areas/` |
-| A stream of work for a {{ct.team}} | `work/workstreams/<group>/` |
+| A stream of work for {{ct.a_team}} | `work/workstreams/<group>/` |
 | A decision to take or taken | `work/decisions/` |
-| A {{ct.risk}} or open problem | `work/risks/` |
-| A {{ct.team}} or a {{ct.person}} | `team/` |
+| {{ct.Risks}} and open problems | `work/risks/` |
+| {{ct.A_team}} or {{ct.a_person}} | `team/` |
 | A meeting | `journal/meetings/<type>/` |
 | A reference or research | `library/` |
 

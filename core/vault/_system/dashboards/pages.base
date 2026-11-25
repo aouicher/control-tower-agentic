@@ -1,0 +1,16 @@
+filters:
+  and:
+    - file.inFolder("cockpit")
+    - type == "hub"
+properties:
+  title:
+    displayName: Page
+views:
+  - type: table
+    name: Pages
+    order:
+      - file.name
+      - title
+    sort:
+      - property: file.name
+        direction: ASC

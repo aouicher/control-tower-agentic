@@ -17,7 +17,7 @@ status: draft
 
 ## 🎯 Problem
 
-- Who, how often, evidence ([[interview-note]])
+- Who, how often, evidence (links to interview notes)
 
 ## 👥 Users
 

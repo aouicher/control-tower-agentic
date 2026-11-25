@@ -25,7 +25,7 @@ The review depends on `work/` and `team/`, not on daily notes: daily notes are o
 
 ## Presentation
 
-Follow section 6 (page style) of the vault `CLAUDE.md`. Use `_system/templates/weekly.md`:
+Follow section 6 (page style) of the vault `CLAUDE.md`. Use `_system/templates/weekly.md`, which has exactly these sections:
 - under the title: `🕐 Generated on DD/MM/YYYY at HH:MM` (real time from `date "+%d/%m/%Y at %H:%M"`);
 - `> [!summary] Summary`: done count, carried-over count, the main signal (3 bullets max);
 - `## ✅ Done`: grouped by note, one line each, in a folded callout `> [!note]- Details` when more than 8 lines;
@@ -33,4 +33,5 @@ Follow section 6 (page style) of the vault `CLAUDE.md`. Use `_system/templates/w
 - `## 🩺 Trends and signals`: 5 bullets max, red or blocked first, with status icons 🟢 🟠 🔴 ⚪;
 - `## 🏆 Wins and lessons`;
 - `## 🎯 Next week: top 3`;
-- `## 🔁 Duplicates to tidy`: table `| Task | Notes | Proposal |`, or one line "No duplicates".
+- `## 🔁 Duplicates to tidy`: table `| Task | Notes | Proposal |`, or one line "No duplicates";
+- `## 📎 Annexes`: folded `> [!note]- Sources` with the daily notes and reports used.

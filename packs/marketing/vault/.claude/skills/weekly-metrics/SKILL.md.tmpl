@@ -10,17 +10,17 @@ Same logic as the `weekly-metrics` job, run by hand with the user present.
 
 ## Steps
 
-1. Get the ISO week with `date +%G-W%V` or the argument. Report on the LAST COMPLETE week (Monday to Sunday) and compare with the week before: both periods are 7 days. Compute both date ranges before reading any data.
+1. The week to report is the argument, else the LAST COMPLETE ISO week (Monday to Sunday; on macOS `date -v-7d +%G-W%V`, on Linux `date -d '7 days ago' +%G-W%V`). The report is named after that week. Compare it with the week before: both periods are 7 days. Compute both date ranges before reading any data.
 2. Read the adapter notes in `.claude/adapters/`: `analytics.md` and `crm.md`. If a capability is not configured, say so in the report and ask the user to paste the figures for it, or continue without it.
 3. Collect, for both weeks, with the same definitions:
    - **Traffic**: sessions or visits, users, top sources.
    - **Conversion**: conversions or sign-ups and the conversion rate (conversions divided by sessions, say which conversion).
    - **CRM and email**: new contacts, emails sent, open rate, click rate, leads created, as far as the tool provides them.
-   - **Campaigns**: for each active campaign note, its KPI from the `## 📊 KPIs` table, read where its `Source` column says.
+   - **Campaigns**: for each draft or active campaign note (label drafts "(draft)"), its KPI from the `## 📊 KPIs` table, read where its `Source` column says.
    - **Content**: for each content note with `stage: published` and a `publish_date` in the last 4 weeks, its views and main result if the analytics tool can attribute them to the page. Rank them: best 3 and worst 3 by the metric that fits their channel.
 4. Truncation and sampling: if a tool says its answer is sampled, limited or paginated, paginate to the end. If you cannot, report the number as "at least N" or "estimated from a sample" and state it in the report. Never present such a figure as exact.
 5. Never invent or fill a missing number. Write "not available" and the reason.
-6. Write `journal/reports/marketing-metrics-<YYYY-Www>.md` as described under Presentation, `type: report`, `report_kind: "marketing-metrics"`. If the file exists, overwrite it (it is generated).
+6. Write `journal/reports/marketing-metrics-<YYYY-Www>.md` as described under Presentation, `date: <today, YYYY-MM-DD>`, `type: report`, `report_kind: "marketing-metrics"`. If the file exists, overwrite it (it is generated).
 7. Observations: exactly 3, each tied to a number, each with a possible reason marked as hypothesis and a suggested next step. Never write `rag` or change any existing note.
 8. Suggested actions are tasks tagged `#to-triage` in the report's `## ✅ Actions`, only for important new findings.
 9. Reply with the summary and the path.

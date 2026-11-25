@@ -177,6 +177,23 @@ class PackTests(unittest.TestCase):
                 self.assertIsNone(FRENCH.search(text))
 
 
+class VocabularyTests(unittest.TestCase):
+    def test_no_hardcoded_article_before_a_token(self):
+        out = subprocess.run(['git', 'ls-files', 'core', 'packs'], cwd=ROOT, capture_output=True, text=True).stdout.split()
+        for rel in out:
+            if rel.endswith(('.md', '.tmpl')):
+                text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+                with self.subTest(file=rel):
+                    self.assertIsNone(re.search(r'\b[aA]n? \{\{ct\.[a-z]+\}\}', text), 'use {{ct.a_<word>}}: the article depends on the word')
+
+    def test_article_forms(self):
+        sys.path.insert(0, os.path.join(ROOT, 'installer'))
+        import render
+        table = render.build_table([os.path.join(ROOT, 'core', 'vocabulary.json'), os.path.join(PACKS_DIR, 'product', 'vocabulary.json')], {})
+        self.assertEqual(table['a_workstream'], 'an initiative')
+        self.assertEqual(table['A_team'], 'A team')
+
+
 class RoutineTests(unittest.TestCase):
     def test_routines_are_well_formed(self):
         sys.path.insert(0, os.path.join(ROOT, 'installer'))

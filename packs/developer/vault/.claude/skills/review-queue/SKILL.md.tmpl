@@ -20,7 +20,7 @@ Read-only on the code host. Output goes in the reply; write a note only if the u
 ## Tasks
 
 - Do not create tasks except by explicit request. When proposing one, only as `- [ ] Review <PR title> @{{ct.owner_handle}} #to-triage` in the note of the related project, area or {{ct.workstream}}, never in a daily note.
-- A pull request note in `work/pull-requests/` is created only when the user asks.
+- Pull request notes: for the user's open pull requests that have no note yet, offer once to create one each in `work/pull-requests/<repo>-<number>.md` from `_system/templates/pull-request-notes.md` (`repo`, `pr`, `url`, `pr_state`, `review_state`, `ci_state` from the code host, double-quoted free text). Create them only if the user says yes. They feed the `my-pull-requests` dashboard. Never change the properties of an existing note: propose the change in the reply.
 
 ## Rules
 

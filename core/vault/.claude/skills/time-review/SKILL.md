@@ -14,7 +14,7 @@ argument-hint: "[YYYY-Www]"
    - If `library/calendar-categories.md` exists, it defines the categories and overrides the defaults.
    - Defaults: **Deep work** (focus blocks), **{{ct.Team}}** (rituals and {{ct.team}} meetings), **Stakeholders** (leadership, cross-functional, steering), **External** (customers, vendors, partners, regulators), **1-1s** (one-to-ones, interviews), **Other** (unclassified: list the titles).
    - If the file does not exist, show the defaults once and offer to save the user's corrected version as `library/calendar-categories.md` from `_system/templates/resource.md`.
-4. Write `journal/reports/time-<YYYY-Www>.md` from `_system/templates/report.md` (`type: report`, `report_kind: time`).
+4. Write `journal/reports/time-<YYYY-Www>.md` from `_system/templates/report.md` (`date: <today, YYYY-MM-DD>`, `type: report`, `report_kind: time`), named after the week it reports on.
 5. Propose at most 2 adjustments as `- [ ] ... @{{ct.owner_handle}} #to-triage` (for example "block 2 h of focus on Thursday"). Never create or edit calendar events.
 6. Reply in 5 lines: total hours, the split, the main observation.
 

@@ -6,7 +6,7 @@ argument-hint: "[YYYY-MM-DD]"
 
 # Today
 
-Target note: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`. Reading page: `cockpit/today.md`. Tasks are never copied from one day to another: a task lives once in its own note and the cockpit aggregates them.
+Target note: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`. Reading page: `cockpit/today.md`, written only by this skill (other skills and routines never edit it). Tasks are never copied from one day to another: a task lives once in its own note and the cockpit aggregates them.
 
 ## Steps
 
@@ -20,9 +20,9 @@ Target note: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`. Reading page: `cockpit/toda
    - `team/` notes with `rag: red|amber`.
 5. Pick up to 3 priorities among items that are overdue, due soon, blocked or red. Each one ends with a wikilink.
 6. Agenda: read today's events with the calendar tool configured for this vault (e.g. a Google Calendar MCP server), in `{{ct.timezone}}`, skipping declined events. If no calendar tool is configured, say so in one line and leave the agenda table with a single row "No calendar configured".
-   - Link each event to its note: a {{ct.team}} ritual to the {{ct.team}} note, a one-to-one to the {{ct.person}} note in `team/`, anything matching a note in `work/` to that note.
+   - Link each event to its note: {{ct.a_team}} ritual to the {{ct.team}} note, a one-to-one to the {{ct.person}} note in `team/`, anything matching a note in `work/` to that note.
    - Add a preparation hint only when an open task or decision links to that event.
-7. Write `cockpit/today.md`: replace the whole body, keep the frontmatter and update its date. Copy the priorities and the agenda into the daily note.
+7. Write `cockpit/today.md`: replace the whole body, keep the frontmatter and update its date. In the daily note, write the priorities under `## 🎯 Focus` and the agenda under `## 📅 Agenda`; leave the other sections as they are.
 8. Show the user the priorities and the overdue tasks in 5 to 10 lines, then ask: "Anything to add?"
 
 ## Rules
@@ -42,4 +42,4 @@ Follow section 6 (page style) of the vault `CLAUDE.md`. Two pages, same content.
 - `## 🔴 Overdue`: table `| Task | Note | Due |`, 5 rows max;
 - one line `📥 N tasks to triage`, with a link to the page that lists `#to-triage` tasks.
 
-**Daily note** (from `_system/templates/daily.md`): same priorities in `> [!summary] Priorities (top 3)`, `## 📅 Meetings` (same table), `## ✅ Tasks` (today-only tasks), `## 📝 Notes`, `## 🌙 End of day`. Keep these headings, with their icons.
+**Daily note** (from `_system/templates/daily.md`, no summary callout: it is a short page): `## 📅 Agenda` (same table), `## 🎯 Focus` (the same priorities, numbered), `## ✅ Tasks` (today-only tasks), `## 📝 Notes`, `## ⚖️ Decisions`, `## 🚨 Blockers`, `## 🌙 End of day`. Keep these headings, with their icons.

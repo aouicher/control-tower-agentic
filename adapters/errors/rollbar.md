@@ -4,19 +4,10 @@ Official documentation: https://docs.rollbar.com/docs/mcp-server-setup
 
 ## Setup
 
-Rollbar publishes an MCP server as the npm package `@rollbar/mcp-server`, run with `npx`. Add this to `.mcp.json` (the server name `rollbar` is the name used in the documentation example):
+Rollbar publishes an MCP server as the npm package `@rollbar/mcp-server`, run with `npx`. The documentation shows it as an `.mcp.json` entry (server name `rollbar`, type `stdio`, command `npx -y @rollbar/mcp-server@latest`, environment variable `ROLLBAR_ACCOUNT_ACCESS_TOKEN`). Add the same server at user scope, so it is visible from the vault and from scheduled jobs, with the token taken from your environment:
 
-```json
-{
-  "mcpServers": {
-    "rollbar": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@rollbar/mcp-server@latest"],
-      "env": { "ROLLBAR_ACCOUNT_ACCESS_TOKEN": "<read-scope account token>" }
-    }
-  }
-}
+```bash
+claude mcp add --scope user rollbar --env ROLLBAR_ACCOUNT_ACCESS_TOKEN=$ROLLBAR_ACCOUNT_ACCESS_TOKEN -- npx -y @rollbar/mcp-server@latest
 ```
 
 Single project instead: use `ROLLBAR_ACCESS_TOKEN` with a project token. Several projects: `ROLLBAR_CONFIG_FILE` pointing to a config file. `ROLLBAR_API_BASE` overrides the API base URL (default `https://api.rollbar.com/api/1`).

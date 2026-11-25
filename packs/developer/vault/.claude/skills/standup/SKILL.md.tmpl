@@ -1,12 +1,12 @@
 ---
 name: standup
-description: Prepare the daily standup: what was done yesterday from git history and closed tickets, plan for today, blockers. Writes the standup section of cockpit/today.md. Use when the user says /standup, "prepare my standup" or "what did I do yesterday".
+description: Prepare the daily standup: what was done yesterday from git history and closed tickets, plan for today, blockers. Writes a standup section in today's daily note. Use when the user says /standup, "prepare my standup" or "what did I do yesterday".
 argument-hint: "[YYYY-MM-DD]"
 ---
 
 # Standup
 
-Output: section `## 🗣️ Standup` of `cockpit/today.md` (replace that section only; create it after the existing content if missing; keep the rest of the page and its frontmatter). Never copy tasks.
+Output: section `## 🧍 Standup` of today's daily note `journal/daily/<YYYY>/<YYYY-MM-DD>.md` (replace that section only; if it is missing, insert it right after `## 🎯 Focus`; if the note is missing, create it from `_system/templates/daily.md` first). Never edit `cockpit/today.md`: only the `today` skill writes it. Never copy tasks.
 
 ## Steps
 
@@ -15,7 +15,7 @@ Output: section `## 🗣️ Standup` of `cockpit/today.md` (replace that section
 3. Done, from tickets: if a tracker adapter exists (`.claude/adapters/tracker.md`), list tickets assigned to the user and resolved yesterday. Trackers return at most 100 items per page: paginate or say "at least N (truncated)". With no tracker configured, skip and say so in one line.
 4. Done, from the vault: read yesterday's daily note (`## 📝 Notes`, `## ⚖️ Decisions`) for context and links.
 5. Plan for today: open tasks due today or overdue (`grep -rn "^- \[ \]" work team`, never `journal/daily/`), today's `## 🎯 Focus` in the daily note, and open pull requests waiting on the user (run the `review-queue` logic if the user asks).
-6. {{ct.Risks}} and blockers: `blocker` property of active projects and {{ct.workstreams}}, `#waiting` tasks, pull requests with failing CI or changes requested, anything the user mentioned.
+6. Blockers: `blocker` property of active projects and {{ct.workstreams}}, `#waiting` tasks, pull requests with failing CI or changes requested, anything the user mentioned.
 7. Write the section: three short blocks Yesterday, Today, Blockers, each bullet one line with a link (pull request, ticket, wikilink). Under 12 bullets overall.
 8. Show the user the same text in the reply so it can be pasted into the team chat.
 

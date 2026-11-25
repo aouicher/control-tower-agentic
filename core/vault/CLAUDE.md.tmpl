@@ -14,8 +14,8 @@ The vault may sync across devices: re-read a note before editing it.
 ## Vault structure
 - `cockpit.md`: the home page, live queries and embedded dashboards only. Never type content there.
 - `_inbox/`: default folder for new notes, unprocessed capture. Emptied with the `inbox` skill (`/inbox`), never filed without my agreement.
-- `cockpit/`: reading pages `my-work`, `commitments`, `overview`, `today` (regenerated each morning by the `today` skill). Do not edit `today` by hand.
-- `work/projects/` (things with an end date), `work/areas/` (ongoing responsibilities), `work/workstreams/<group>/` (one subfolder per {{ct.team}} or channel), `work/decisions/`, `work/risks/` ({{ct.risks}}, incidents, open problems).
+- `cockpit/`: reading pages `my-work`, `commitments`, `overview`, `today` (rewritten only by the `today` skill). Do not edit `today` by hand.
+- `work/projects/` (things with an end date), `work/areas/` (ongoing responsibilities), `work/workstreams/<group>/` (one subfolder per {{ct.team}} or channel), `work/decisions/`, `work/risks/` ({{ct.risks}} and open problems).
 - `team/`: {{ct.team}} notes and {{ct.people}} notes.
 - `journal/`: `daily/<YYYY>/` (daily notes, weekly reviews; only today's tasks), `meetings/<type>/` (1-1s: one folder per {{ct.person}}), `reports/` (generated).
 - `library/`: references and research notes.
@@ -36,10 +36,10 @@ status: draft | active | archived
 ```
 - Free text values are ALWAYS in double quotes: an unquoted `: ` or ` #` breaks the properties panel.
 - Several links in one property: a YAML list of quoted links, `team: ["[[team-a]]", "[[team-b]]"]`.
-- `type` is one of: `project`, `area`, `workstream`, `decision`, `risk`, `team`, `person`, `report`, `meeting`, `resource`, `hub`.
+- `type` is one of: `project`, `area`, `workstream`, `decision`, `risk`, `team`, `person`, `daily`, `weekly`, `report`, `meeting`, `resource`, `hub`. Profile packs add their own types (for example `content`, `opportunity`), described in `.claude/rules/`.
 - Properties by type: project (`owner`, `team`, `rag`, `blocker`, `next_step`, `due`); area (`owner`, `team`); workstream (`group`, `team`, `owner`, `rag`, `progress`, `blocker`, `next_step`, `due`, `tracker`); decision (`decision_status`: to-decide, proposed, made; `owner`, `team`, `due`); risk (`severity`: low, medium, high, critical; `risk_status`: open, mitigated, closed; `team`); team (`lead`, `rag`, `tracker`, `members`); person (`role`, `team`, `signal`, `rag`, `last_one_to_one`); report (`report_kind`); meeting (`meeting_type`).
 - `rag` is `red | amber | green | unknown`. Automations may propose it in text; only I write `rag`.
-- File names are descriptive phrases (`payment-provider-migration.md`), never `untitled-12.md`.
+- File names are descriptive phrases (`website-redesign.md`), never `untitled-12.md`.
 
 ## Page style
 - Only long pages (over about 40 lines) and generated reports open with ONE `> [!summary] Summary` callout (3 bullets max). Short pages get none.

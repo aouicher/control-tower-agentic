@@ -320,9 +320,13 @@ class ScheduleTests(unittest.TestCase):
         try:
             for rel in ('.git/hooks/post-commit', '.git/config', '.github/workflows/x.yml'):
                 self.assertIsNotNone(g.tool('Write', os.path.join(g.vault, rel)), rel)
-            for cmd in ('date -f ~/.config/gh/hosts.yml', 'date --file=/etc/passwd', 'cat ~/.claude/.credentials.json', 'cat ~/.kube/config'):
+            for cmd in ('date -f ~/.config/gh/hosts.yml', 'date --file=/etc/passwd', 'date -uf /etc/hosts', 'date -f/etc/hosts',
+                        'date -r /etc/hosts', 'date --reference=/etc/hosts', 'echo x; date -f /etc/hosts', 'cat ~/.claude/.credentials.json',
+                        'cat ~/.kube/config'):
                 self.assertIsNotNone(g.bash(cmd), cmd)
-            self.assertIsNone(g.bash('date +%F'))
+            for cmd in ('date', 'date +%F', 'date -u +%Y-%m-%dT%H:%M', 'date "+%d/%m/%Y at %H:%M"', 'date +%G-W%V',
+                        "date -d 'last monday' +%F", 'date -v-7d +%F', 'date -j -v-mon +%F', 'date -I', 'echo $(date +%F)'):
+                self.assertIsNone(g.bash(cmd), cmd)
         finally:
             g.tearDown()
 

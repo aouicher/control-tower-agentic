@@ -4,7 +4,7 @@ filters:
     - type == "content"
     - status != "archived"
 formulas:
-  stage_rank: if(stage == "idea", 0, if(stage == "draft", 1, if(stage == "review", 2, if(stage == "scheduled", 3, 4))))
+  stage_rank: if(stage == "idea", "1 idea", if(stage == "draft", "2 draft", if(stage == "review", "3 review", if(stage == "scheduled", "4 scheduled", "5 published"))))
 properties:
   channel:
     displayName: Channel
@@ -16,11 +16,13 @@ properties:
     displayName: "{{ct.Workstream}}"
   owner:
     displayName: Owner
+  formula.stage_rank:
+    displayName: Stage
 views:
   - type: table
     name: Content pipeline
     groupBy:
-      property: stage
+      property: formula.stage_rank
       direction: ASC
     order:
       - file.name

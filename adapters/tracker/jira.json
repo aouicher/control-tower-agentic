@@ -4,7 +4,7 @@
   "access": "mcp",
   "setup_url": "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
   "install": [
-    "claude mcp add --transport http atlassian https://mcp.atlassian.com/v2/mcp"
+    "claude mcp add --scope user --transport http atlassian https://mcp.atlassian.com/v2/mcp"
   ],
   "env": [],
   "permissions_allow": [],

@@ -16,6 +16,9 @@ The state of all {{ct.teams}} and {{ct.workstreams}} at a glance. Back to [[cock
 ## 🚧 {{ct.Workstreams}}
 ![[workstreams.base]]
 
+## 📊 Latest reports
+![[reports.base]]
+
 ## 🔁 Review cadence
 | Rhythm | Source | What I look at |
 |---|---|---|

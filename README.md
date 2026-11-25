@@ -25,7 +25,7 @@ It is built for people who lead, build, plan or promote things: engineering lead
 
 ## Quick start
 
-Prerequisites: Python 3.9+, git, [Claude Code](https://claude.com/claude-code), Obsidian. See [docs/getting-started.md](docs/getting-started.md) for details.
+Prerequisites: Python 3.9+, git, [Claude Code](https://claude.com/claude-code), Obsidian 1.9 or newer. See [docs/getting-started.md](docs/getting-started.md) for details, including a short guide if you are new to the terminal.
 
 ```bash
 git clone https://github.com/<owner>/control-tower-agentic.git
@@ -44,7 +44,7 @@ Or script it with an answers file (see [examples/answers](examples/answers)):
 ```bash
 python3 installer/install.py --answers examples/answers/developer.json --dry-run
 python3 installer/install.py --answers examples/answers/developer.json
-python3 installer/doctor.py --vault ~/control-tower-vault
+python3 installer/doctor.py --vault ~/control-tower-developer   # the vault_path of the answers file
 ```
 
 ## Documentation

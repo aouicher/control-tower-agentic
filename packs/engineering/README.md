@@ -2,14 +2,14 @@
 
 For heads of engineering, CTOs and engineering managers. It adapts the control tower to run delivery, service health, {{ct.risks}} and architecture decisions from one Obsidian vault.
 
-Vocabulary: {{ct.team}} = squad, {{ct.workstream}} = topic, {{ct.risk}} = incident, {{ct.person}} = direct report.
+Vocabulary: a team is shown as {{ct.a_team}}, a workstream as {{ct.a_workstream}}, a risk as an incident.
 
 ## What it gives
 
 | Piece | What it does |
 |---|---|
 | Skill `weekly-digest` | Weekly delivery report: PRs merged per {{ct.team}}, sprint status, blocked and in-review items, load per {{ct.person}} (signals for 1-1s, never verdicts), {{ct.workstream}} notes refreshed |
-| Skill `postmortem` | Blameless write-up of an {{ct.risk}} into `work/risks/` |
+| Skill `postmortem` | Blameless write-up of one {{ct.risk}} into `work/risks/` |
 | Skill `adr` | Architecture decision record in the current repository, plus an index note in `work/decisions/` |
 | Skill `questionnaire-answer` | Draft answers to security or compliance questionnaires from code and docs; the draft stays outside the vault |
 | Job `morning-triage` | 08:00 Mon-Fri: new errors and quality gates |
@@ -18,7 +18,7 @@ Vocabulary: {{ct.team}} = squad, {{ct.workstream}} = topic, {{ct.risk}} = incide
 | Job `weekly-digest` | Friday 16:00: runs the `weekly-digest` skill logic |
 | Cockpit pages | `cockpit/pulse.md` (service health) and `cockpit/delivery.md` (weekly delivery) |
 | Dashboard | `delivery.base`: delivery reports over time |
-| Routines | `daily-note`, `weekly-review`, `morning-brief`, `overnight-health`: prompts to paste into claude.ai cloud routines |
+| Routines | `daily-note`, `weekly-review`, `morning-brief`, `overnight-health` (only reports which services the `service-health` job did not cover today): prompts for claude.ai cloud routines |
 
 Capabilities: `calendar` is required. `tracker`, `code`, `errors`, `quality` and `logs` are optional; a job whose capability is missing is simply not installed.
 

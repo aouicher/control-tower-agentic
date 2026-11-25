@@ -8,19 +8,17 @@ status: active
 
 # {{date:dddd D MMMM YYYY}}
 
-> [!summary] Summary
-> - Focus: the one or two things that make today a good day
-> - State: how the day went, in one line
-> - To do next: what carries over, written in its own note, not here
-
 ## 📅 Agenda
 
-- 
+| Time | Meeting | Topic / preparation |
+|---|---|---|
+|  |  |  |
 
 ## 🎯 Focus
 
 1. 
 2. 
+3. 
 
 ## ✅ Tasks
 
@@ -36,7 +34,7 @@ Only tasks that are for today and nowhere else. Everything else belongs in its p
 
 - 
 
-## 🚨 {{ct.Risks}} and blockers
+## 🚨 Blockers
 
 - 
 

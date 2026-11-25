@@ -4,7 +4,7 @@
   "access": "mcp",
   "setup_url": "https://mcp.sentry.dev/",
   "install": [
-    "claude mcp add --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}"
+    "claude mcp add --scope user --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}"
   ],
   "env": [],
   "permissions_allow": [],

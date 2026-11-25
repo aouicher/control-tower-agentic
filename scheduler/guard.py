@@ -15,6 +15,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import sys
 
 BASH_RULES = [
@@ -29,7 +30,6 @@ BASH_RULES = [
     (r'\b(printenv|env)\s*($|[|;&>])', 'environment dump'),
     (r'(^|[\s/])\.env(\.[\w-]+)?\b', 'reads an .env file'),
     (r'\.ssh\b|id_(rsa|ed25519)|\.aws/credentials|\.netrc|\.npmrc|\.git-credentials|security\s+find-|\.config/gh\b|\.claude/|\.docker/config|\.kube/config|\.config/gcloud', 'reads credentials'),
-    (r'\bdate\b[^|;&]*\s(-f|--file|-r|--reference)\b', 'date reading a file'),
     (r'\bgh\s+(pr|issue)\s+(create|merge|close|reopen|comment|edit|review|ready)\b', 'GitHub write (pull request or issue)'),
     (r'\bgh\s+(repo|release|workflow|secret|variable)\s+(create|delete|edit|run|set|remove)\b', 'GitHub write (repository)'),
     (r'\bgh\s+api\b.*(\s-X\b|--method|\s-f\s|\s-F\s|--field|--raw-field|--input)', 'GitHub API write'),
@@ -47,6 +47,44 @@ READ_SECRET = re.compile(r'(^|/)(\.env(\.[\w-]+)?|\.netrc|\.npmrc|\.git-credenti
 # `.git` matters as much: a hook or `core.fsmonitor` written there would run as the user at the next git command.
 PROTECTED = ('.obsidian', '_system/templates', '_system/dashboards', '.claude', '.control-tower', '.control-tower-backup', '.git', '.github', '.vscode')
 PROTECTED_FILES = ('claude.md', 'claude.local.md', '.mcp.json')
+# `date` is allowed to every job, so its arguments are allow-listed after shell tokenising: display formats and date
+# arithmetic only. GNU `date -f FILE` / `-r FILE` would print a file's content or metadata, in any flag spelling.
+DATE_FLAGS = re.compile(r'^(-u|--utc|-j|-R|-I\w*|--iso-8601(=\w+)?|--rfc-3339=\w+|-v[+-]?\w+|--date=.*)$')
+
+
+def date_reason(cmd):
+    if not re.search(r'\bdate\b', cmd):
+        return None
+    try:
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return 'cannot parse a command that calls date'
+    seps = {';', '&&', '||', '|', '&', '(', '$(', ')', '`'}
+    i, at_start = 0, True
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in seps or tok.endswith('(') and set(tok) <= set('$('):
+            at_start = True
+            i += 1
+            continue
+        if at_start and tok == 'date':
+            i += 1
+            while i < len(tokens) and tokens[i] not in seps:
+                arg = tokens[i]
+                if arg in ('-d', '--date'):
+                    i += 2  # the next token is a date expression, not a file
+                    continue
+                if not (arg.startswith('+') or DATE_FLAGS.match(arg)):
+                    return f'date is limited to formats and date arithmetic, refused argument "{arg}"'
+                i += 1
+            continue
+        at_start = False
+        i += 1
+    return None
+
+
 WRITE_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
 
 
@@ -109,6 +147,9 @@ def check(event, vault):
         for rx, reason in BASH_RULES:
             if re.search(rx, cmd, re.I):
                 return f'{reason}: {cmd[:120]}'
+        reason = date_reason(cmd)
+        if reason:
+            return f'{reason}: {cmd[:120]}'
         return None
     if tool in ('Glob', 'Grep'):
         reason = search_scope_reason(tool, inp, event, vault)

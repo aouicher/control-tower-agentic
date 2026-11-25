@@ -278,6 +278,8 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
         any_tool = True
         man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
         lines += [f'### {cap}: {tool}', '', f"Official documentation: {man['setup_url']}", '']
+        if man.get('setup_steps'):  # steps that are not shell commands (for example a connector made in the tool's own UI)
+            lines += ['Steps:', ''] + [f'{i}. {step}' for i, step in enumerate(man['setup_steps'], 1)] + ['']
         if man.get('install'):
             lines += ['Run once in a terminal:', '', '```bash'] + man['install'] + ['```', '']
         if man.get('env'):
@@ -642,7 +644,7 @@ def apply(kind, plist_paths, cron_file, launch_agents_dir, no_launchctl, report)
             report['warnings'].append(f'could not read your crontab, nothing changed: {got.stderr.strip()}')
             return False
         cur = got.stdout if got.returncode == 0 else ''
-        cur = re(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
+        cur = re.sub(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
         block = open(cron_file, encoding='utf-8').read() if os.path.exists(cron_file) else ''
         new = cur.rstrip('\n') + ('\n' if cur.strip() else '') + block
         r = subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)

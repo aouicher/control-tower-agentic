@@ -22,7 +22,7 @@ team: ""
 
 ## 🚧 Work in progress
 
-- [[ ]]
+- link to a note
 
 ## ✅ Tasks
 
