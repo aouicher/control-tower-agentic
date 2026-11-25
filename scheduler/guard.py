@@ -66,6 +66,13 @@ def check(event, vault):
             if re.search(rx, cmd, re.I):
                 return f'{reason}: {cmd[:120]}'
         return None
+    if tool in ('Glob', 'Grep'):
+        # path-like patterns can point anywhere even when `path` is absent or inside the vault
+        pat = inp.get('pattern') if tool == 'Glob' else inp.get('glob')
+        if pat and (str(pat).startswith(('/', '~')) or '..' in str(pat).replace('\\', '/').split('/')):
+            return f'pattern escapes the vault: {pat}'
+        if not inp.get('path') and event.get('cwd') and not inside(event['cwd'], vault):
+            return f'search starts outside the vault: {event["cwd"]}'  # no path means the working directory
     path = inp.get('file_path') or inp.get('notebook_path') or inp.get('path')
     if not path:
         return None

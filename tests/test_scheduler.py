@@ -83,6 +83,16 @@ class GuardTests(unittest.TestCase):
                     self.assertIsNotNone(self.tool(tool, p))
         self.assertIsNone(self.tool('Read', os.path.join(self.vault, 'cockpit.md')))
 
+    def test_search_patterns_cannot_escape_the_vault(self):
+        home = os.path.expanduser('~')
+        self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': f'{home}/.ssh/*'}}, self.vault))
+        self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': '../**/*.pem'}}, self.vault))
+        self.assertIsNotNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': '~/.aws/*'}}, self.vault))
+        self.assertIsNotNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x', 'glob': '/etc/*'}}, self.vault))
+        self.assertIsNotNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x'}, 'cwd': '/etc'}, self.vault))
+        self.assertIsNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': '/etc/passwd'}, 'cwd': self.vault}, self.vault))
+        self.assertIsNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': 'work/**/*.md'}}, self.vault))
+
     def test_symlink_cannot_escape_the_vault(self):
         outside = os.path.join(self.tmp.name, 'secret-dir')
         os.makedirs(outside)
