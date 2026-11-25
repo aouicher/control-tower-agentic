@@ -300,8 +300,9 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
         lines.append(f"- `{j['id']}` was not installed: no tool chosen for {', '.join(j['missing'])}.")
     lines += ['', '## 4. Cloud routines (optional)', '']
     if routines:
-        lines += ['Cloud routines run on claude.ai, even when your computer is off. Most of them write notes, so they need this vault '
-                  'in a GitHub repository attached to the routine. Available for your answers:', '',
+        lines += ['Cloud routines run on a schedule from claude.ai. Those that write notes need to reach this vault: link this computer '
+                  'to the routine (simplest; the computer must be on at that time), or attach the vault\'s GitHub repository '
+                  '(runs even when the computer is off). See docs/scheduling.md. Available for your answers:', '',
                   '| Routine | When |', '|---|---|'] + [f"| {r['name']} | {r['days']} at {r['time']} |" for r in routines] + [
                   '', 'To create them, start Claude Code in the control tower repository and run `/install-control-tower routines`: '
                   'it proposes each routine and creates only the ones you accept. Or paste a prompt by hand from '

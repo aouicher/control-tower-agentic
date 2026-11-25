@@ -43,12 +43,12 @@ claude
 then, in the control tower repository, `/install-control-tower routines`. The assistant:
 
 1. shows each routine with its schedule, connectors and vault need,
-2. asks for the vault's GitHub repository when a routine writes notes (a cloud routine cannot see a folder on your computer),
+2. asks how routines that write notes reach the vault: through your computer, linked to the routine, or through the vault's GitHub repository,
 3. skips routines that already exist on your account, so running it twice creates no duplicates,
 4. asks one question, which routines to create, and creates exactly the ones you tick,
 5. gives you the claude.ai link and next run time of each one.
 
-What it needs from you: Claude Code signed in to your claude.ai account, the vault in a GitHub repository for routines marked `vault: write`, and the listed connectors connected on claude.ai.
+What it needs from you: Claude Code signed in to your claude.ai account, a way to reach the vault for routines marked `vault: write` (your computer linked to the routine, or the vault in a GitHub repository), and the listed connectors connected on claude.ai.
 
 What it never does: update or delete a routine (an update through the API replaces the whole configuration; change routines on claude.ai), handle your credentials, or create a routine you did not tick. `uninstall.py` does not remove cloud routines: delete them on claude.ai.
 
@@ -56,7 +56,17 @@ By hand instead: open claude.ai routines, create one, paste the content of the `
 
 ### Cloud routines and your local vault
 
-A routine sees the vault only through its GitHub repository, never the folder on your computer. Routines that read job reports (those with `after:`, such as a morning brief) need the local vault pushed first: install the Obsidian Git plugin and set it to commit and push automatically every few minutes, or push by hand. Routines that write (`vault: write`) commit and push to the default branch of that repository: pull it (Obsidian Git does this too) to see what they wrote. A routine that finds a report missing or older than today says the vault was not synced and continues with what it has.
+A routine reaches the vault in one of two ways:
+
+| | Linked computer | GitHub repository |
+|---|---|---|
+| How | In the routine's settings on claude.ai, link the computer that holds the vault | Put the vault in a GitHub repository and attach it to the routine |
+| Runs | On your computer, which must be on and awake at that time | In the cloud, even when your computer is off |
+| Sees the local jobs' reports | Immediately, same folder | Only after the local vault is pushed (Obsidian Git plugin, auto commit and push every few minutes) |
+| Its own writes | In place, nothing to sync | Committed and pushed to the default branch: pull to see them (Obsidian Git does it) |
+| Best for | A vault on one machine, routines that follow local jobs | Several machines, or routines that must run while the laptop sleeps |
+
+Whatever the mode, a routine that finds a report missing or older than today says so and continues with what it has.
 
 ## Writing rules for unattended prompts
 
