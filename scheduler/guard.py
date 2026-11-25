@@ -101,6 +101,19 @@ def inside(path, root):
     path, root = real(path), real(root)
     return path == root or path.startswith(root + os.sep)
 
+# Inside the vault, jobs must READ their own instructions: the skills, the adapter notes and the pack rules. Everything else under
+# `.claude` (settings, local files) stays unreadable, and nothing under `.claude` is ever writable (see PROTECTED).
+VAULT_READABLE = ('.claude/skills', '.claude/adapters', '.claude/rules')
+
+
+def vault_readable(path, vault):
+    """True when `path` resolves inside one of the vault folders jobs may read (symlinks resolved, case-insensitive)."""
+    if not inside(path, vault):
+        return False
+    rel = os.path.relpath(real(path), real(vault)).replace(os.sep, '/').lower()
+    return any(rel == d or rel.startswith(d + '/') for d in VAULT_READABLE)
+
+
 SECRET_NAMES = ('.env', '.env.local', '.env.production', '.netrc', '.npmrc', '.git-credentials', 'id_rsa', 'id_ed25519', 'credentials', '.ssh', '.aws', '.gnupg', '.kube', '.docker', '.claude')
 GLOB_META = re.compile(r'[{}\[\]\\]')
 SECRET_SEGMENT = re.compile(r'^(\.env.*|\.netrc|\.npmrc|\.git-credentials|id_rsa.*|id_ed25519.*|credentials.*|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude)$', re.I)
@@ -136,6 +149,12 @@ def search_scope_reason(tool, inp, event, vault):
     target = '/' + '/'.join(static) if pat.startswith('/') else os.path.join(base, *static)
     if not inside(target, vault):
         return f'pattern escapes the vault: {pat}'
+    if vault_readable(target, vault):
+        # the search starts in a readable folder: judge only the part after it (`.claude/adapters/*.md` is fine)
+        rel_base = os.path.relpath(real(base), real(vault)).replace(os.sep, '/')
+        skip = len([s for s in rel_base.split('/') if s and s != '.']) if not pat.startswith('/') else 0
+        prefix = [s for s in os.path.relpath(real(target), real(vault)).replace(os.sep, '/').split('/') if s]
+        segments = segments[max(len(prefix) - skip, 0):] if not pat.startswith('/') else segments[len(real(vault).strip('/').split('/')) + len(prefix):]
     for x in segments:
         # a wildcard segment is refused when it could match a secret name (".*", "*env*", ".e*" ...), not only when it spells one
         if SECRET_SEGMENT.match(x) or (re.search(r'[*?]', x) and not re.fullmatch(r'\*+', x) and any(re.match(fnmatch.translate(x), n, re.I) for n in SECRET_NAMES)):
@@ -172,7 +191,12 @@ def check(event, vault):
     if tool in ('Read', 'Grep', 'Glob') and not inside(path, vault):
         return f'jobs may only read inside the vault: {path}'  # blocks ~/.ssh, ~/.aws, ~/.claude, /etc... in one rule
     if tool in WRITE_TOOLS or tool in ('Read', 'Grep', 'Glob'):
-        if READ_SECRET.search(real(path)):
+        if tool not in WRITE_TOOLS and vault_readable(path, vault):
+            # skills, adapter notes and rules: only the vault-relative part is judged, so `.claude` itself is not a secret here
+            rel = os.path.relpath(real(path), real(vault)).replace(os.sep, '/')
+            if READ_SECRET.search(rel):
+                return f'secret file: {path}'
+        elif READ_SECRET.search(real(path)):
             return f'secret file: {path}'
     return None
 

@@ -17,8 +17,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
 import install  # noqa: E402
 
-PROBE = """You are a test probe. Never ask questions. Do exactly these steps with the Write tool, then stop:
-1. Write the file journal/reports/smoke.md containing the single line: smoke ok
+PROBE = """You are a test probe. Never ask questions. Do exactly these steps, then stop:
+0. Read the file .claude/adapters/code.md with the Read tool and note its first heading.
+1. With the Write tool, write the file journal/reports/smoke.md containing two lines: smoke ok, then the heading you read in step 0 (or UNREADABLE if step 0 was refused)
 2. Write the file .claude/settings.json containing {}
 3. Write the file ../outside.md containing x
 Reply with one line per step: the step number and whether it succeeded or was refused."""
@@ -44,6 +45,8 @@ def main():
         checks = [
             ('the job ran (rc=0)', r.returncode == 0),
             ('report written inside the vault', os.path.isfile(os.path.join(vault, 'journal', 'reports', 'smoke.md'))),
+            ('the job could read its adapter note', os.path.isfile(os.path.join(vault, 'journal', 'reports', 'smoke.md'))
+             and 'UNREADABLE' not in open(os.path.join(vault, 'journal', 'reports', 'smoke.md')).read()),
             ('.claude/settings.json untouched', (open(os.path.join(vault, '.claude', 'settings.json')).read() if os.path.exists(os.path.join(vault, '.claude', 'settings.json')) else None) == settings_before),
             ('nothing written outside the vault', not os.path.exists(os.path.join(tmp, 'outside.md'))),
         ]

@@ -108,6 +108,27 @@ class GuardTests(unittest.TestCase):
         self.assertIsNone(guard.check({'tool_name': 'Glob', 'tool_input': {'pattern': 'work/**/*.md'}, 'cwd': self.vault}, self.vault))
         self.assertIsNone(guard.check({'tool_name': 'Grep', 'tool_input': {'pattern': 'x', 'glob': f'{self.vault}/work/*.md'}, 'cwd': self.vault}, self.vault))
 
+    def test_jobs_can_read_their_own_skills_adapters_and_rules(self):
+        # regression: `.claude` was treated as a secret everywhere, so jobs could not read their adapter notes and wrote empty reports
+        for rel in ('.claude/skills/weekly/SKILL.md', '.claude/adapters/tracker.md', '.claude/rules/product.md', '.Claude/Adapters/x.md'):
+            with self.subTest(rel=rel):
+                self.assertIsNone(self.tool('Read', os.path.join(self.vault, rel)))
+        ev = lambda tool, inp: guard.check({'tool_name': tool, 'tool_input': inp, 'cwd': self.vault}, self.vault)
+        self.assertIsNone(ev('Glob', {'pattern': '.claude/adapters/*.md'}))
+        self.assertIsNone(ev('Glob', {'pattern': '.claude/skills/**/SKILL.md'}))
+        self.assertIsNone(ev('Glob', {'pattern': os.path.join(self.vault, '.claude', 'adapters', '*.md')}))
+        self.assertIsNone(ev('Glob', {'pattern': '*.md', 'path': os.path.join(self.vault, '.claude', 'adapters')}))
+        self.assertIsNone(ev('Grep', {'pattern': 'jira', 'path': os.path.join(self.vault, '.claude', 'skills')}))
+        # still refused: the rest of .claude, secrets inside readable folders, any write, ~/.claude
+        for rel in ('.claude/settings.json', '.claude/settings.local.json', '.claude/adapters/../settings.json', '.claude/adapters/.env'):
+            with self.subTest(rel=rel):
+                self.assertIsNotNone(self.tool('Read', os.path.join(self.vault, rel)))
+        for pat in ('.claude/*', '**/.claude/*', '.claude/adapters/.env*', '.claude/adapters/../*'):
+            with self.subTest(pat=pat):
+                self.assertIsNotNone(ev('Glob', {'pattern': pat}))
+        self.assertIsNotNone(self.tool('Write', os.path.join(self.vault, '.claude', 'adapters', 'tracker.md')))
+        self.assertIsNotNone(self.tool('Read', os.path.expanduser('~/.claude/settings.json')))
+
     def test_symlink_cannot_escape_the_vault(self):
         outside = os.path.join(self.tmp.name, 'secret-dir')
         os.makedirs(outside)
