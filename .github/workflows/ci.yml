@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: python -W ignore -m unittest discover -s tests -p "test_*.py" -v
+      - name: End-to-end install in a disposable HOME (fake claude, no network calls)
+        run: python tests/e2e/run_e2e.py
+      - name: Leak and language scan (generic patterns; the private denylist is local only)
+        run: python tools/scan-leaks.py --strict
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean Linux install, crontab applied and removed, no network
+        run: |
+          docker build -f tests/e2e/Dockerfile -t control-tower-e2e .
+          docker run --rm --network none control-tower-e2e

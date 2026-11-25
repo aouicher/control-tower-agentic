@@ -4,7 +4,7 @@
 
 - Everything in this repository is in English.
 - No private names, company specifics, secrets or real customer data. Run `python3 tools/scan-leaks.py` before every commit; add private terms to your local, git-ignored `.denylist.local`.
-- Standard library only for installer and scheduler code (Python 3.8+).
+- Standard library only for installer and scheduler code (Python 3.9+, for `zoneinfo`).
 - Jobs and adapters stay read-only on external systems.
 
 ## Tests
@@ -13,7 +13,7 @@
 python3 -W ignore -m unittest discover -s tests -p "test_*.py"
 ```
 
-Tests run in temporary directories: they never touch your real vault, `~/.claude`, launchd or crontab.
+Tests run in temporary directories: they never touch your real vault, `~/.claude`, launchd or crontab. Before a pull request also run `python3 tests/e2e/run_e2e.py`; see [docs/testing.md](docs/testing.md) for the container test.
 
 ## Adding a pack
 

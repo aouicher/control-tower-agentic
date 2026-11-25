@@ -5,7 +5,7 @@
 Each installed job lives in `~/.control-tower/jobs/<id>/` (`prompt.md`, `job.json`, `settings.json`). The runner is `~/.control-tower/bin/run_job.py`:
 
 ```bash
-python3 ~/.control-tower/bin/run_job.py --job morning-prs
+python3 ~/.control-tower/bin/run_job.py --job morning-prs --ct-home ~/.control-tower
 ```
 
 It starts `claude -p` in the vault with:

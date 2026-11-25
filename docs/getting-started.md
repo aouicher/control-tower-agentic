@@ -5,7 +5,7 @@
 | Need | Why | Check |
 |---|---|---|
 | macOS or Linux | Windows is not supported yet (WSL2 should work, untested) | `uname -s` |
-| Python 3.8+ | The installer and the job runner use only the standard library | `python3 --version` |
+| Python 3.9+ | The installer and the job runner use only the standard library (`zoneinfo` converts job times) | `python3 --version` |
 | git | Cloning this repository | `git --version` |
 | [Claude Code](https://claude.com/claude-code) | Skills, guided installer and scheduled jobs | `claude --version` |
 | [Obsidian](https://obsidian.md) | Reading and editing the vault | open the app |
@@ -68,7 +68,7 @@ Fields: `owner_name`, `owner_handle`, `timezone`, `vault_path`, `ct_home`, `pack
 5. Run a job by hand once before scheduling it:
 
 ```bash
-python3 ~/.control-tower/bin/run_job.py --job morning-prs
+python3 ~/.control-tower/bin/run_job.py --job morning-prs --ct-home ~/.control-tower
 ```
 
 6. When you are happy, apply the schedule:

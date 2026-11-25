@@ -1,0 +1,6 @@
+.git
+.denylist.local
+*.local
+.env*
+tests/.work
+__pycache__

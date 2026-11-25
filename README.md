@@ -25,7 +25,7 @@ It is built for people who lead, build, plan or promote things: engineering lead
 
 ## Quick start
 
-Prerequisites: Python 3.8+, git, [Claude Code](https://claude.com/claude-code), Obsidian. See [docs/getting-started.md](docs/getting-started.md) for details.
+Prerequisites: Python 3.9+, git, [Claude Code](https://claude.com/claude-code), Obsidian. See [docs/getting-started.md](docs/getting-started.md) for details.
 
 ```bash
 git clone https://github.com/<owner>/control-tower-agentic.git
@@ -56,6 +56,7 @@ python3 installer/doctor.py --vault ~/control-tower-vault
 - [Scheduling](docs/scheduling.md): local jobs and cloud routines
 - [Security and privacy](docs/security.md): what jobs can and cannot do
 - [Troubleshooting](docs/troubleshooting.md)
+- [Testing](docs/testing.md): unit, end-to-end and clean-container tests
 - Design specs for contributors: [core](docs/design/core-spec.md), [packs](docs/design/pack-spec.md)
 - [Contributing](CONTRIBUTING.md), [Changelog](CHANGELOG.md), [Security policy](SECURITY.md)
 
