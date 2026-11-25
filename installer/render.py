@@ -81,11 +81,29 @@ def sha256(path):
     return h.hexdigest()
 
 
-def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None):
+def update_action(target, out_rel, content, src, installed):
+    """What an update does with one kit file: create, kept (already identical), updated, stashed or skipped."""
+    if not os.path.exists(target):
+        return 'skipped' if out_rel in installed else 'create'
+    new = (content.encode('utf-8') if content is not None else open(src, 'rb').read())
+    current = open(target, 'rb').read()
+    if current == new:
+        return 'kept'
+    if installed.get(out_rel) and hashlib.sha256(current).hexdigest() == installed[out_rel]:
+        return 'updated'
+    return 'stashed'
+
+
+def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None, installed=None, stash_dir=None):
     """Render src into dst. Returns {'created': [...], 'replaced': [...], 'kept': [...]} (relative paths).
 
     `rename` is an optional function(relative_output_path) -> relative_output_path, used by the installer
     to place files (for example prompt.md.tmpl -> prompt.md).
+
+    Update mode (`installed` = {relative path: sha256 at install time}, from the vault manifest):
+      * a file the user never edited (same checksum as installed) is replaced by the new version -> 'updated';
+      * a file the user edited is kept; the new version is written under `stash_dir` for a manual merge -> 'stashed';
+      * a file that was installed and then deleted by the user is not recreated -> 'skipped'.
     """
     src = os.path.abspath(src)
     dst = os.path.abspath(os.path.expanduser(dst))
@@ -112,9 +130,23 @@ def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=F
         clash = [o for _, t, o, _ in plan if os.path.exists(t) and not o.endswith('.gitkeep')]
         if clash:
             raise RenderError('collision with existing files: ' + ', '.join(sorted(clash)))
-    result = {'created': [], 'replaced': [], 'kept': []}
+    result = {'created': [], 'replaced': [], 'kept': [], 'updated': [], 'stashed': [], 'skipped': []}
     for s, target, out_rel, content in plan:
         exists = os.path.exists(target)
+        if installed is not None and not force:
+            action = update_action(target, out_rel, content, s, installed)
+            if action != 'create':
+                result[action].append(out_rel)
+                if dry_run or action in ('kept', 'skipped'):
+                    continue
+                dest = target if action == 'updated' else os.path.join(stash_dir, out_rel)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                if content is None:
+                    shutil.copy2(s, dest)
+                else:
+                    with open(dest, 'w', encoding='utf-8') as fh:
+                        fh.write(content)
+                continue
         if exists and not force:
             result['kept'].append(out_rel)
             continue

@@ -278,6 +278,55 @@ class RobustnessTests(unittest.TestCase):
             self.assertEqual(subprocess.run(cmd, shell=True, input=json.dumps(bad), text=True, capture_output=True).returncode, 2)
 
 
+class UpdateTests(unittest.TestCase):
+    """`--update` after a new version of the kit: untouched files refreshed, edited files kept, deleted files left deleted."""
+    def test_update_respects_what_the_user_did(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = os.path.join(tmp, 'kit')
+            shutil.copytree(ROOT, kit, ignore=shutil.ignore_patterns('.git', 'tests', '__pycache__', '*.local'))
+            a = answers_for(tmp, ['developer'], scheduler='none')
+            install.install(a, repo=kit, log=lambda *x: None)
+            v = a['vault_path']
+            skill = os.path.join(v, '.claude', 'skills', 'today', 'SKILL.md')
+            claude_md = os.path.join(v, 'CLAUDE.md')
+            research = os.path.join(v, '.claude', 'skills', 'research', 'SKILL.md')
+            with open(claude_md, 'a', encoding='utf-8') as fh:
+                fh.write('\nMy own rule.\n')
+            os.remove(research)
+            # a new version of the kit changes three files and adds one
+            for rel in ('core/vault/.claude/skills/today/SKILL.md', 'core/vault/CLAUDE.md.tmpl', 'core/vault/.claude/skills/research/SKILL.md'):
+                with open(os.path.join(kit, rel), 'a', encoding='utf-8') as fh:
+                    fh.write('\nKit v2 line.\n')
+            os.makedirs(os.path.join(kit, 'core', 'vault', 'library'), exist_ok=True)
+            open(os.path.join(kit, 'core', 'vault', 'library', 'whats-new.md'), 'w').write('---\ntitle: "New"\ntype: resource\n---\n# New\n')
+
+            dry = install.install(a, repo=kit, dry_run=True, update=True, log=lambda *x: None)
+            self.assertNotIn('Kit v2 line.', open(skill, encoding='utf-8').read(), 'a dry run changes nothing')
+            self.assertIn('.claude/skills/today/SKILL.md', dry['updated'])
+
+            report = install.install(a, repo=kit, update=True, log=lambda *x: None)
+            self.assertIn('Kit v2 line.', open(skill, encoding='utf-8').read(), 'an untouched file is refreshed')
+            text = open(claude_md, encoding='utf-8').read()
+            self.assertIn('My own rule.', text)
+            self.assertNotIn('Kit v2 line.', text, 'an edited file is never overwritten')
+            self.assertEqual(report['stashed'], ['CLAUDE.md'])
+            stashed = open(os.path.join(report['stash_dir'], 'CLAUDE.md'), encoding='utf-8').read()
+            self.assertIn('Kit v2 line.', stashed, 'the new version is saved for a manual merge')
+            self.assertFalse(os.path.exists(research), 'a file the user deleted is not recreated')
+            self.assertTrue(os.path.isfile(os.path.join(v, 'library', 'whats-new.md')), 'new kit files are added')
+
+            again = install.install(a, repo=kit, update=True, log=lambda *x: None)
+            self.assertEqual(again['updated'], [], 'a second update has nothing left to refresh')
+            self.assertEqual(again['stashed'], ['CLAUDE.md'], 'the edited file is still reported until merged')
+            self.assertIn('Kit v2 line.', open(skill, encoding='utf-8').read())
+
+    def test_update_needs_an_installed_vault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(install.InstallError):
+                install.install(answers_for(tmp, ['developer']), update=True, dry_run=True)
+
+
 class CrontabTests(unittest.TestCase):
     """apply() against a fake `crontab` binary: the user's own lines survive, the block is replaced, read errors abort."""
     def setUp(self):
