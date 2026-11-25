@@ -451,7 +451,7 @@ def pick_scheduler(choice):
 
 
 # ----------------------------------------------------------------------------- install
-def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agents_dir=None, no_launchctl=False, log=print):
+def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agents_dir=None, no_launchctl=False, log=print, update=False):
     validate(answers, repo)
     a = dict(default_answers(repo)); a.update(answers)
     a['tools'] = {c: (a.get('tools') or {}).get(c, 'none') for c in CAPABILITIES}
@@ -463,24 +463,53 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
     table = render.build_table(vocab_files(repo, a['packs']), a)
     report = {'vault': vault, 'ct_home': ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [], 'warnings': [], 'schedule': None}
     manifest_path = os.path.join(vault, '.control-tower', 'manifest.json')
+    installed, stash_dir = None, None
+    if update:
+        if not os.path.isfile(manifest_path):
+            raise InstallError(f'--update needs a vault installed by this kit: {manifest_path} not found')
+        installed = jload(manifest_path).get('files', {})
+        stash_dir = os.path.join(vault, '.control-tower', 'updates', datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    report.update({'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': stash_dir})
     files = {}
     def record(res):
         report['created'] += len(res['created']) + len(res['replaced'])
         report['kept'] += len(res['kept'])
-        for rel in res['created'] + res['replaced']:
-            files[rel] = None
+        for key in ('updated', 'stashed', 'skipped'):
+            report[key] += res.get(key, [])
+        for rel in res['created'] + res['replaced'] + res.get('updated', []):
+            files[rel] = None  # checksums recomputed below; stashed files keep their install-time checksum
     # 1. vault: core then packs
-    record(render.render_tree(os.path.join(repo, 'core', 'vault'), vault, table, dry_run=dry_run))
+    record(render.render_tree(os.path.join(repo, 'core', 'vault'), vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
     for p in a['packs']:
         pv = os.path.join(repo, 'packs', p, 'vault')
         if os.path.isdir(pv):
-            record(render.render_tree(pv, vault, table, dry_run=dry_run))
+            record(render.render_tree(pv, vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
     # 2. adapter notes and next steps
     for cap, tool in a['tools'].items():
         if tool == 'none':
             continue
         rel = f'.claude/adapters/{cap}.md'
         target = os.path.join(vault, rel)
+        if update:
+            errs = []
+            content = render.render_text(adapter_doc(repo, cap, tool), table, rel, errs)
+            if errs:
+                raise InstallError('; '.join(errs))
+            action = render.update_action(target, rel, content, None, installed)
+            if action == 'create':
+                report['created'] += 1
+            elif action == 'kept':
+                report['kept'] += 1
+            else:
+                report[action].append(rel)
+            if not dry_run and action in ('create', 'updated', 'stashed'):
+                dest = os.path.join(stash_dir, rel) if action == 'stashed' else target
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, 'w', encoding='utf-8') as fh:
+                    fh.write(content)
+                if action != 'stashed':
+                    files[rel] = None
+            continue
         if not os.path.exists(target):
             report['created'] += 1
             files[rel] = None
@@ -689,6 +718,14 @@ def print_report(report, dry_run):
         print(f"  routine {r['id']} not offered: {why}")
     for w in report['warnings']:
         print('warning: ' + w)
+    if report.get('stash_dir') is not None:
+        print(f"Update: {len(report['updated'])} file(s) updated (you had not edited them), "
+              f"{len(report['stashed'])} kept because you edited them, {len(report['skipped'])} you deleted left deleted")
+        for rel in report['stashed']:
+            print(f"  edited by you, new version {'would be ' if dry_run else ''}saved for merging: {rel}")
+        if report['stashed'] and not dry_run:
+            print(f"  new versions are in {report['stash_dir']}: compare and merge what you want (or ask Claude: "
+                  '"merge the kit updates from .control-tower/updates"), then delete that folder')
     if not dry_run:
         print('\nNext: open library/setup-next-steps.md in your vault.')
 
@@ -699,6 +736,8 @@ def main():
     ap.add_argument('--interactive', action='store_true')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--apply-schedule', action='store_true')
+    ap.add_argument('--update', action='store_true', help='after pulling a new version of the kit: refresh the files you never edited, '
+                    'keep the ones you edited and save their new version under <vault>/.control-tower/updates/')
     ap.add_argument('--launch-agents-dir', help='where to link launchd plists (default ~/Library/LaunchAgents)')
     ap.add_argument('--no-launchctl', action='store_true', help='link plists but do not load them (tests)')
     ap.add_argument('--json', action='store_true')
@@ -711,7 +750,7 @@ def main():
         else:
             ap.error('give --answers FILE or --interactive')
         report = install(answers, dry_run=args.dry_run, apply_schedule=args.apply_schedule,
-                         launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl)
+                         launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, update=args.update)
     except (InstallError, render.RenderError) as exc:
         print(f'error: {exc}', file=sys.stderr)
         sys.exit(2)

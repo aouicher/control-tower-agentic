@@ -65,6 +65,7 @@ python3 installer/doctor.py --vault ~/control-tower-developer   # the vault_path
 
 - [Getting started](docs/getting-started.md): prerequisites, install, first run, uninstall
 - [Using it every day](docs/daily-use.md): morning, inbox, during the day, Friday, with examples per profile
+- [Updating](docs/updating.md): getting a new version of the kit without losing your changes
 - [Concepts](docs/concepts.md): vault layout, note types, tasks, page style
 - [Packs](docs/packs.md): what each profile installs
 - [Adapters](docs/adapters.md): connecting your tools, read-only

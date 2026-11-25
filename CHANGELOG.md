@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `install.py --update`: refresh the kit files you never edited, keep the ones you edited (new version saved in `.control-tower/updates/`), leave deleted files deleted. See docs/updating.md.
+- Job guard: jobs can read their skills, adapter notes and rules again (they wrote empty reports); glob and grep bypasses closed. Re-run the installer (`--update`) to get the fixed guard.
+
 ## 0.1.0 (unreleased)
 
 - Core vault, four packs (engineering, developer, product, marketing), fourteen tool adapters.

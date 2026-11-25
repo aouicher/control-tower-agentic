@@ -1,7 +1,7 @@
 ---
 name: install-control-tower
 description: Install the control tower (an Obsidian vault plus Claude Code skills, scheduled jobs, cloud routines and tool adapters) by asking the user a few questions, then running the installer. Use when the user says install, set up, onboard, add the routines, or /install-control-tower, in the control-tower repository.
-argument-hint: "[answers.json path] | routines [ct_home]"
+argument-hint: "[answers.json path] | routines [ct_home] | update [vault]"
 ---
 
 # Install the control tower
@@ -24,6 +24,7 @@ You are the guided installer. You ask the questions, write an answers file, run 
 3. Detect the timezone (for example `readlink /etc/localtime` on macOS or Linux) to propose it as the default.
 4. If an answers file path was given as the argument, load it, show a summary and skip to step 3.
 5. If the argument starts with `routines`, the user already installed: go straight to step 4 (cloud routines). The runtime folder is the second word, else `~/.control-tower`.
+6. If the argument starts with `update`, go to section 6 (update an existing install).
 
 ## 2. Ask
 
@@ -64,6 +65,16 @@ Routines run on claude.ai on a schedule, even when the computer is off. Offer th
    After each creation, relay the run time and the claude.ai link the tool returns. If a creation fails, stop, show the error, and do not retry more than once.
 7. If routines cannot be created from here (the tool is not available, or the user is not signed in to claude.ai), do not work around it: give the manual path instead (open claude.ai routines, create one, paste the content of `prompt_file`, set the schedule and connectors).
 8. Remind them that the first run is worth watching on claude.ai, that changes to a routine are made there, and that `installer/uninstall.py` does not remove cloud routines (they delete them on claude.ai).
+
+## 6. Update an existing install
+
+Used after the user pulled a new version of the kit (`git pull` in this repository; never pull for them without a yes).
+
+1. Find the vault: the second word of the argument, else ask. Its answers are in `<vault>/.control-tower/answers.json`; if that file is missing, the vault was not installed by this kit: stop and say so.
+2. Read `CHANGELOG.md` and tell the user in 3 lines what changed since the version in `<vault>/.control-tower/manifest.json`.
+3. Run `python3 installer/install.py --answers <vault>/.control-tower/answers.json --update --dry-run` and explain the result in plain words: files refreshed (they had not edited them), files kept because they edited them, files they deleted that stay deleted, new files. Ask for a yes, then run it without `--dry-run` (add `--apply-schedule` only if they use a schedule and say yes to it).
+4. For each file kept because it was edited, offer to merge: show the differences between their file and the new version in `<vault>/.control-tower/updates/<date>/`, propose a merge that keeps their changes, and write it only after their yes. When all are done, offer to delete that updates folder.
+5. Run `installer/doctor.py` and report. Remind them that cloud routines on claude.ai are not updated automatically (see `docs/updating.md`).
 
 ## 5. Finish
 
