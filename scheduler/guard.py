@@ -12,6 +12,7 @@ Usage in a hook:  python3 guard.py --vault /path/to/vault
 """
 import argparse
 import fnmatch
+import glob
 import json
 import os
 import re
@@ -132,8 +133,14 @@ def path_like(arg):
 
 
 def outside_vault(arg, vault):
-    """An argument that resolves outside the vault, symlinks included (relative arguments are relative to the vault)."""
-    return not inside(os.path.join(vault, os.path.expanduser(arg)), vault)
+    """An argument that resolves outside the vault, symlinks included (relative arguments are relative to the vault).
+    A glob pattern is expanded the way the shell will, and every match must stay inside."""
+    path = os.path.join(vault, os.path.expanduser(arg))
+    if re.search(r'[*?\[]', arg):
+        matches = glob.glob(path)
+        if matches:
+            return any(not inside(m, vault) for m in matches[:1000]) or len(matches) > 1000
+    return not inside(path, vault)
 
 
 GH_REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
@@ -242,6 +249,8 @@ def command_reason(cmd, vault, extra_commands=()):
         return 'command too long to check'
     if re.search(r'[`$\n\r]', cmd):  # $VAR, $(...), backticks: the path the shell will use is not the text the guard reads
         return 'variables, command substitution or several lines'
+    if re.search(r'\{[^{}]*(,|\.\.)', cmd):  # on the raw text: brace expansion in any quoting or nesting
+        return 'brace expansion is not allowed in jobs'
     try:
         lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
