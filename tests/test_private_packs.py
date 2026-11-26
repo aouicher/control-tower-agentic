@@ -140,7 +140,8 @@ class PermissionPolicyTests(unittest.TestCase):
                        'ls >& /tmp/x', 'ls &>> /tmp/x', 'ls 3> /tmp/x', 'ls <& 3', 'gh api -H x -XPUT repos/x',
                        'sort -o $HOME/.zshrc', 'ls ${HOME}', 'ls {/etc,x}', 'cut -f1 {/etc/passwd,x}', 'jq -n env', 'jq env.GH_TOKEN',
                        'jq -n input_filename', 'ls {notes,/etc}', 'ls {a..z}', 'cat <(id)', 'sort <(ls /etc)', 'ls >(tee x)',
-                       '(ls /etc)', 'ls ; (id)', 'jq . {/etc/passwd,x}']
+                       '(ls /etc)', 'ls ; (id)', 'jq . {/etc/passwd,x}', 'jq {/etc/passwd,.} x', 'jq {.,{/etc/passwd,y}} x',
+                       'jq {-n,.} x']
     RUNTIME_ALLOWED = ['sort', 'sort -u notes/x', 'git log --oneline -5', 'gh pr list --limit 100',
                        'gh api repos/acme/app/dependabot/alerts --paginate --jq .[].severity', 'jq .items notes/x.json',
                        'cut -d: -f1 notes/x', 'uniq -c', 'sort | uniq -c', 'ls notes', 'date +%F', 'wc -l notes/x',
@@ -319,13 +320,15 @@ class PackContentTests(unittest.TestCase):
 
     def test_pack_files_may_not_grant_tools(self):
         with tempfile.TemporaryDirectory() as tmp:
-            headers = ('---\nname: x\nallowed-tools: Read\n---\n', '\ufeff---\r\nname: x\r\nallowed-tools: Bash\r\n---\r\n',
+            headers = ('---\nname: x\n{{ct.team}}: Read\n---\n', '---\nname: x\nmodel: opus\n---\n', '---\nname: "x\\u0061"\n---\n',
+                       '---\nname: x\nallowed-tools: Read\n---\n', '\ufeff---\r\nname: x\r\nallowed-tools: Bash\r\n---\r\n',
                        '---\nname: x\nallowed_tools: [Write]\n---\n', '---\nname: x\n"Allowed-Tools":\n  - Bash\n---\n',
                        '---\nname: x\nallowed-tools: [Read,\n  Bash]\n---\n', '---\nname: x\nallowed-tools:\n  # c\n  - Bash\n---\n',
                        '---\nname: x\n? allowed-tools\n: Bash\n---\n')
             for i, header in enumerate(headers):
                 with self.subTest(header=header[:40]):
                     pd = private_pack(os.path.join(tmp, f'p{i}'))
+                    write(os.path.join(pd, 'vocabulary.json'), json.dumps({'team': {'singular': 'allowed-tools', 'plural': 'x'}}))
                     write(os.path.join(pd, 'vault', '.claude', 'skills', 'x', 'SKILL.md'), header + '# x\n')
                     with self.assertRaises(install.InstallError):
                         install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)

@@ -34,7 +34,7 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (REPO, CorePolicy, InstallError, Trust, check_permissions, expand, guard_rules, jload,  # noqa: E402
+from plan import (REPO, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
                   list_packs, resolve_packs, vault_files)
 
 VERSION = '0.1.0'
@@ -463,6 +463,8 @@ class Ctx:
         if clash:
             raise InstallError('these files would be written by two packs or by a pack and the core: ' + '; '.join(clash))
         self.table = render.build_table(vocab_files(repo, a['packs'], self.packs), a)
+        for p in a['packs']:  # skills and notes as they will be written (a vocabulary word could otherwise build a forbidden key)
+            check_rendered(self.packs[p], lambda text, rel: render.render_text(text, self.table, rel, []))
         self.installed, self.stash_dir = None, None
         if update:
             if not self.previous:

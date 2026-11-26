@@ -127,6 +127,15 @@ REDIRECT = re.compile(r'^[0-9]*[<>&|]+$')  # any token made of redirection chara
 BRACE_EXPANSION = re.compile(r'\{[^{}]*(,|\.\.)[^{}]*\}')
 
 
+def expansions(arg, depth=0):
+    """Every word the shell can make of `arg` by brace expansion, innermost first, recursively (bounded)."""
+    m = BRACE_EXPANSION.search(arg)
+    if not m or depth > 8:
+        return [arg]
+    parts = re.split(r',|\.\.', m.group(0)[1:-1])
+    return [w for p in parts for w in expansions(arg[:m.start()] + p + arg[m.end():], depth + 1)]
+
+
 def path_like(arg):
     return arg.startswith(('/', '~')) or '..' in arg.replace('\\', '/').split('/')
 
@@ -181,8 +190,10 @@ def segment_reason(seg, vault):
                 i += 2
                 continue
         else:
-            if BRACE_EXPANSION.search(a) and not (cmd == 'jq' and not operands):
-                return f'{cmd}: brace expansion is not allowed in jobs ({a})'  # the shell would turn it into other words
+            if BRACE_EXPANSION.search(a):
+                # the shell turns it into other words: refused, except a jq filter whose every expansion is harmless
+                if not (cmd == 'jq' and not operands) or any(outside_vault(w, vault) or w.startswith('-') for w in expansions(a)):
+                    return f'{cmd}: brace expansion is not allowed here ({a})'
             if any(re.search(r'(^|[^A-Za-z_])' + re.escape(w) + r'($|[^A-Za-z_])', a) for w in rule.get('refuse_words', ())):
                 return f'{cmd}: "{a}" can expose the environment or files'
             if a in rule.get('no_operand', ()):

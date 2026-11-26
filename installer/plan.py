@@ -151,10 +151,11 @@ def check_pack(pk, trust=None):
             raise InstallError(f'pack "{pk.id}" may not ship {rel}: installer state, git, editor, Obsidian and Claude settings are off limits')
         if rel.casefold() == 'claude.md' and not pk.private:
             raise InstallError(f'pack "{pk.id}": only private packs may ship CLAUDE.md (public packs add rules in .claude/rules/)')
-        if rel.casefold().endswith('.md'):
+        if rel.casefold().endswith('.md'):  # raw text here; the rendered text is checked again by the installer (check_rendered)
             src = os.path.join(pk.dir, 'vault', rel)
-            if skill_declares_tools(src if os.path.isfile(src) else src + '.tmpl'):
-                raise InstallError(f'pack "{pk.id}": {rel} mentions allowed-tools: pack files may not grant tools (use job permissions)')
+            with open(src if os.path.isfile(src) else src + '.tmpl', encoding='utf-8', errors='replace') as fh:
+                if TOOLS_KEY_ANYWHERE.search(fh.read()):
+                    raise InstallError(f'pack "{pk.id}": {rel} mentions allowed-tools: pack files may not grant tools (use job permissions)')
     rep, exc = list(pk.manifest.get('replaces') or []), list(pk.manifest.get('excludes') or [])
     if (rep or exc) and not pk.private:
         raise InstallError(f'pack "{pk.id}": only private packs (answers["pack_dirs"]) may replace or exclude core files')
@@ -166,14 +167,41 @@ def check_pack(pk, trust=None):
             raise InstallError(f'pack "{pk.id}" replaces "{p}" but ships no such file under vault/: add it, or use excludes')
 
 
-# Skills may not grant themselves tools: `allowed-tools` would widen what a job can do while the skill runs, and reading YAML
-# without a YAML parser is a parser differential waiting to happen. So any spelling of the key, anywhere in the file, is refused.
+# Skills may not grant themselves tools: `allowed-tools` would widen what a job can do while the skill runs. No YAML parsing:
+# on the RENDERED file, a skill frontmatter may only use the keys below, one plain `key: value` per line (block lists only for
+# none of them), and no file may mention allowed-tools in any spelling.
 TOOLS_KEY_ANYWHERE = re.compile(r'allowed[\W_]{0,3}tools', re.I)
+SKILL_KEYS = {'name', 'description', 'argument-hint', 'license', 'version'}
 
 
-def skill_declares_tools(path):
-    with open(path, encoding='utf-8', errors='replace') as fh:
-        return bool(TOOLS_KEY_ANYWHERE.search(fh.read()))
+def rendered_text_problem(rel, text):
+    """Why a rendered pack file may not be installed, or None."""
+    text = text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n')
+    if TOOLS_KEY_ANYWHERE.search(text):
+        return 'mentions allowed-tools: pack files may not grant tools (use job permissions)'
+    if not rel.casefold().endswith('skill.md'):
+        return None
+    m = re.match(r'---\n(.*?)\n---[ \t]*(\n|$)', text, re.S)
+    if not m:
+        return 'a skill needs a closed frontmatter (---) with name and description'
+    for line in m.group(1).split('\n'):
+        km = re.match(r'^([a-z][a-z-]*):[ \t](.*)$', line)
+        if not km or km.group(1) not in SKILL_KEYS or '\\' in line:
+            return f'skill frontmatter line not allowed: "{line[:60]}" (keys: {", ".join(sorted(SKILL_KEYS))}, one per line)'
+    return None
+
+
+def check_rendered(pk, render_text):
+    """The same rules on the text that will actually be written, after {{ct.*}} tokens are filled in."""
+    base = os.path.join(pk.dir, 'vault')
+    for rel in vault_files(base):
+        if not rel.casefold().endswith('.md'):
+            continue
+        src = os.path.join(base, rel)
+        with open(src if os.path.isfile(src) else src + '.tmpl', encoding='utf-8', errors='replace') as fh:
+            problem = rendered_text_problem(rel, render_text(fh.read(), rel))
+        if problem:
+            raise InstallError(f'pack "{pk.id}": {rel}: {problem}')
 
 
 def resolve_packs(repo, answers=None):
