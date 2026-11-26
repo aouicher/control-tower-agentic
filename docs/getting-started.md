@@ -98,6 +98,10 @@ python3 installer/doctor.py --vault ~/control-tower-vault --ct-home ~/.control-t
 
 Prints `ok`, `warn` or `FAIL` per check and exits 1 on failure.
 
+## Already have a vault?
+
+Install only the job machinery on it with `--runtime-only`, and keep your own jobs and conventions in a private pack: see [private packs](private-packs.md).
+
 ## Update
 
 When the kit gets a new version: `git pull` in the kit folder, then `python3 installer/install.py --answers <vault>/.control-tower/answers.json --update`. Files you edited are never overwritten. Details in [updating](updating.md).

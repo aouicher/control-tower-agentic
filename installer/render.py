@@ -94,7 +94,7 @@ def update_action(target, out_rel, content, src, installed):
     return 'stashed'
 
 
-def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None, installed=None, stash_dir=None):
+def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None, installed=None, stash_dir=None, skip=None):
     """Render src into dst. Returns {'created': [...], 'replaced': [...], 'kept': [...]} (relative paths).
 
     `rename` is an optional function(relative_output_path) -> relative_output_path, used by the installer
@@ -116,6 +116,8 @@ def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=F
             out_rel = rel[:-5] if rel.endswith('.tmpl') else rel
             if rename:
                 out_rel = rename(out_rel)
+            if skip and skip(out_rel):  # replaced by a private pack, or excluded
+                continue
             content = None
             if os.path.splitext(name)[1].lower() in TEXT_EXT:
                 try:

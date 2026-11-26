@@ -34,27 +34,17 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
+from plan import (REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
+                  list_packs, resolve_packs, vault_files)
 
-REPO = os.path.dirname(HERE)
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
 DAYS = {'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0}
 BASE_ALLOW = ['Read', 'Grep', 'Glob', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)']
 BASE_DENY = ['Agent']
-PROTECTED_DIRS = ('.claude', '.control-tower', '.obsidian', '_system/templates', '_system/dashboards', '.git', '.github', '.vscode')
-PROTECTED_FILES = ('CLAUDE.md', 'CLAUDE.local.md', '.mcp.json')
+PROTECTED_DIRS, PROTECTED_FILES_CASED = guard_rules.PROTECTED, guard_rules.PROTECTED_FILES_CASED  # one source: scheduler/guard.py
 DAY_ALIASES = {'weekdays': 'mon-fri', 'weekends': 'sat-sun', 'daily': 'mon-sun', 'every day': 'mon-sun', '*': 'mon-sun'}
 GUARD_MATCHER = 'Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob'
-
-
-class InstallError(Exception):
-    pass
-
-
-# ----------------------------------------------------------------------------- helpers
-def jload(path):
-    with open(path, encoding='utf-8') as fh:
-        return json.load(fh)
 
 
 def jdump(path, data):
@@ -62,15 +52,6 @@ def jdump(path, data):
     with open(path, 'w', encoding='utf-8') as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
         fh.write('\n')
-
-
-def expand(path):
-    return os.path.abspath(os.path.expanduser(path))
-
-
-def list_packs(repo=REPO):
-    base = os.path.join(repo, 'packs')
-    return sorted(d for d in os.listdir(base) if os.path.isfile(os.path.join(base, d, 'pack.json'))) if os.path.isdir(base) else []
 
 
 def list_tools(capability, repo=REPO):
@@ -99,7 +80,18 @@ def validate(answers, repo=REPO):
         zoneinfo.ZoneInfo(tz)
     except Exception:
         errors.append(f'answers: unknown timezone "{tz}" (use an IANA name such as Europe/Paris)')
-    available = list_packs(repo)
+    packs = {}
+    try:
+        packs = resolve_packs(repo, answers)
+        available = sorted(packs)
+    except InstallError as exc:
+        errors.append(str(exc))
+        available = list_packs(repo)
+    errors += Trust.problems(answers)
+    if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
+        errors.append('answers: "vault_mode" must be full or runtime')
+    elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
+        errors.append(f'answers: vault_mode "runtime" installs only the runtime on an EXISTING vault, and {answers["vault_path"]} does not exist')
     for p in answers.get('packs', []):
         if p not in available:
             errors.append(f'answers: unknown pack "{p}" (available: {", ".join(available)})')
@@ -132,6 +124,7 @@ def validate(answers, repo=REPO):
                 errors.append(f'answers: job "{jid}": {exc}')
     if errors:
         raise InstallError('\n'.join(errors))
+    return packs
 
 
 def wizard(repo=REPO, ask=input, out=print):
@@ -162,30 +155,29 @@ def wizard(repo=REPO, ask=input, out=print):
 
 
 # ----------------------------------------------------------------------------- plan
-def vocab_files(repo, packs):
+def vocab_files(repo, ids, packs):
+    """Core vocabulary, then each chosen pack's. `packs` is the resolved {id: Pack} from plan.resolve_packs."""
     files = [os.path.join(repo, 'core', 'vocabulary.json')]
-    for p in packs:
-        manifest = jload(os.path.join(repo, 'packs', p, 'pack.json'))
-        files.append(os.path.join(repo, 'packs', p, manifest['vocabulary']))
+    for p in ids:
+        if packs[p].manifest.get('vocabulary'):
+            files.append(os.path.join(packs[p].dir, packs[p].manifest['vocabulary']))
     return files
 
 
-def static_collisions(repo, packs):
-    """Files that two sources would write to the same place (a pack colliding with the core or another pack)."""
+def static_collisions(repo, ids, packs, policy):
+    """Files that two sources would write to the same place (a pack colliding with the core or another pack).
+    Core files that a private pack replaces or excludes are not counted."""
     seen, clash = {}, []
     def walk(src, label):
-        for root, _, files in os.walk(src):
-            for f in files:
-                rel = os.path.relpath(os.path.join(root, f), src)
-                rel = rel[:-5] if rel.endswith('.tmpl') else rel
-                if rel.endswith('.gitkeep'):
-                    continue
-                if rel in seen:
-                    clash.append(f'{rel} ({seen[rel]} and {label})')
-                seen[rel] = label
+        for rel in vault_files(src):
+            if rel.endswith('.gitkeep') or (label == 'core' and policy.skips(rel)):
+                continue
+            if rel in seen:
+                clash.append(f'{rel} ({seen[rel]} and {label})')
+            seen[rel] = label
     walk(os.path.join(repo, 'core', 'vault'), 'core')
-    for p in packs:
-        v = os.path.join(repo, 'packs', p, 'vault')
+    for p in ids:
+        v = os.path.join(packs[p].dir, 'vault')
         if os.path.isdir(v):
             walk(v, 'pack ' + p)
     return clash
@@ -199,18 +191,17 @@ def job_capabilities(meta):
     return list(caps), []
 
 
-def eligible_jobs(repo, packs, tools):
+def eligible_jobs(ids, packs, tools):
     """Jobs whose capabilities all have a chosen tool."""
     jobs = []
-    for p in packs:
-        manifest = jload(os.path.join(repo, 'packs', p, 'pack.json'))
-        for j in manifest.get('jobs', []):
-            meta = jload(os.path.join(repo, 'packs', p, 'jobs', j, 'job.json'))
+    for p in ids:
+        for j in packs[p].manifest.get('jobs', []):
+            meta = jload(os.path.join(packs[p].dir, 'jobs', j, 'job.json'))  # ids checked by plan.check_pack
             req, opt = job_capabilities(meta)
             missing = [c for c in req if tools.get(c, 'none') == 'none']
             if not missing and not req and opt and not meta.get('vault_only') and all(tools.get(c, 'none') == 'none' for c in opt):
                 missing = ['one of ' + ' / '.join(opt)]
-            jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing})
+            jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing, 'dir': os.path.join(packs[p].dir, 'jobs', j)})
     return jobs
 
 
@@ -233,12 +224,12 @@ def read_routine(path):
     return meta, text.split('\n## Prompt\n', 1)[1].strip() + '\n'
 
 
-def eligible_routines(repo, packs, tools):
+def eligible_routines(ids, packs, tools):
     """Cloud routines of the chosen packs; a routine is offered only if its required connectors have a tool."""
     out = []
-    for p in packs:
-        for rid in jload(os.path.join(repo, 'packs', p, 'pack.json')).get('routines', []):
-            meta, prompt = read_routine(os.path.join(repo, 'packs', p, 'routines', rid + '.md'))
+    for p in ids:
+        for rid in packs[p].manifest.get('routines', []):
+            meta, prompt = read_routine(os.path.join(packs[p].dir, 'routines', rid + '.md'))
             missing = [c for c in meta.get('connectors_required', []) if tools.get(c, 'none') == 'none']
             out.append({'pack': p, 'id': rid, 'meta': meta, 'prompt': prompt, 'missing': missing})
     return out
@@ -363,11 +354,11 @@ def job_settings(repo, answers, job):
     vault = expand(answers['vault_path'])
     req, opt = job_capabilities(job['meta'])
     allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')]  # every job writes its report in the vault
-    allow += [fix_rule(render.render_text(p, {'vault_path': vault}, job['id'], [])) for p in job['meta']['permissions'].get('allow', [])]
+    allow += [fix_rule(p) for p in job['meta']['permissions'].get('allow', [])]  # rendered and checked in Ctx.plan_jobs
     deny = list(BASE_DENY) + [fix_rule(p) for p in job['meta']['permissions'].get('deny', [])]
     deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
     # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
-    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES]
+    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
     for cap in req + opt:
         tool = answers['tools'].get(cap, 'none')
         if tool != 'none':
@@ -375,7 +366,10 @@ def job_settings(repo, answers, job):
             allow += man.get('permissions_allow', [])
             allow += list((answers.get('permissions') or {}).get(cap, []))
             deny += man.get('permissions_deny', [])
-    guard = ' '.join(shlex.quote(x) for x in (python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault))
+    hook = [python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault]
+    if answers.get('trusted_commands'):
+        hook += ['--commands', ','.join(answers['trusted_commands'])]
+    guard = ' '.join(shlex.quote(x) for x in hook)
     return {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
             'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
 
@@ -451,154 +445,215 @@ def pick_scheduler(choice):
 
 
 # ----------------------------------------------------------------------------- install
-def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agents_dir=None, no_launchctl=False, log=print, update=False):
-    validate(answers, repo)
-    a = dict(default_answers(repo)); a.update(answers)
-    a['tools'] = {c: (a.get('tools') or {}).get(c, 'none') for c in CAPABILITIES}
-    vault, ct_home = expand(a['vault_path']), expand(a['ct_home'])
-    a['vault_path'], a['ct_home'] = vault, ct_home
-    clash = static_collisions(repo, a['packs'])
-    if clash:
-        raise InstallError('these files would be written by two packs or by a pack and the core: ' + '; '.join(clash))
-    table = render.build_table(vocab_files(repo, a['packs']), a)
-    report = {'vault': vault, 'ct_home': ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [], 'warnings': [], 'schedule': None}
-    manifest_path = os.path.join(vault, '.control-tower', 'manifest.json')
-    installed, stash_dir = None, None
-    if update:
-        if not os.path.isfile(manifest_path):
-            raise InstallError(f'--update needs a vault installed by this kit: {manifest_path} not found')
-        installed = jload(manifest_path).get('files', {})
-        stash_dir = os.path.join(vault, '.control-tower', 'updates', datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
-    report.update({'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': stash_dir})
-    files = {}
-    def record(res):
-        report['created'] += len(res['created']) + len(res['replaced'])
-        report['kept'] += len(res['kept'])
-        for key in ('updated', 'stashed', 'skipped'):
-            report[key] += res.get(key, [])
-        for rel in res['created'] + res['replaced'] + res.get('updated', []):
-            files[rel] = None  # checksums recomputed below; stashed files keep their install-time checksum
-    # 1. vault: core then packs
-    record(render.render_tree(os.path.join(repo, 'core', 'vault'), vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
-    for p in a['packs']:
-        pv = os.path.join(repo, 'packs', p, 'vault')
-        if os.path.isdir(pv):
-            record(render.render_tree(pv, vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
-    # 2. adapter notes and next steps
-    for cap, tool in a['tools'].items():
-        if tool == 'none':
-            continue
-        rel = f'.claude/adapters/{cap}.md'
-        target = os.path.join(vault, rel)
+class Ctx:
+    """One install run. __init__ is the whole PLAN phase: it resolves and checks everything, and writes nothing. Steps only
+    write; they add to `report` and `files` (the two accumulators) and return what the next step needs."""
+
+    def __init__(self, answers, repo, dry_run, update):
+        self.packs = validate(answers, repo)
+        a = dict(default_answers(repo)); a.update(answers)
+        a['tools'] = {c: (a.get('tools') or {}).get(c, 'none') for c in CAPABILITIES}
+        self.vault, self.ct_home = expand(a['vault_path']), expand(a['ct_home'])
+        a['vault_path'], a['ct_home'] = self.vault, self.ct_home
+        self.manifest_path = os.path.join(self.vault, '.control-tower', 'manifest.json')
+        self.previous = jload(self.manifest_path) if os.path.isfile(self.manifest_path) else {}
+        if 'vault_mode' not in answers and self.previous.get('vault_mode') == 'runtime':
+            a['vault_mode'] = 'runtime'  # a runtime-only vault stays runtime-only unless the answers explicitly say "full"
+        self.a, self.repo, self.dry_run, self.update = a, repo, dry_run, update
+        self.runtime_only = a.get('vault_mode', 'full') == 'runtime'
+        self.policy = CorePolicy.from_packs([self.packs[p] for p in a['packs']])
+        clash = static_collisions(repo, a['packs'], self.packs, self.policy)
+        if clash:
+            raise InstallError('these files would be written by two packs or by a pack and the core: ' + '; '.join(clash))
+        self.table = render.build_table(vocab_files(repo, a['packs'], self.packs), a)
+        for p in a['packs']:  # skills and notes as they will be written (a vocabulary word could otherwise build a forbidden key)
+            check_rendered(self.packs[p], lambda text, rel: render.render_text(text, self.table, rel, []))
+        self.installed, self.stash_dir = None, None
         if update:
-            errs = []
-            content = render.render_text(adapter_doc(repo, cap, tool), table, rel, errs)
-            if errs:
-                raise InstallError('; '.join(errs))
-            action = render.update_action(target, rel, content, None, installed)
-            if action == 'create':
-                report['created'] += 1
-            elif action == 'kept':
-                report['kept'] += 1
-            else:
-                report[action].append(rel)
-            if not dry_run and action in ('create', 'updated', 'stashed'):
-                dest = os.path.join(stash_dir, rel) if action == 'stashed' else target
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, 'w', encoding='utf-8') as fh:
-                    fh.write(content)
-                if action != 'stashed':
-                    files[rel] = None
-            continue
-        if not os.path.exists(target):
-            report['created'] += 1
-            files[rel] = None
-            if not dry_run:
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                with open(target, 'w', encoding='utf-8') as fh:
-                    errs = []
-                    fh.write(render.render_text(adapter_doc(repo, cap, tool), table, rel, errs))
-                    if errs:
-                        raise InstallError('; '.join(errs))
-        else:
-            report['kept'] += 1
-    # 3. jobs
-    jobs = eligible_jobs(repo, a['packs'], a['tools'])
-    on, off = [], []
-    for j in jobs:
-        cfg = (a.get('jobs') or {}).get(j['id'], {})
-        if j['missing'] or cfg.get('enabled') is False:
-            off.append(j)
-        else:
+            if not self.previous:
+                raise InstallError(f'--update needs a vault installed by this kit: {self.manifest_path} not found')
+            self.installed = self.previous.get('files', {})
+            self.stash_dir = os.path.join(self.vault, '.control-tower', 'updates', datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+        self.report = {'vault': self.vault, 'ct_home': self.ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [],
+                       'warnings': [], 'schedule': None, 'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': self.stash_dir,
+                       'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full'}
+        self.files = {}  # vault paths written by this run: checksummed into the manifest
+        self.jobs_on, self.jobs_off = self.plan_jobs()
+
+    def plan_jobs(self):
+        """Which jobs run, their final (rendered) definition, and every check on them: nothing is written if one fails."""
+        a, on, off = self.a, [], []
+        # MCP tools the user lists under `permissions` in the answers are trusted by being listed there
+        own = [str(r) for rules in (a.get('permissions') or {}).values() for r in rules if str(r).startswith('mcp__')]
+        trust = Trust.from_answers(a, extra_mcp_tools=own)
+        for cap, rules in (a.get('permissions') or {}).items():
+            check_permissions(f'answers permissions "{cap}"', rules, trust)
+        for j in eligible_jobs(a['packs'], self.packs, a['tools']):
+            cfg = (a.get('jobs') or {}).get(j['id'], {})
+            if j['missing'] or cfg.get('enabled') is False:
+                off.append(j)
+                self.report['jobs_skipped'].append({'id': j['id'], 'missing': j['missing']})
+                continue
+            meta = dict(j['meta'])
+            meta['schedule'] = {**meta['schedule'], **{k: v for k, v in cfg.items() if k in ('time', 'days')}}
+            j['rendered'] = json.loads(render.render_text(json.dumps(meta), self.table, j['id'], []))
+            # checked on the FINAL strings: a pack's vocabulary could otherwise inject text into a rule after the check
+            check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []), trust)
+            sched = j['rendered']['schedule']
+            self.report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
             on.append(j)
-    for j in off:
-        report['jobs_skipped'].append({'id': j['id'], 'missing': j['missing']})
-    if not dry_run:
-        os.makedirs(os.path.join(ct_home, 'bin'), exist_ok=True)
-        for name in ('run_job.py', 'guard.py'):
-            shutil.copy2(os.path.join(repo, 'scheduler', name), os.path.join(ct_home, 'bin', name))
-        jdump(os.path.join(ct_home, 'install.json'), {'vault': vault, 'claude_bin': a.get('claude_bin', 'claude'),
-                                                       'timezone': a['timezone'], 'version': VERSION})
-    sched_dir = os.path.join(ct_home, 'schedule')
-    if not dry_run:
-        # the schedule and the job folders always mirror the current answers: a job that was disabled or lost its tool disappears
-        shutil.rmtree(sched_dir, ignore_errors=True)
-        jobs_root = os.path.join(ct_home, 'jobs')
-        keep = {j['id'] for j in on}
-        for old in (os.listdir(jobs_root) if os.path.isdir(jobs_root) else []):
-            if old not in keep:
-                shutil.rmtree(os.path.join(jobs_root, old), ignore_errors=True)
-    kind = pick_scheduler(a.get('scheduler', 'auto'))
-    plist_paths, cron_lines = [], []
-    for j in on:
-        cfg = (a.get('jobs') or {}).get(j['id'], {})
-        meta = dict(j['meta'])
-        sched = dict(meta['schedule'])
-        sched.update({k: v for k, v in cfg.items() if k in ('time', 'days')})
-        meta['schedule'] = sched
-        report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
-        jdir = os.path.join(ct_home, 'jobs', j['id'])
-        if not dry_run:
-            res = render.render_tree(os.path.join(repo, 'packs', j['pack'], 'jobs', j['id']), jdir, table, force=True,
-                                     rename=lambda r: {'prompt.md': 'prompt.md'}.get(r, r))
-            jdump(os.path.join(jdir, 'job.json'), json.loads(render.render_text(json.dumps(meta), {**table}, j['id'], [])))
-            jdump(os.path.join(jdir, 'settings.json'), job_settings(repo, a, {'id': j['id'], 'meta': json.loads(render.render_text(json.dumps(meta), table, j['id'], []))}))
-        args = [python_bin(a), os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home]
-        lt, shift, warn = local_time(sched['time'], a['timezone'])
-        days = shift_days(parse_days(sched['days']), shift)
-        if warn:
-            report['warnings'].append(f"{j['id']}: {warn}")
-        if kind == 'launchd':
-            label = f"com.control-tower.{j['id']}"
-            path = os.path.join(sched_dir, 'launchd', label + '.plist')
-            plist_paths.append((label, path))
-            if not dry_run:
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, 'w', encoding='utf-8') as fh:
-                    fh.write(launchd_plist(label, args, days, lt, os.path.join(ct_home, 'logs', j['id'] + '.launchd.log')))
-        elif kind == 'cron':
-            cron_lines.append(f'# {j["id"]}\n' + cron_line(args, days, lt))
-    if kind == 'cron' and not dry_run:  # an empty block is written too, so applying it removes jobs that are gone
-        os.makedirs(sched_dir, exist_ok=True)
-        with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:
-            fh.write('# BEGIN control-tower\n' + '\n'.join(cron_lines) + '\n# END control-tower\n')
-    report['schedule'] = {'kind': kind, 'applied': False, 'dir': sched_dir}
-    if apply_schedule and not dry_run and kind != 'none':
-        report['schedule']['applied'] = apply(kind, plist_paths, os.path.join(sched_dir, 'crontab.txt'), launch_agents_dir, no_launchctl, report)
-    elif apply_schedule and not dry_run and kind == 'none':
-        report['warnings'].append('--apply-schedule ignored: scheduler is "none" in the answers')
+        if self.runtime_only and any(not self.packs[j['pack']].private for j in on):
+            self.report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
+                                           'check they fit your vault, or use jobs from your own private pack')
+        self.report['warnings'] += mcp_warnings(self.repo, a)
+        if self.runtime_only:
+            self.report['warnings'] += vault_settings_warnings(self.vault)
+        return on, off
+
+    def record(self, res):
+        self.report['created'] += len(res.get('created', [])) + len(res.get('replaced', []))
+        self.report['kept'] += len(res.get('kept', []))
+        for key in ('updated', 'stashed', 'skipped'):
+            self.report[key] += res.get(key, [])
+        for rel in res.get('created', []) + res.get('replaced', []) + res.get('updated', []):
+            self.files[rel] = None  # stashed files keep their install-time checksum
+
+    def render(self, src, **kw):
+        self.record(render.render_tree(src, self.vault, self.table, dry_run=self.dry_run, installed=self.installed,
+                                       stash_dir=self.stash_dir, **kw))
+
+
+def vault_settings_warnings(vault):
+    """Jobs run in the vault and load its project settings: rules or hooks there widen every unattended job."""
+    out = []
+    for name in ('settings.json', 'settings.local.json'):
+        p = os.path.join(vault, '.claude', name)
+        try:
+            data = jload(p) if os.path.isfile(p) else {}
+        except ValueError:
+            data = {'unreadable': True}
+        if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
+            out.append(f'{p} has allow rules or hooks: unattended jobs load it too, so it widens what they can do. '
+                       'Keep it empty for jobs, or move those rules to your user settings')
+    skills = os.path.join(vault, '.claude', 'skills')
+    for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
+        p = os.path.join(skills, name, 'SKILL.md')
+        if os.path.isfile(p) and TOOLS_KEY_ANYWHERE.search(open(p, encoding='utf-8', errors='replace').read()):
+            out.append(f'{p} declares allowed-tools: a job that loads this skill gets those tools too')
+    return out
+
+
+def mcp_warnings(repo, a):
+    out = []
     for cap, tool in a['tools'].items():
         if tool == 'none':
             continue
         man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
         if man.get('access') == 'mcp' and not man.get('permissions_allow') and not (a.get('permissions') or {}).get(cap):
-            report['warnings'].append(f'{cap}/{tool}: jobs cannot call this MCP server until you list its read-only tools in the answers '
-                                      f'("permissions": {{"{cap}": ["mcp__<server>__<tool>", ...]}}) and re-run the installer')
-    # 3b. cloud routines: rendered prompts and an index the guided installer reads to create them on request
-    report['routines'], report['routines_skipped'] = [], []
-    index = []
-    seen_ids = {}
-    for r in eligible_routines(repo, a['packs'], a['tools']):
+            out.append(f'{cap}/{tool}: jobs cannot call this MCP server until you list its read-only tools in the answers '
+                       f'("permissions": {{"{cap}": ["mcp__<server>__<tool>", ...]}}) and re-run the installer')
+    return out
+
+
+# ----------------------------------------------------------------------------- write steps
+def step_vault(ctx):
+    """Core vault (minus what private packs replace or exclude), then each pack's vault files."""
+    ctx.render(os.path.join(ctx.repo, 'core', 'vault'), skip=ctx.policy.skips if ctx.policy else None)
+    for p in ctx.a['packs']:
+        pv = os.path.join(ctx.packs[p].dir, 'vault')
+        if os.path.isdir(pv):
+            ctx.render(pv)
+
+
+def step_adapters(ctx):
+    """One note per chosen tool in .claude/adapters/, under the same update rules as every kit file."""
+    for cap, tool in ctx.a['tools'].items():
+        if tool == 'none':
+            continue
+        rel = f'.claude/adapters/{cap}.md'
+        target = os.path.join(ctx.vault, rel)
+        errs = []
+        content = render.render_text(adapter_doc(ctx.repo, cap, tool), ctx.table, rel, errs)
+        if errs:
+            raise InstallError('; '.join(errs))
+        if ctx.update:
+            action = render.update_action(target, rel, content, None, ctx.installed)
+        else:
+            action = 'kept' if os.path.exists(target) else 'create'
+        ctx.record({'create': {'created': [rel]}, 'kept': {'kept': [rel]}}.get(action, {action: [rel]}))
+        if not ctx.dry_run and action in ('create', 'updated', 'stashed'):
+            dest = os.path.join(ctx.stash_dir, rel) if action == 'stashed' else target
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, 'w', encoding='utf-8') as fh:
+                fh.write(content)
+
+
+def step_runtime(ctx):
+    """Runner and guard, then one folder per job (prompt, job.json, settings.json). Folders of jobs no longer on are removed."""
+    if ctx.dry_run:
+        return
+    os.makedirs(os.path.join(ctx.ct_home, 'bin'), exist_ok=True)
+    for name in ('run_job.py', 'guard.py'):
+        shutil.copy2(os.path.join(ctx.repo, 'scheduler', name), os.path.join(ctx.ct_home, 'bin', name))
+    jdump(os.path.join(ctx.ct_home, 'install.json'), {'vault': ctx.vault, 'claude_bin': ctx.a.get('claude_bin', 'claude'),
+                                                       'timezone': ctx.a['timezone'], 'version': VERSION})
+    jobs_root = os.path.join(ctx.ct_home, 'jobs')
+    keep = {j['id'] for j in ctx.jobs_on}
+    for old in (os.listdir(jobs_root) if os.path.isdir(jobs_root) else []):
+        if old not in keep:
+            shutil.rmtree(os.path.join(jobs_root, old), ignore_errors=True)
+    for j in ctx.jobs_on:
+        jdir = os.path.join(jobs_root, j['id'])
+        os.makedirs(jdir, exist_ok=True)
+        with open(os.path.join(j['dir'], 'prompt.md.tmpl'), encoding='utf-8') as fh:
+            errs = []
+            prompt = render.render_text(fh.read(), ctx.table, j['id'], errs)
+        if errs:
+            raise InstallError('; '.join(errs))
+        with open(os.path.join(jdir, 'prompt.md'), 'w', encoding='utf-8') as fh:  # only the prompt: nothing else from the pack
+            fh.write(prompt)
+        jdump(os.path.join(jdir, 'job.json'), j['rendered'])
+        jdump(os.path.join(jdir, 'settings.json'), job_settings(ctx.repo, ctx.a, {'id': j['id'], 'meta': j['rendered']}))
+
+
+def step_schedule(ctx):
+    """launchd plists or a crontab block mirroring the jobs that are on. Sets report['schedule'], returns the plist paths."""
+    a, ct_home = ctx.a, ctx.ct_home
+    sched_dir = os.path.join(ct_home, 'schedule')
+    kind = pick_scheduler(a.get('scheduler', 'auto'))
+    if not ctx.dry_run:
+        shutil.rmtree(sched_dir, ignore_errors=True)
+    plist_paths, cron_lines = [], []
+    for j in ctx.jobs_on:
+        sched = j['rendered']['schedule']
+        args = [python_bin(a), os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home]
+        lt, shift, warn = local_time(sched['time'], a['timezone'])
+        days = shift_days(parse_days(sched['days']), shift)
+        if warn:
+            ctx.report['warnings'].append(f"{j['id']}: {warn}")
+        if kind == 'launchd':
+            label = f"com.control-tower.{j['id']}"
+            path = os.path.join(sched_dir, 'launchd', label + '.plist')
+            plist_paths.append((label, path))
+            if not ctx.dry_run:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as fh:
+                    fh.write(launchd_plist(label, args, days, lt, os.path.join(ct_home, 'logs', j['id'] + '.launchd.log')))
+        elif kind == 'cron':
+            cron_lines.append(f'# {j["id"]}\n' + cron_line(args, days, lt))
+    if kind == 'cron' and not ctx.dry_run:  # an empty block is written too, so applying it removes jobs that are gone
+        os.makedirs(sched_dir, exist_ok=True)
+        with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:
+            fh.write('# BEGIN control-tower\n' + '\n'.join(cron_lines) + '\n# END control-tower\n')
+    ctx.report['schedule'] = {'kind': kind, 'applied': False, 'dir': sched_dir}
+    return plist_paths
+
+
+def step_routines(ctx):
+    """Cloud routines: rendered prompts and an index the guided installer reads to create them on request. Returns the list."""
+    a, report = ctx.a, ctx.report
+    index, seen_ids = [], {}
+    for r in eligible_routines(a['packs'], ctx.packs, a['tools']):
         if r['id'] in seen_ids and not r['missing']:
             report['routines_skipped'].append({'id': f"{r['pack']}--{r['id']}", 'missing': [], 'duplicate_of': seen_ids[r['id']]})
             continue
@@ -609,52 +664,86 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         seen_ids[r['id']] = key
         meta = r['meta']
         errs = []
-        prompt = render.render_text(r['prompt'], table, key, errs)
+        prompt = render.render_text(r['prompt'], ctx.table, key, errs)
         if errs:
             raise InstallError('; '.join(errs))
-        entry = {'key': key, 'pack': r['pack'], 'id': r['id'],
-                 'name': meta['name'],
+        entry = {'key': key, 'pack': r['pack'], 'id': r['id'], 'name': meta['name'],
                  'days': meta['days'], 'time': meta['time'], 'timezone': a['timezone'], 'cron': routine_cron(meta['days'], meta['time']),
                  'connectors_required': {c: a['tools'][c] for c in meta.get('connectors_required', [])},
                  'connectors_optional': {c: a['tools'][c] for c in meta.get('connectors_optional', []) if a['tools'].get(c, 'none') != 'none'},
                  'vault': meta.get('vault', 'write'), 'after': meta.get('after', ''),
-                 'prompt_file': os.path.join(ct_home, 'routines', key + '.prompt.md')}
+                 'prompt_file': os.path.join(ctx.ct_home, 'routines', key + '.prompt.md')}
         index.append(entry)
         report['routines'].append({'key': key, 'name': entry['name'], 'days': entry['days'], 'time': entry['time']})
-        if not dry_run:
-            os.makedirs(os.path.join(ct_home, 'routines'), exist_ok=True)
+        if not ctx.dry_run:
+            os.makedirs(os.path.join(ctx.ct_home, 'routines'), exist_ok=True)
             with open(entry['prompt_file'], 'w', encoding='utf-8') as fh:
                 fh.write(prompt)
-    if not dry_run:
-        jdump(os.path.join(ct_home, 'routines', 'routines.json'), index) if index else None
-    # 4. notes that depend on the answers
-    ns_rel = 'library/setup-next-steps.md'
-    ns = os.path.join(vault, ns_rel)
-    if not os.path.exists(ns):
-        files[ns_rel] = None
-        report['created'] += 1
-        if not dry_run:
-            os.makedirs(os.path.dirname(ns), exist_ok=True)
-            with open(ns, 'w', encoding='utf-8') as fh:
-                fh.write(next_steps(repo, a, on, off, report['routines']))
-    if not dry_run:
-        for rel in obsidian_seed(vault):
-            files[rel] = None
-        # 5. manifest with hashes (used by doctor and uninstall)
-        sums = {}
-        for rel in files:
-            p = os.path.join(vault, rel)
-            if os.path.isfile(p):
-                sums[rel] = render.sha256(p)
-        old = {}
-        if os.path.exists(manifest_path):
-            old = jload(manifest_path).get('files', {})
-        old.update(sums)
-        jdump(manifest_path, {'version': VERSION, 'installed_at': datetime.datetime.now().isoformat(timespec='seconds'),
-                              'packs': a['packs'], 'tools': a['tools'], 'ct_home': ct_home, 'files': old})
-        public = {k: v for k, v in a.items() if k not in ('claude_bin',)}
-        jdump(os.path.join(vault, '.control-tower', 'answers.json'), public)
-    return report
+    if index and not ctx.dry_run:
+        jdump(os.path.join(ctx.ct_home, 'routines', 'routines.json'), index)
+    return report['routines']
+
+
+def step_next_steps(ctx, routines):
+    """What the user must do next. Full install: a note in the vault, written once. Runtime-only: next to the runtime,
+    rewritten every run (it is the installer's file, never the user's)."""
+    text = next_steps(ctx.repo, ctx.a, ctx.jobs_on, ctx.jobs_off, routines)
+    if ctx.runtime_only:
+        path = os.path.join(ctx.ct_home, 'setup-next-steps.md')
+        if not ctx.dry_run:
+            os.makedirs(ctx.ct_home, exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as fh:
+                fh.write(text)
+    else:
+        rel = 'library/setup-next-steps.md'
+        path = os.path.join(ctx.vault, rel)
+        if not os.path.exists(path):
+            ctx.record({'created': [rel]})
+            if not ctx.dry_run:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as fh:
+                    fh.write(text)
+    ctx.report['next_steps'] = path
+
+
+def step_obsidian(ctx):
+    if not ctx.dry_run:
+        for rel in obsidian_seed(ctx.vault):
+            ctx.files[rel] = None
+
+
+def step_manifest(ctx):
+    """Checksums of every kit file in the vault (doctor, --update, uninstall), the mode, the core policy, and the answers."""
+    if ctx.dry_run:
+        return
+    sums = {rel: render.sha256(os.path.join(ctx.vault, rel)) for rel in ctx.files if os.path.isfile(os.path.join(ctx.vault, rel))}
+    files = {**ctx.previous.get('files', {}), **sums}
+    jdump(ctx.manifest_path, {'version': VERSION, 'installed_at': datetime.datetime.now().isoformat(timespec='seconds'),
+                              'packs': ctx.a['packs'], 'tools': ctx.a['tools'], 'ct_home': ctx.ct_home, 'files': files,
+                              'vault_mode': ctx.report['vault_mode'], **ctx.policy.to_json()})
+    jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k != 'claude_bin'})
+
+
+def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agents_dir=None, no_launchctl=False, log=print, update=False):
+    ctx = Ctx(answers, repo, dry_run, update)  # plan: everything is checked here, before the first write
+    if not ctx.runtime_only:                   # runtime-only: the vault is the user's own, nothing of the kit goes in it
+        step_vault(ctx)
+        step_adapters(ctx)
+    step_runtime(ctx)
+    plist_paths = step_schedule(ctx)
+    routines = step_routines(ctx)
+    step_next_steps(ctx, routines)
+    if not ctx.runtime_only:
+        step_obsidian(ctx)
+    step_manifest(ctx)                         # last: checksums every file the steps above wrote
+    sched = ctx.report['schedule']
+    if apply_schedule and not dry_run:
+        if sched['kind'] == 'none':
+            ctx.report['warnings'].append('--apply-schedule ignored: scheduler is "none" in the answers')
+        else:
+            sched['applied'] = apply(sched['kind'], plist_paths, os.path.join(sched['dir'], 'crontab.txt'), launch_agents_dir,
+                                     no_launchctl, ctx.report)
+    return ctx.report
 
 
 def apply(kind, plist_paths, cron_file, launch_agents_dir, no_launchctl, report):
@@ -727,7 +816,7 @@ def print_report(report, dry_run):
             print(f"  new versions are in {report['stash_dir']}: compare and merge what you want (or ask Claude: "
                   '"merge the kit updates from .control-tower/updates"), then delete that folder')
     if not dry_run:
-        print('\nNext: open library/setup-next-steps.md in your vault.')
+        print(f"\nNext: open {report.get('next_steps') or 'library/setup-next-steps.md in your vault'}.")
 
 
 def main():
@@ -736,6 +825,8 @@ def main():
     ap.add_argument('--interactive', action='store_true')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--apply-schedule', action='store_true')
+    ap.add_argument('--runtime-only', action='store_true', help='install only the runtime (job runner, guard, jobs, schedule) on an '
+                    'existing vault: nothing is written in it except .control-tower/ (same as "vault_mode": "runtime")')
     ap.add_argument('--update', action='store_true', help='after pulling a new version of the kit: refresh the files you never edited, '
                     'keep the ones you edited and save their new version under <vault>/.control-tower/updates/')
     ap.add_argument('--launch-agents-dir', help='where to link launchd plists (default ~/Library/LaunchAgents)')
@@ -749,6 +840,8 @@ def main():
             answers = jload(args.answers)
         else:
             ap.error('give --answers FILE or --interactive')
+        if args.runtime_only:
+            answers['vault_mode'] = 'runtime'
         report = install(answers, dry_run=args.dry_run, apply_schedule=args.apply_schedule,
                          launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, update=args.update)
     except (InstallError, render.RenderError) as exc:

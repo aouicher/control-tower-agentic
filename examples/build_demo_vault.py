@@ -1305,7 +1305,7 @@ def build(out, packs=SUPPORTED_PACKS, day=None, force=False, tasks_dir=None):
     prepare_out(out, force)
     answers = answers_for(out, packs)
     report = install.install(answers, log=lambda *a: None)
-    words = render.build_table(install.vocab_files(REPO, packs), answers)
+    words = render.build_table(install.vocab_files(REPO, packs, install.resolve_packs(REPO)), answers)
     created = Demo(out, day, packs, words).build()
     tasks = seed_obsidian(out, tasks_dir)
     return {'vault': out, 'installed': report['created'], 'notes': sorted(set(created)), 'tasks_plugin': tasks}

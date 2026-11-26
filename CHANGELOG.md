@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Private packs (`pack_dirs` in the answers): packs kept outside the repository, which may replace or exclude core files (templates, rules, language). See docs/private-packs.md.
+- Runtime-only installs (`--runtime-only`): runner, guard, jobs and schedule on an existing vault, nothing written in it but `.control-tower/`.
 - `install.py --update`: refresh the kit files you never edited, keep the ones you edited (new version saved in `.control-tower/updates/`), leave deleted files deleted. See docs/updating.md.
 - Job guard: jobs can read their skills, adapter notes and rules again (they wrote empty reports); glob and grep bypasses closed. Re-run the installer (`--update`) to get the fixed guard.
 

@@ -68,6 +68,10 @@ Routine prompts follow the job prompt rules of section 3, plus: name connectors 
 
 ## 3. Jobs
 
+### Private packs
+
+A pack outside this repository, listed in the answers under `pack_dirs`, follows the same layout and may also declare `replaces` (core files it ships its own version of) and `excludes` (core files not installed). Public packs in `packs/` may not: the installer refuses it and the tests check it. See [private packs](../private-packs.md).
+
 `job.json`:
 
 ```json
