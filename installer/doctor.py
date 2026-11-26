@@ -172,9 +172,18 @@ def check_runtime(r, vault, ct_home):
                   else 'missing guard hook, or write permission missing or not scoped to the vault (re-run the installer)')
         except (ValueError, KeyError):
             r.add('FAIL', f'job {j}', 'settings.json is not valid')
-    for risky in ('.claude/settings.json', '.claude/settings.local.json', '.mcp.json'):
-        if os.path.isfile(os.path.join(vault, risky)):
-            r.add('warn', f'vault file {risky}', 'unattended jobs load the vault settings: anything allowed there widens what jobs can do, review it')
+    for risky in ('.claude/settings.json', '.claude/settings.local.json'):
+        p = os.path.join(vault, risky)
+        if not os.path.isfile(p):
+            continue
+        try:
+            data = json.loads(read(p))
+        except ValueError:
+            data = {'unreadable': True}
+        if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
+            r.add('warn', f'vault file {risky}', 'has allow rules or hooks: unattended jobs load it too, so it widens what they can do')
+    if os.path.isfile(os.path.join(vault, '.mcp.json')):
+        r.add('warn', 'vault file .mcp.json', 'MCP servers declared in the vault are available to unattended jobs too, review it')
     outside = []
     for root, dirs, files in os.walk(vault):
         dirs[:] = [d for d in dirs if d not in ('.obsidian', '.git')]

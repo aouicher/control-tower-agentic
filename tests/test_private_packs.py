@@ -449,6 +449,11 @@ class RuntimeOnlyTests(unittest.TestCase):
             report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), dry_run=True, log=lambda *x: None)
             self.assertTrue(any('widens what they can do' in w for w in report['warnings']))
             self.assertTrue(any('declares allowed-tools' in w for w in report['warnings']))
+            write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps({'enabledMcpjsonServers': []}))
+            os.remove(os.path.join(v, '.claude', 'settings.json'))
+            install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), log=lambda *x: None)
+            levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
+            self.assertNotIn('vault file .claude/settings.local.json', levels, 'settings without rules or hooks are not flagged')
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:
