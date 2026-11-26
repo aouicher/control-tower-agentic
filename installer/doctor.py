@@ -6,6 +6,7 @@
 Prints one line per check (ok / warn / FAIL) and exits with 1 when something failed.
 """
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -58,7 +59,16 @@ def check(vault, ct_home, claude_bin='claude'):
     if not os.path.isdir(vault):
         r.add('FAIL', 'vault folder', f'{vault} does not exist')
         return r
-    missing = [d for d in LAYOUT if not os.path.isdir(os.path.join(vault, d))]
+    mp = os.path.join(vault, '.control-tower', 'manifest.json')
+    early = json.loads(read(mp)) if os.path.isfile(mp) else {}
+    if early.get('vault_mode') == 'runtime':
+        # runtime-only install: the vault is the user's own layout, only the runtime is checked
+        r.add('ok', 'vault (runtime-only install)', 'vault layout, notes and skills are yours: not checked')
+        return check_runtime(r, vault, ct_home)
+    skipped = list(early.get('excludes') or []) + list(early.get('replaces') or [])
+    gone = lambda rel: any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(rel, p.rstrip('/') + '/*') or fnmatch.fnmatch(rel + '/x', p)
+                           for p in skipped)
+    missing = [d for d in LAYOUT if not os.path.isdir(os.path.join(vault, d)) and not gone(d)]
     r.add('ok' if not missing else 'FAIL', 'vault folder layout', ', '.join(missing) or f'{len(LAYOUT)} folders')
     r.add('ok' if os.path.isfile(os.path.join(vault, 'CLAUDE.md')) else 'FAIL', 'CLAUDE.md at the vault root')
     # notes: frontmatter and leftover tokens
@@ -100,7 +110,8 @@ def check(vault, ct_home, claude_bin='claude'):
         fm = frontmatter(read(p)) or {}
         if fm.get('name') != s or 'description' not in fm:
             bad.append(f'{s}: name/description')
-    r.add('ok' if not bad and set(CORE_SKILLS) <= set(skills) else 'FAIL', f'vault skills ({len(skills)})', ', '.join(bad) or ', '.join(skills))
+    needed = {s for s in CORE_SKILLS if not gone(f'.claude/skills/{s}/SKILL.md')}
+    r.add('ok' if not bad and needed <= set(skills) else 'FAIL', f'vault skills ({len(skills)})', ', '.join(bad) or ', '.join(skills))
     # manifest
     mp = os.path.join(vault, '.control-tower', 'manifest.json')
     manifest = None
@@ -134,7 +145,11 @@ def check(vault, ct_home, claude_bin='claude'):
             r.add('ok' if (c.get('bases') is True if isinstance(c, dict) else 'bases' in c) else 'warn', 'Obsidian Bases core plugin enabled')
     else:
         r.add('warn', 'Obsidian configuration', 'open the vault once in Obsidian to create .obsidian/')
-    # runtime and jobs
+    return check_runtime(r, vault, ct_home)
+
+
+def check_runtime(r, vault, ct_home):
+    """Runtime folder, jobs, settings and schedule."""
     if not os.path.isdir(ct_home):
         r.add('warn', 'runtime folder', f'{ct_home} not found (no jobs installed)')
         return r

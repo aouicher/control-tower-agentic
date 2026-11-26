@@ -16,6 +16,7 @@ Safety:
   * it seeds .obsidian/ only when the folder does not exist yet.
 """
 import argparse
+import fnmatch
 import datetime
 import hashlib
 import json
@@ -73,6 +74,48 @@ def list_packs(repo=REPO):
     return sorted(d for d in os.listdir(base) if os.path.isfile(os.path.join(base, d, 'pack.json'))) if os.path.isdir(base) else []
 
 
+def pack_dirs(repo=REPO, answers=None):
+    """{pack id: folder}. Public packs live in <repo>/packs; private packs are folders listed in answers["pack_dirs"],
+    anywhere on disk (for example a company pack kept out of the public repository). Raises InstallError on a bad entry."""
+    dirs = {p: os.path.join(repo, 'packs', p) for p in list_packs(repo)}
+    for raw in (answers or {}).get('pack_dirs') or []:
+        d = expand(raw)
+        mp = os.path.join(d, 'pack.json')
+        if not os.path.isfile(mp):
+            raise InstallError(f'answers: pack_dirs entry {raw} has no pack.json')
+        pid = jload(mp).get('id') or os.path.basename(d)
+        if pid in dirs:
+            raise InstallError(f'answers: private pack "{pid}" ({raw}) has the same id as another pack: rename it in its pack.json')
+        dirs[pid] = d
+    return dirs
+
+
+def is_private(repo, pdir):
+    """A pack outside <repo>/packs."""
+    return not os.path.realpath(pdir).startswith(os.path.realpath(os.path.join(repo, 'packs')) + os.sep)
+
+
+def core_policy(repo, packs, pdirs):
+    """(replaced, excluded) glob lists over core output paths, declared by private packs only.
+
+    `replaces`: the pack ships its own version of these core files (templates, CLAUDE.md, dashboards...): the core copy is skipped.
+    `excludes`: core files the user does not want at all.
+    """
+    replaced, excluded = [], []
+    for p in packs:
+        m = jload(os.path.join(pdirs[p], 'pack.json'))
+        if (m.get('replaces') or m.get('excludes')) and not is_private(repo, pdirs[p]):
+            raise InstallError(f'pack "{p}": only private packs (answers["pack_dirs"]) may replace or exclude core files')
+        replaced += list(m.get('replaces') or [])
+        excluded += list(m.get('excludes') or [])
+    return replaced, excluded
+
+
+def matches(rel, patterns):
+    rel = rel.replace(os.sep, '/')
+    return any(fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(rel, pat.rstrip('/') + '/*') for pat in patterns)
+
+
 def list_tools(capability, repo=REPO):
     d = os.path.join(repo, 'adapters', capability)
     return sorted(f[:-5] for f in os.listdir(d) if f.endswith('.json')) if os.path.isdir(d) else []
@@ -99,7 +142,15 @@ def validate(answers, repo=REPO):
         zoneinfo.ZoneInfo(tz)
     except Exception:
         errors.append(f'answers: unknown timezone "{tz}" (use an IANA name such as Europe/Paris)')
-    available = list_packs(repo)
+    try:
+        available = sorted(pack_dirs(repo, answers))
+    except InstallError as exc:
+        errors.append(str(exc))
+        available = list_packs(repo)
+    if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
+        errors.append('answers: "vault_mode" must be full or runtime')
+    elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
+        errors.append(f'answers: vault_mode "runtime" installs only the runtime on an EXISTING vault, and {answers["vault_path"]} does not exist')
     for p in answers.get('packs', []):
         if p not in available:
             errors.append(f'answers: unknown pack "{p}" (available: {", ".join(available)})')
@@ -162,30 +213,34 @@ def wizard(repo=REPO, ask=input, out=print):
 
 
 # ----------------------------------------------------------------------------- plan
-def vocab_files(repo, packs):
+def vocab_files(repo, packs, pdirs=None):
+    pdirs = pdirs or pack_dirs(repo)
     files = [os.path.join(repo, 'core', 'vocabulary.json')]
     for p in packs:
-        manifest = jload(os.path.join(repo, 'packs', p, 'pack.json'))
-        files.append(os.path.join(repo, 'packs', p, manifest['vocabulary']))
+        manifest = jload(os.path.join(pdirs[p], 'pack.json'))
+        if manifest.get('vocabulary'):
+            files.append(os.path.join(pdirs[p], manifest['vocabulary']))
     return files
 
 
-def static_collisions(repo, packs):
-    """Files that two sources would write to the same place (a pack colliding with the core or another pack)."""
+def static_collisions(repo, packs, pdirs=None, replaced=(), excluded=()):
+    """Files that two sources would write to the same place (a pack colliding with the core or another pack).
+    Core files that a private pack replaces or excludes are not counted."""
+    pdirs = pdirs or pack_dirs(repo)
     seen, clash = {}, []
     def walk(src, label):
         for root, _, files in os.walk(src):
             for f in files:
                 rel = os.path.relpath(os.path.join(root, f), src)
                 rel = rel[:-5] if rel.endswith('.tmpl') else rel
-                if rel.endswith('.gitkeep'):
+                if rel.endswith('.gitkeep') or (label == 'core' and matches(rel, list(replaced) + list(excluded))):
                     continue
                 if rel in seen:
                     clash.append(f'{rel} ({seen[rel]} and {label})')
                 seen[rel] = label
     walk(os.path.join(repo, 'core', 'vault'), 'core')
     for p in packs:
-        v = os.path.join(repo, 'packs', p, 'vault')
+        v = os.path.join(pdirs[p], 'vault')
         if os.path.isdir(v):
             walk(v, 'pack ' + p)
     return clash
@@ -199,18 +254,19 @@ def job_capabilities(meta):
     return list(caps), []
 
 
-def eligible_jobs(repo, packs, tools):
+def eligible_jobs(repo, packs, tools, pdirs=None):
     """Jobs whose capabilities all have a chosen tool."""
+    pdirs = pdirs or pack_dirs(repo)
     jobs = []
     for p in packs:
-        manifest = jload(os.path.join(repo, 'packs', p, 'pack.json'))
+        manifest = jload(os.path.join(pdirs[p], 'pack.json'))
         for j in manifest.get('jobs', []):
-            meta = jload(os.path.join(repo, 'packs', p, 'jobs', j, 'job.json'))
+            meta = jload(os.path.join(pdirs[p], 'jobs', j, 'job.json'))
             req, opt = job_capabilities(meta)
             missing = [c for c in req if tools.get(c, 'none') == 'none']
             if not missing and not req and opt and not meta.get('vault_only') and all(tools.get(c, 'none') == 'none' for c in opt):
                 missing = ['one of ' + ' / '.join(opt)]
-            jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing})
+            jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing, 'dir': os.path.join(pdirs[p], 'jobs', j)})
     return jobs
 
 
@@ -233,12 +289,13 @@ def read_routine(path):
     return meta, text.split('\n## Prompt\n', 1)[1].strip() + '\n'
 
 
-def eligible_routines(repo, packs, tools):
+def eligible_routines(repo, packs, tools, pdirs=None):
     """Cloud routines of the chosen packs; a routine is offered only if its required connectors have a tool."""
     out = []
     for p in packs:
-        for rid in jload(os.path.join(repo, 'packs', p, 'pack.json')).get('routines', []):
-            meta, prompt = read_routine(os.path.join(repo, 'packs', p, 'routines', rid + '.md'))
+        pd = (pdirs or pack_dirs(repo))[p]
+        for rid in jload(os.path.join(pd, 'pack.json')).get('routines', []):
+            meta, prompt = read_routine(os.path.join(pd, 'routines', rid + '.md'))
             missing = [c for c in meta.get('connectors_required', []) if tools.get(c, 'none') == 'none']
             out.append({'pack': p, 'id': rid, 'meta': meta, 'prompt': prompt, 'missing': missing})
     return out
@@ -457,10 +514,14 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
     a['tools'] = {c: (a.get('tools') or {}).get(c, 'none') for c in CAPABILITIES}
     vault, ct_home = expand(a['vault_path']), expand(a['ct_home'])
     a['vault_path'], a['ct_home'] = vault, ct_home
-    clash = static_collisions(repo, a['packs'])
+    pdirs = pack_dirs(repo, a)
+    replaced, excluded = core_policy(repo, a['packs'], pdirs)
+    runtime_only = a.get('vault_mode', 'full') == 'runtime'
+    clash = static_collisions(repo, a['packs'], pdirs, replaced, excluded)
     if clash:
         raise InstallError('these files would be written by two packs or by a pack and the core: ' + '; '.join(clash))
-    table = render.build_table(vocab_files(repo, a['packs']), a)
+    table = render.build_table(vocab_files(repo, a['packs'], pdirs), a)
+    skip_core = (lambda rel: matches(rel, replaced + excluded)) if (replaced or excluded) else None
     report = {'vault': vault, 'ct_home': ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [], 'warnings': [], 'schedule': None}
     manifest_path = os.path.join(vault, '.control-tower', 'manifest.json')
     installed, stash_dir = None, None
@@ -478,15 +539,17 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
             report[key] += res.get(key, [])
         for rel in res['created'] + res['replaced'] + res.get('updated', []):
             files[rel] = None  # checksums recomputed below; stashed files keep their install-time checksum
-    # 1. vault: core then packs
-    record(render.render_tree(os.path.join(repo, 'core', 'vault'), vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
-    for p in a['packs']:
-        pv = os.path.join(repo, 'packs', p, 'vault')
-        if os.path.isdir(pv):
-            record(render.render_tree(pv, vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
+    # 1. vault: core then packs (skipped in runtime-only mode: the vault is the user's own)
+    if not runtime_only:
+        record(render.render_tree(os.path.join(repo, 'core', 'vault'), vault, table, dry_run=dry_run, installed=installed,
+                                  stash_dir=stash_dir, skip=skip_core))
+        for p in a['packs']:
+            pv = os.path.join(pdirs[p], 'vault')
+            if os.path.isdir(pv):
+                record(render.render_tree(pv, vault, table, dry_run=dry_run, installed=installed, stash_dir=stash_dir))
     # 2. adapter notes and next steps
     for cap, tool in a['tools'].items():
-        if tool == 'none':
+        if tool == 'none' or runtime_only:
             continue
         rel = f'.claude/adapters/{cap}.md'
         target = os.path.join(vault, rel)
@@ -523,7 +586,7 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         else:
             report['kept'] += 1
     # 3. jobs
-    jobs = eligible_jobs(repo, a['packs'], a['tools'])
+    jobs = eligible_jobs(repo, a['packs'], a['tools'], pdirs)
     on, off = [], []
     for j in jobs:
         cfg = (a.get('jobs') or {}).get(j['id'], {})
@@ -559,7 +622,7 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
         jdir = os.path.join(ct_home, 'jobs', j['id'])
         if not dry_run:
-            res = render.render_tree(os.path.join(repo, 'packs', j['pack'], 'jobs', j['id']), jdir, table, force=True,
+            res = render.render_tree(j['dir'], jdir, table, force=True,
                                      rename=lambda r: {'prompt.md': 'prompt.md'}.get(r, r))
             jdump(os.path.join(jdir, 'job.json'), json.loads(render.render_text(json.dumps(meta), {**table}, j['id'], [])))
             jdump(os.path.join(jdir, 'settings.json'), job_settings(repo, a, {'id': j['id'], 'meta': json.loads(render.render_text(json.dumps(meta), table, j['id'], []))}))
@@ -598,7 +661,7 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
     report['routines'], report['routines_skipped'] = [], []
     index = []
     seen_ids = {}
-    for r in eligible_routines(repo, a['packs'], a['tools']):
+    for r in eligible_routines(repo, a['packs'], a['tools'], pdirs):
         if r['id'] in seen_ids and not r['missing']:
             report['routines_skipped'].append({'id': f"{r['pack']}--{r['id']}", 'missing': [], 'duplicate_of': seen_ids[r['id']]})
             continue
@@ -627,19 +690,30 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
                 fh.write(prompt)
     if not dry_run:
         jdump(os.path.join(ct_home, 'routines', 'routines.json'), index) if index else None
-    # 4. notes that depend on the answers
+    # 4. notes that depend on the answers (runtime-only: next to the runtime, never in the user's vault)
     ns_rel = 'library/setup-next-steps.md'
-    ns = os.path.join(vault, ns_rel)
-    if not os.path.exists(ns):
+    ns = os.path.join(ct_home, 'setup-next-steps.md') if runtime_only else os.path.join(vault, ns_rel)
+    report['next_steps'] = ns
+    if runtime_only:
+        if not dry_run:
+            os.makedirs(ct_home, exist_ok=True)
+            with open(ns, 'w', encoding='utf-8') as fh:
+                fh.write(next_steps(repo, a, on, off, report['routines']))
+    elif not os.path.exists(ns):
         files[ns_rel] = None
         report['created'] += 1
         if not dry_run:
             os.makedirs(os.path.dirname(ns), exist_ok=True)
             with open(ns, 'w', encoding='utf-8') as fh:
                 fh.write(next_steps(repo, a, on, off, report['routines']))
+    builtin = set(list_packs(repo))
+    if runtime_only and any(j['pack'] in builtin for j in on):
+        report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
+                                  'check they fit your vault, or use jobs from your own private pack')
     if not dry_run:
-        for rel in obsidian_seed(vault):
-            files[rel] = None
+        if not runtime_only:
+            for rel in obsidian_seed(vault):
+                files[rel] = None
         # 5. manifest with hashes (used by doctor and uninstall)
         sums = {}
         for rel in files:
@@ -651,7 +725,8 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
             old = jload(manifest_path).get('files', {})
         old.update(sums)
         jdump(manifest_path, {'version': VERSION, 'installed_at': datetime.datetime.now().isoformat(timespec='seconds'),
-                              'packs': a['packs'], 'tools': a['tools'], 'ct_home': ct_home, 'files': old})
+                              'packs': a['packs'], 'tools': a['tools'], 'ct_home': ct_home, 'files': old,
+                              'vault_mode': 'runtime' if runtime_only else 'full', 'excludes': excluded, 'replaces': replaced})
         public = {k: v for k, v in a.items() if k not in ('claude_bin',)}
         jdump(os.path.join(vault, '.control-tower', 'answers.json'), public)
     return report
@@ -727,7 +802,7 @@ def print_report(report, dry_run):
             print(f"  new versions are in {report['stash_dir']}: compare and merge what you want (or ask Claude: "
                   '"merge the kit updates from .control-tower/updates"), then delete that folder')
     if not dry_run:
-        print('\nNext: open library/setup-next-steps.md in your vault.')
+        print(f"\nNext: open {report.get('next_steps') or 'library/setup-next-steps.md in your vault'}.")
 
 
 def main():
@@ -736,6 +811,8 @@ def main():
     ap.add_argument('--interactive', action='store_true')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--apply-schedule', action='store_true')
+    ap.add_argument('--runtime-only', action='store_true', help='install only the runtime (job runner, guard, jobs, schedule) on an '
+                    'existing vault: nothing is written in it except .control-tower/ (same as "vault_mode": "runtime")')
     ap.add_argument('--update', action='store_true', help='after pulling a new version of the kit: refresh the files you never edited, '
                     'keep the ones you edited and save their new version under <vault>/.control-tower/updates/')
     ap.add_argument('--launch-agents-dir', help='where to link launchd plists (default ~/Library/LaunchAgents)')
@@ -749,6 +826,8 @@ def main():
             answers = jload(args.answers)
         else:
             ap.error('give --answers FILE or --interactive')
+        if args.runtime_only:
+            answers['vault_mode'] = 'runtime'
         report = install(answers, dry_run=args.dry_run, apply_schedule=args.apply_schedule,
                          launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, update=args.update)
     except (InstallError, render.RenderError) as exc:
