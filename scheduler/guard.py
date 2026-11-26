@@ -120,16 +120,11 @@ JOB_COMMANDS = {
 }
 UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
                         r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
-SEPARATORS = {';', '&&', '||', '|', '&', '(', ')', '$(', '`', ';;', '|&'}
+SEPARATORS = {';', '&&', '||', '|', '&', ';;', '|&'}
 REDIRECT = re.compile(r'^[0-9]*[<>&|]+$')  # any token made of redirection characters that is not a separator
 
 
-def expansions(arg):
-    """The words the shell will make of `arg` by brace expansion (`{/etc,x}` -> /etc, x), one level; else [arg]."""
-    m = re.search(r'\{([^{}]*)\}', arg)
-    if not m or not (',' in m.group(1) or '..' in m.group(1)):
-        return [arg]
-    return [arg[:m.start()] + part + arg[m.end():] for part in re.split(r',|\.\.', m.group(1))]
+BRACE_EXPANSION = re.compile(r'\{[^{}]*(,|\.\.)[^{}]*\}')
 
 
 def path_like(arg):
@@ -137,8 +132,8 @@ def path_like(arg):
 
 
 def outside_vault(arg, vault):
-    """An argument (after brace expansion) that names a path outside the vault."""
-    return any(path_like(w) and not inside(os.path.join(vault, os.path.expanduser(w)), vault) for w in expansions(arg))
+    """An argument that names a path outside the vault."""
+    return path_like(arg) and not inside(os.path.join(vault, os.path.expanduser(arg)), vault)
 
 
 def segment_reason(seg, vault):
@@ -186,6 +181,8 @@ def segment_reason(seg, vault):
                 i += 2
                 continue
         else:
+            if BRACE_EXPANSION.search(a) and not (cmd == 'jq' and not operands):
+                return f'{cmd}: brace expansion is not allowed in jobs ({a})'  # the shell would turn it into other words
             if any(re.search(r'(^|[^A-Za-z_])' + re.escape(w) + r'($|[^A-Za-z_])', a) for w in rule.get('refuse_words', ())):
                 return f'{cmd}: "{a}" can expose the environment or files'
             if a in rule.get('no_operand', ()):
@@ -212,6 +209,11 @@ def command_reason(cmd, vault):
         return 'cannot parse this command'
     seg = []
     for tok in tokens + [';']:
+        if re.fullmatch(r'[^\w\s]+', tok) and tok not in SEPARATORS and not REDIRECT.match(tok):
+            return f'shell syntax "{tok}" is not allowed in jobs'  # subshells, process substitution <( >(, anything unknown
+        if '(' in tok or ')' in tok:
+            if not (seg and seg[0] == 'jq'):
+                return 'parentheses: subshells and process substitution are not allowed in jobs'
         if tok in SEPARATORS:
             reason = segment_reason(seg, vault)
             if reason:
