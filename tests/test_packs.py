@@ -14,6 +14,9 @@ import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'installer'))
+import plan  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RENDER = os.path.join(ROOT, 'installer', 'render.py')
 PACKS_DIR = os.path.join(ROOT, 'packs')
@@ -115,9 +118,8 @@ class PackTests(unittest.TestCase):
             for key in ('name', 'description', 'schedule', 'model', 'capabilities', 'outputs', 'permissions'):
                 self.assertIn(key, job, f'{pid}/{j}: job.json lacks {key}')
             self.assertRegex(job['schedule'].get('time', ''), r'^\d{2}:\d{2}$', f'{pid}/{j}: schedule.time')
-            for perm in job['permissions'].get('allow', []):
-                self.assertNotIn(perm, ('Write', 'Edit', 'Bash', 'WebFetch'), f'{pid}/{j}: unscoped permission "{perm}" (scope it to the vault, for example Edit({{{{ct.vault_path}}}}/**))')
-                self.assertNotIn('*', perm.replace('/**)', ')'), f'{pid}/{j}: wildcard permission "{perm}"')
+            for perm in job['permissions'].get('allow', []):  # the installer enforces the same rule (plan.permission_problem)
+                self.assertIsNone(plan.permission_problem(perm), f'{pid}/{j}: permission "{perm}"')
             caps = job['capabilities']
             self.assertIsInstance(caps, dict, f'{pid}/{j}: capabilities must be {{"required": [...], "optional": [...]}}')
             for c in caps.get('required', []) + caps.get('optional', []):

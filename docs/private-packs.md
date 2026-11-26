@@ -35,13 +35,24 @@ Only private packs may change the core. In `pack.json`:
 - `replaces`: core files your pack ships its own version of. The pack must contain them under `vault/` (`vault/CLAUDE.md.tmpl`, `vault/_system/templates/daily.md`...). The core copy is not installed.
 - `excludes`: core files or folders you do not want at all.
 
-Paths are vault paths as installed (`CLAUDE.md`, not `CLAUDE.md.tmpl`); `*` patterns work, and a folder covers everything under it. This is how you get a vault in another language: replace `CLAUDE.md`, the templates and the pages, and set your words in `vocabulary.json`.
+Paths are vault paths as installed (`CLAUDE.md`, not `CLAUDE.md.tmpl`). Patterns work per folder level: `*` never crosses a `/` (`*.base` is a file at the vault root), `**` spans folders (`**/*.base`), and a folder covers everything under it (`_system/dashboards`). Every `replaces` entry must match a file the pack ships, or the install stops. This is how you get a vault in another language: replace `CLAUDE.md`, the templates and the pages, and set your words in `vocabulary.json`.
+
+A pack may never ship installer state, git, Obsidian or Claude settings: `.control-tower/`, `.git/`, `.obsidian/`, `.claude/settings*.json`, `.mcp.json`, `CLAUDE.local.md`. Pack, job and routine ids are lowercase letters, digits and `-`.
 
 `doctor.py` knows what you excluded and does not report it missing. `--update` keeps honouring `replaces` and `excludes`: the core never comes back over your files.
 
 ### Jobs in a private pack
 
-Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`). Your jobs may use any MCP tool or command your company relies on: list each read tool by exact name in `permissions.allow`. The guard and the per-job settings apply exactly as for public jobs: read and write only inside the vault, protected areas, no outward action.
+Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`). A pack is often written by someone else than the person who installs it, so the installer checks every `permissions.allow` entry and stops on the first one that would widen what an unattended job can do:
+
+| Allowed | Refused |
+|---|---|
+| `Read`, `Grep`, `Glob`, `Read(<path>)` | `Edit`, `Write` in any form: the installer grants the vault write itself |
+| One MCP tool by exact name: `mcp__<server>__<tool>` | A whole server or a wildcard: `mcp__<server>`, `mcp__*` |
+| `Bash(<command> ...)` for a read command: `Bash(gh pr list:*)`, `Bash(TWG=1 twg jira workitem query *)`, `Bash(git log:*)` | `Bash`, `Bash(*)`, shells and interpreters (`sh`, `python`, `node`...), file and network commands (`cp`, `rm`, `curl`...), git subcommands that write, shell operators |
+| `WebFetch(domain:<host>)` | `WebFetch`, `WebSearch` |
+
+The same check runs on the `permissions` you add in the answers. The guard and the per-job settings then apply exactly as for public jobs: read and write only inside the vault, protected areas, no outward action.
 
 ## Runtime-only installs
 
@@ -50,7 +61,7 @@ python3 installer/install.py --answers my-answers.json --runtime-only --dry-run
 python3 installer/install.py --answers my-answers.json --runtime-only
 ```
 
-(or `"vault_mode": "runtime"` in the answers). The vault must exist already.
+(or `"vault_mode": "runtime"` in the answers). The vault must exist already. The mode is remembered: later runs and `--update` stay runtime-only even if your answers file does not say so. To switch to a full install, set `"vault_mode": "full"` explicitly.
 
 | | Full install | Runtime-only |
 |---|---|---|

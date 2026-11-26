@@ -6,13 +6,16 @@
 Prints one line per check (ok / warn / FAIL) and exits with 1 when something failed.
 """
 import argparse
-import fnmatch
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from plan import REPO, CorePolicy, core_files  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -60,17 +63,19 @@ def check(vault, ct_home, claude_bin='claude'):
         r.add('FAIL', 'vault folder', f'{vault} does not exist')
         return r
     mp = os.path.join(vault, '.control-tower', 'manifest.json')
-    early = json.loads(read(mp)) if os.path.isfile(mp) else {}
-    if early.get('vault_mode') == 'runtime':
+    manifest = json.loads(read(mp)) if os.path.isfile(mp) else None  # read once, used below
+    if (manifest or {}).get('vault_mode') == 'runtime':
         # runtime-only install: the vault is the user's own layout, only the runtime is checked
         r.add('ok', 'vault (runtime-only install)', 'vault layout, notes and skills are yours: not checked')
         return check_runtime(r, vault, ct_home)
-    skipped = list(early.get('excludes') or []) + list(early.get('replaces') or [])
-    gone = lambda rel: any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(rel, p.rstrip('/') + '/*') or fnmatch.fnmatch(rel + '/x', p)
-                           for p in skipped)
-    missing = [d for d in LAYOUT if not os.path.isdir(os.path.join(vault, d)) and not gone(d)]
-    r.add('ok' if not missing else 'FAIL', 'vault folder layout', ', '.join(missing) or f'{len(LAYOUT)} folders')
-    r.add('ok' if os.path.isfile(os.path.join(vault, 'CLAUDE.md')) else 'FAIL', 'CLAUDE.md at the vault root')
+    # same rule as the installer (plan.CorePolicy): a core path is only expected when a private pack did not exclude it
+    policy = CorePolicy.from_json(manifest)
+    shipped = core_files(REPO)
+    expected_dir = lambda d: any(f.startswith(d + '/') and not policy.excluded(f) for f in shipped)
+    missing = [d for d in LAYOUT if expected_dir(d) and not os.path.isdir(os.path.join(vault, d))]
+    r.add('ok' if not missing else 'FAIL', 'vault folder layout', ', '.join(missing) or 'all expected folders present')
+    if not policy.excluded('CLAUDE.md'):
+        r.add('ok' if os.path.isfile(os.path.join(vault, 'CLAUDE.md')) else 'FAIL', 'CLAUDE.md at the vault root')
     # notes: frontmatter and leftover tokens
     bad_fm, tokens, unquoted, count = [], [], [], 0
     for root, dirs, files in os.walk(vault):
@@ -110,14 +115,10 @@ def check(vault, ct_home, claude_bin='claude'):
         fm = frontmatter(read(p)) or {}
         if fm.get('name') != s or 'description' not in fm:
             bad.append(f'{s}: name/description')
-    needed = {s for s in CORE_SKILLS if not gone(f'.claude/skills/{s}/SKILL.md')}
+    needed = {s for s in CORE_SKILLS if not policy.excluded(f'.claude/skills/{s}/SKILL.md')}
     r.add('ok' if not bad and needed <= set(skills) else 'FAIL', f'vault skills ({len(skills)})', ', '.join(bad) or ', '.join(skills))
     # manifest
-    mp = os.path.join(vault, '.control-tower', 'manifest.json')
-    manifest = None
-    if os.path.isfile(mp):
-        manifest = json.loads(read(mp))
-        import hashlib
+    if manifest:
         changed = 0
         for rel, sha in manifest.get('files', {}).items():
             p = os.path.join(vault, rel)

@@ -12,6 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
 import doctor  # noqa: E402
 import install  # noqa: E402
+import plan  # noqa: E402
 
 UNINSTALL = os.path.join(ROOT, 'installer', 'uninstall.py')
 
@@ -112,6 +113,101 @@ class PrivatePackTests(unittest.TestCase):
         for pid in install.list_packs():
             m = json.load(open(os.path.join(ROOT, 'packs', pid, 'pack.json')))
             self.assertFalse(m.get('replaces') or m.get('excludes'), f'public pack {pid} must not replace or exclude core files')
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    """One test per finding of the PR #5 review."""
+
+    def test_m2_private_job_permissions_are_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for bad in (['Bash'], ['Write'], ['WebFetch'], ['Edit(//etc/**)'], ['mcp__*'], ['mcp__server'], ['Bash(python -c x)'],
+                        ['Bash(cp x ~/.zshrc)'], ['Bash(*)'], ['Bash(git push:*)'], ['Bash(ls; rm -rf x)']):
+                with self.subTest(allow=bad):
+                    pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(str(bad))))))
+                    jp = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
+                    job = json.load(open(jp))
+                    job['permissions']['allow'] = bad
+                    json.dump(job, open(jp, 'w'))
+                    with self.assertRaises(install.InstallError):
+                        install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+            pd = private_pack(os.path.join(tmp, 'ok'))
+            jp = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
+            job = json.load(open(jp))
+            job['permissions']['allow'] = ['mcp__acme__get_issues', 'Bash(gh pr list:*)', 'Bash(TWG=1 twg query *)', 'WebFetch(domain:acme.test)']
+            json.dump(job, open(jp, 'w'))
+            install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+            with self.assertRaises(install.InstallError):
+                install.install(answers(tmp, ['acme-private'], [pd], permissions={'tracker': ['Bash']}), dry_run=True)
+
+    def test_m1_runtime_mode_is_remembered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            v = os.path.join(tmp, 'vault')
+            write(os.path.join(v, 'CLAUDE.md'), 'Mine.\n')
+            pd = private_pack(os.path.join(tmp, 'p'))
+            install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), log=lambda *x: None)
+            plain = answers(tmp, ['acme-private'], [pd])  # no vault_mode: the user's own answers file
+            for kw in ({}, {'update': True}):
+                with self.subTest(**kw):
+                    report = install.install(plain, log=lambda *x: None, **kw)
+                    self.assertEqual(report['vault_mode'], 'runtime')
+                    self.assertFalse(os.path.exists(os.path.join(v, '.claude')), 'no kit file lands in a runtime-only vault')
+                    self.assertEqual(open(os.path.join(v, 'CLAUDE.md')).read(), 'Mine.\n')
+            report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='full'), dry_run=True, log=lambda *x: None)
+            self.assertEqual(report['vault_mode'], 'full', 'switching to full is possible, but only when asked explicitly')
+
+    def test_l1_patterns_are_segment_aware_and_doctor_agrees(self):
+        self.assertTrue(plan.path_match('x.base', '*.base'))
+        self.assertFalse(plan.path_match('_system/dashboards/people.base', '*.base'), '* does not cross /')
+        self.assertTrue(plan.path_match('_system/dashboards/people.base', '**/*.base'))
+        self.assertTrue(plan.path_match('.claude/skills/time-review/SKILL.md', '.claude/skills/time-review'), 'a folder covers its files')
+        self.assertFalse(plan.path_match('a/b', '../a'))
+        with tempfile.TemporaryDirectory() as tmp:
+            pd = private_pack(os.path.join(tmp, 'p'), replaces=[], excludes=['CLAUDE.md', '_system/dashboards'])
+            a = answers(tmp, ['acme-private'], [pd])
+            os.remove(os.path.join(pd, 'vault', 'CLAUDE.md.tmpl'))
+            os.remove(os.path.join(pd, 'vault', '_system', 'templates', 'daily.md'))  # replaces nothing now
+            install.install(a, log=lambda *x: None)
+            self.assertFalse(os.path.exists(os.path.join(a['vault_path'], 'CLAUDE.md')))
+            self.assertFalse(os.path.exists(os.path.join(a['vault_path'], '_system', 'dashboards')))
+            fails = [i for i in doctor.check(a['vault_path'], a['ct_home'], 'python3').items if i['level'] == 'FAIL']
+            self.assertEqual(fails, [], 'excluded CLAUDE.md and dashboards are not reported missing')
+
+    def test_l2_replaces_needs_the_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pd = private_pack(os.path.join(tmp, 'p'), replaces=['CLAUDE.md', 'cockpit.md'])
+            with self.assertRaises(install.InstallError) as ctx:
+                install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+            self.assertIn('ships no such file', str(ctx.exception))
+
+    def test_l3_a_symlinked_public_pack_stays_public(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = os.path.join(tmp, 'kit')
+            shutil.copytree(ROOT, kit, ignore=shutil.ignore_patterns('.git', 'tests', '__pycache__', '*.local'))
+            outside = private_pack(os.path.join(tmp, 'outside'), pid='evil')
+            os.symlink(outside, os.path.join(kit, 'packs', 'evil'))
+            with self.assertRaises(install.InstallError) as ctx:
+                install.install(answers(tmp, ['evil']), repo=kit, dry_run=True)
+            self.assertIn('only private packs', str(ctx.exception))
+
+    def test_l4_ids_cannot_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for kw in ({'id': '../../x'}, {'jobs': ['../../escape']}, {'routines': ['../r']}, {'id': 'Acme'}):
+                with self.subTest(**kw):
+                    pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(str(kw))))), **kw)
+                    with self.assertRaises(install.InstallError):
+                        install.install(answers(tmp, [kw.get('id', 'acme-private')], [pd]), dry_run=True)
+            self.assertFalse(os.path.exists(os.path.join(tmp, 'escape')))
+
+    def test_l5_packs_cannot_ship_protected_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for rel in ('.claude/settings.json', '.control-tower/manifest.json', '.obsidian/app.json', '.mcp.json', '.git/config'):
+                with self.subTest(rel=rel):
+                    pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(rel)))))
+                    write(os.path.join(pd, 'vault', rel), '{}')
+                    with self.assertRaises(install.InstallError):
+                        install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+        for pid in install.list_packs():  # the public packs pass the same rule
+            plan.check_pack_files(plan.resolve_packs(ROOT)[pid])
 
 
 class RuntimeOnlyTests(unittest.TestCase):
