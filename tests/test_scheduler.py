@@ -51,10 +51,15 @@ class GuardTests(unittest.TestCase):
 
     def test_read_only_commands_are_allowed(self):
         for cmd in ['ls -la', 'date "+%d/%m/%Y at %H:%M"', 'gh pr list -R org/repo --state merged --limit 200 --json number,title',
-                    'gh pr view 12', 'gh issue list --limit 100', 'gh release list --limit 20', 'git log --oneline -5', 'git status',
-                    'aws logs filter-log-events --log-group-name g', 'aws logs describe-log-groups', 'python3 _system/tools/duplicate-tasks.py']:
+                    'gh pr view 12', 'gh issue list --limit 100', 'gh release list --limit 20', 'git log --oneline -5', 'git status']:
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd), f'should allow: {cmd}')
+        # other commands only when the user trusts them (passed to the guard by the installer)
+        for cmd in ['aws logs filter-log-events --log-group-name g', 'python3 _system/tools/duplicate-tasks.py']:
+            with self.subTest(trusted=cmd):
+                self.assertIsNotNone(self.bash(cmd))
+                self.assertIsNone(guard.check({'tool_name': 'Bash', 'tool_input': {'command': cmd}, 'cwd': self.vault}, self.vault,
+                                              ('aws', 'python3')))
 
     def test_writes_stay_inside_the_vault(self):
         self.assertIsNone(self.tool('Edit', os.path.join(self.vault, 'journal/reports/a.md')))

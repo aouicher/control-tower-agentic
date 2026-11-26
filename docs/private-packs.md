@@ -46,16 +46,18 @@ A pack may never ship installer state, git, Obsidian or Claude settings: `.contr
 Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`; only the prompt is copied to the runtime). A pack is often written by someone else than the person who installs it, so permissions are checked twice:
 
 1. **At install, before anything is written**, on the final text (after `{{ct.*}}` tokens are filled in): every `permissions.allow` entry, and the `allowed-tools` of every skill the pack ships, must name something on the list below. The install stops otherwise.
-2. **At run time, on every call**, by the guard hook: a rule such as `Bash(sort:*)` is a prefix, so the guard checks the real arguments. Options that write a file, run code or send data are refused (`sort -o`, `git log --output`, `git diff --no-index`, `jq --rawfile`, `gh api -X`/`-f`/`-F`/`--method`, `gh api graphql`...), every path argument must stay inside the vault, output redirection goes to `/dev/null` only, and command substitution is refused.
+2. **At run time, on every call**, by the guard hook: a rule such as `Bash(sort:*)` is a prefix, so the guard checks the real command. Only the allowed commands and the ones you trust may run. Options that write a file, run code or send data are refused (`sort -o`, `git log --output`, `git diff --no-index`, `git blame --contents`, `jq --rawfile`, `jq env`, `gh api -X`/`-f`/`-F`/`--method`, `gh api graphql`, any URL or other host for `gh`...). Every file argument, option value included, must resolve inside the vault (symlinks followed). Output redirection goes to `/dev/null` only. Variables, substitutions, subshells, `cd`, brace expansion and here-strings are refused. Jobs may not create `.git`, `.claude`, `.obsidian`, `.vscode`, `CLAUDE.md` or `.mcp.json` anywhere in the vault, since a later git command or a later job would act on them.
+
+   Known limit: a `jq` filter may not contain `{a,b}` (the guard cannot tell it from shell brace expansion); build objects with `{a: .x} + {b: .y}`.
 
 | A pack may grant | Condition |
 |---|---|
-| `Read`, `Grep`, `Glob`, `Read(<path>)`, `TodoWrite`, `Skill` | the guard confines reads to the vault and blocks secrets |
+| `Read`, `Grep`, `Glob`, `Read(<path>)`, `TodoWrite`, `Skill` | the guard confines reads to the vault and blocks secrets; a pack's skills may not grant tools (`allowed-tools` is refused) |
 | `Bash(<command> ...)` for `date`, `ls`, `wc`, `sort`, `uniq`, `cut`, `tr`, `column`, `jq` | arguments checked at run time |
 | `Bash(git <sub> ...)` | `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files`; no option before the subcommand |
 | `Bash(gh <sub> ...)` | `pr list/view/checks/diff`, `issue list/view`, `release list/view`, `run list/view`, `repo view`, `api` (read-only: enforced at run time) |
 | `Bash(<tool> ...)` for another tool | only if **you** list it under `trusted_commands` |
-| `mcp__<server>__<tool>` | only the exact tools **you** list under `trusted_mcp_tools` (or under `permissions` in your answers) |
+| `mcp__<server>__<tool>` | only the exact tools **you** list under `trusted_mcp_tools` (or under `permissions` in your answers); a trusted tool that sends data can carry vault text out, so trust read tools only |
 | `WebFetch(domain:<host>)` | only hosts **you** list under `trusted_domains` (a fetch can carry vault text in its URL) |
 
 Always refused: `Edit` and `Write` (the installer grants the vault write itself), bare `Bash`, `WebFetch` or `WebSearch`, whole MCP servers and wildcards, shell operators, quotes, paths as commands, and `VAR=value` prefixes unless the variable is under `trusted_env` (never `PATH`, `PAGER`, `GIT_*`, `LD_*`...).

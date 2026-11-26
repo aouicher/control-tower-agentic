@@ -34,7 +34,7 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (REPO, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
+from plan import (REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
                   list_packs, resolve_packs, vault_files)
 
 VERSION = '0.1.0'
@@ -366,7 +366,10 @@ def job_settings(repo, answers, job):
             allow += man.get('permissions_allow', [])
             allow += list((answers.get('permissions') or {}).get(cap, []))
             deny += man.get('permissions_deny', [])
-    guard = ' '.join(shlex.quote(x) for x in (python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault))
+    hook = [python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault]
+    if answers.get('trusted_commands'):
+        hook += ['--commands', ','.join(answers['trusted_commands'])]
+    guard = ' '.join(shlex.quote(x) for x in hook)
     return {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
             'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
 
@@ -532,6 +535,11 @@ def vault_settings_warnings(vault):
         if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
             out.append(f'{p} has allow rules or hooks: unattended jobs load it too, so it widens what they can do. '
                        'Keep it empty for jobs, or move those rules to your user settings')
+    skills = os.path.join(vault, '.claude', 'skills')
+    for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
+        p = os.path.join(skills, name, 'SKILL.md')
+        if os.path.isfile(p) and TOOLS_KEY_ANYWHERE.search(open(p, encoding='utf-8', errors='replace').read()):
+            out.append(f'{p} declares allowed-tools: a job that loads this skill gets those tools too')
     return out
 
 

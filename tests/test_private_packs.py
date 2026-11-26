@@ -141,12 +141,15 @@ class PermissionPolicyTests(unittest.TestCase):
                        'sort -o $HOME/.zshrc', 'ls ${HOME}', 'ls {/etc,x}', 'cut -f1 {/etc/passwd,x}', 'jq -n env', 'jq env.GH_TOKEN',
                        'jq -n input_filename', 'ls {notes,/etc}', 'ls {a..z}', 'cat <(id)', 'sort <(ls /etc)', 'ls >(tee x)',
                        '(ls /etc)', 'ls ; (id)', 'jq . {/etc/passwd,x}', 'jq {/etc/passwd,.} x', 'jq {.,{/etc/passwd,y}} x',
-                       'jq {-n,.} x']
+                       'jq {-n,.} x', 'jq {name:.n,id:.i} notes/x.json', "jq -n '{e,}nv'",
+                       'gh api http://127.0.0.1:18777/collect?d=x', 'gh api //evil.test/x', 'gh pr list -R evil.test/o/r',
+                       'gh pr list --repo=https://evil.test/o/r', 'git blame --contents=/etc/hosts README.md', 'cd notes && ls',
+                       'python3 notes/x.py', 'ls notes/link-out/']
     RUNTIME_ALLOWED = ['sort', 'sort -u notes/x', 'git log --oneline -5', 'gh pr list --limit 100',
                        'gh api repos/acme/app/dependabot/alerts --paginate --jq .[].severity', 'jq .items notes/x.json',
                        'cut -d: -f1 notes/x', 'uniq -c', 'sort | uniq -c', 'ls notes', 'date +%F', 'wc -l notes/x',
-                       'gh api repos/x/y 2>/dev/null', 'ls 2>&1', 'tr a-z A-Z', 'jq {name:.n,id:.i} notes/x.json',
-                       'jq .environment notes/x.json', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
+                       'gh api repos/x/y 2>/dev/null', 'ls 2>&1', 'tr a-z A-Z', 'jq {name:.n} notes/x.json',
+                       'jq .environment notes/x.json', 'jq . notes/x.json', 'gh pr list -R acme/app', 'gh api /repos/acme/app/pulls', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
 
     def test_allowed_rules(self):
         for rule in self.ALLOWED:
@@ -160,15 +163,42 @@ class PermissionPolicyTests(unittest.TestCase):
 
     def test_the_guard_checks_actual_arguments(self):
         guard = plan.guard_rules
-        with tempfile.TemporaryDirectory() as v:
+        with tempfile.TemporaryDirectory() as v, tempfile.TemporaryDirectory() as out:
             os.makedirs(os.path.join(v, 'notes'))
-            run = lambda c: guard.check({'tool_name': 'Bash', 'tool_input': {'command': c}, 'cwd': v}, v)
+            os.symlink(out, os.path.join(v, 'notes', 'link-out'))  # a symlink already in the vault, pointing outside
+            run = lambda c: guard.check({'tool_name': 'Bash', 'tool_input': {'command': c}, 'cwd': v}, v, ('twg', 'slackcli'))
             for cmd in self.RUNTIME_REFUSED:
                 with self.subTest(refused=cmd):
                     self.assertIsNotNone(run(cmd))
             for cmd in self.RUNTIME_ALLOWED:
                 with self.subTest(allowed=cmd):
                     self.assertIsNone(run(cmd))
+
+    def test_no_git_or_claude_files_anywhere_in_the_vault(self):
+        guard = plan.guard_rules
+        with tempfile.TemporaryDirectory() as v:
+            for rel in ('notes/sub/.git/config', 'notes/sub/.git/HEAD', 'notes/CLAUDE.md', 'work/x/claude.local.md', 'a/.claude/settings.json',
+                        'a/.obsidian/app.json', 'a/.mcp.json', 'a/.vscode/tasks.json'):
+                with self.subTest(rel=rel):
+                    self.assertIsNotNone(guard.check({'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(v, rel)}, 'cwd': v}, v))
+            self.assertIsNone(guard.check({'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(v, 'notes', 'x.md')}, 'cwd': v}, v))
+
+    def test_the_guard_is_fast_on_hostile_input(self):
+        import time
+        guard = plan.guard_rules
+        with tempfile.TemporaryDirectory() as v:
+            for cmd in ("jq -n '" + '{a0,a1,a2,a3,a4,a5}' * 9 + "' ; sort -o ~/.zshrc x", 'ls ' + 'a ' * 20000):
+                start = time.time()
+                self.assertIsNotNone(guard.check({'tool_name': 'Bash', 'tool_input': {'command': cmd}, 'cwd': v}, v))
+                self.assertLess(time.time() - start, 1.0, 'a slow guard can be timed out by Claude Code')
+
+    def test_trusted_commands_reach_the_guard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pd = private_pack(os.path.join(tmp, 'p'))
+            a = answers(tmp, ['acme-private'], [pd], trusted_commands=['twg'])
+            install.install(a, log=lambda *x: None)
+            st = json.load(open(os.path.join(a['ct_home'], 'jobs', 'acme-brief', 'settings.json')))
+            self.assertIn('--commands twg', st['hooks']['PreToolUse'][0]['hooks'][0]['command'])
 
     def test_one_command_table_for_installer_and_guard(self):
         for cmd, rule in plan.guard_rules.JOB_COMMANDS.items():
@@ -409,9 +439,11 @@ class RuntimeOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             v = self.existing_vault(tmp)
             write(os.path.join(v, '.claude', 'settings.json'), json.dumps({'permissions': {'allow': ['Bash(git commit:*)']}}))
+            write(os.path.join(v, '.claude', 'skills', 'mine', 'SKILL.md'), '---\nname: mine\nallowed-tools: Bash\n---\n')
             pd = private_pack(os.path.join(tmp, 'p'))
             report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), dry_run=True, log=lambda *x: None)
             self.assertTrue(any('widens what they can do' in w for w in report['warnings']))
+            self.assertTrue(any('declares allowed-tools' in w for w in report['warnings']))
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:
