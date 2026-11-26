@@ -261,9 +261,6 @@ def command_reason(cmd, vault, extra_commands=()):
     for tok in tokens + [';']:
         if re.fullmatch(r'[;&|<>()]+', tok) and tok not in SEPARATORS and not REDIRECT.match(tok):
             return f'shell syntax "{tok}" is not allowed in jobs'  # subshells, process substitution <( >(, anything unknown
-        if '(' in tok or ')' in tok:
-            if not (seg and seg[0] == 'jq'):
-                return 'parentheses: subshells and process substitution are not allowed in jobs'
         if tok in SEPARATORS:
             reason = segment_reason(seg, vault, extra_commands)
             if reason:
