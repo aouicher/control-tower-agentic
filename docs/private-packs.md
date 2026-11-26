@@ -43,19 +43,22 @@ A pack may never ship installer state, git, Obsidian or Claude settings: `.contr
 
 ### Jobs in a private pack
 
-Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`). A pack is often written by someone else than the person who installs it, so the installer checks every `permissions.allow` entry **before writing anything**, on the final text (after `{{ct.*}}` tokens are filled in), and stops on the first one that would widen what an unattended job can do. The check is an allow-list: anything not listed below is refused.
+Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`; only the prompt is copied to the runtime). A pack is often written by someone else than the person who installs it, so permissions are checked twice:
 
-| Allowed | Notes |
+1. **At install, before anything is written**, on the final text (after `{{ct.*}}` tokens are filled in): every `permissions.allow` entry, and the `allowed-tools` of every skill the pack ships, must name something on the list below. The install stops otherwise.
+2. **At run time, on every call**, by the guard hook: a rule such as `Bash(sort:*)` is a prefix, so the guard checks the real arguments. Options that write a file, run code or send data are refused (`sort -o`, `git log --output`, `git diff --no-index`, `jq --rawfile`, `gh api -X`/`-f`/`-F`/`--method`, `gh api graphql`...), every path argument must stay inside the vault, output redirection goes to `/dev/null` only, and command substitution is refused.
+
+| A pack may grant | Condition |
 |---|---|
-| `Read`, `Grep`, `Glob`, `Read(<path>)` | the guard still confines reads to the vault and blocks secrets |
-| `Bash(<command> ...)` for `date`, `ls`, `wc`, `sort`, `uniq`, `jq`, `cut`, `tr`, `column` | text tools for data the job already has |
-| `Bash(git log ...)` and the other read-only git subcommands | `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files` |
-| `Bash(gh pr list ...)` and the other read-only gh subcommands | `pr list/view/checks/diff`, `issue list/view`, `release list/view`, `run list/view`, `repo view`, `api` (GET only) |
-| `Bash(<tool> ...)` for a tool **you** trust | list it in the answers under `trusted_commands` |
-| `mcp__<server>__<tool>`, one read tool | the server must be in `trusted_mcp_servers`; tools named like actions (`send_`, `create_`, `update_`...) are refused |
-| `WebFetch(domain:<host>)` | the host must be in `trusted_domains` (a fetch can carry vault text in its URL) |
+| `Read`, `Grep`, `Glob`, `Read(<path>)`, `TodoWrite`, `Skill` | the guard confines reads to the vault and blocks secrets |
+| `Bash(<command> ...)` for `date`, `ls`, `wc`, `sort`, `uniq`, `cut`, `tr`, `column`, `jq` | arguments checked at run time |
+| `Bash(git <sub> ...)` | `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files`; no option before the subcommand |
+| `Bash(gh <sub> ...)` | `pr list/view/checks/diff`, `issue list/view`, `release list/view`, `run list/view`, `repo view`, `api` (read-only: enforced at run time) |
+| `Bash(<tool> ...)` for another tool | only if **you** list it under `trusted_commands` |
+| `mcp__<server>__<tool>` | only the exact tools **you** list under `trusted_mcp_tools` (or under `permissions` in your answers) |
+| `WebFetch(domain:<host>)` | only hosts **you** list under `trusted_domains` (a fetch can carry vault text in its URL) |
 
-Always refused: `Edit`/`Write` (the installer grants the vault write itself), bare `Bash`, `WebFetch` or `WebSearch`, whole MCP servers and wildcards, shell operators, quotes and substitutions, paths as commands, options that write or send (`-o`, `-c`, `--output`, `--exec`, `--method`, `-f`/`-F`...), and `VAR=value` prefixes unless the variable is in `trusted_env` (never `PATH`, `PAGER`, `GIT_*`, `LD_*`...).
+Always refused: `Edit` and `Write` (the installer grants the vault write itself), bare `Bash`, `WebFetch` or `WebSearch`, whole MCP servers and wildcards, shell operators, quotes, paths as commands, and `VAR=value` prefixes unless the variable is under `trusted_env` (never `PATH`, `PAGER`, `GIT_*`, `LD_*`...).
 
 The trust lists belong to the person installing, in the answers file:
 
@@ -63,14 +66,12 @@ The trust lists belong to the person installing, in the answers file:
 {
   "trusted_commands": ["twg", "slackcli"],
   "trusted_env": ["TWG_AGENT_DEFAULTS"],
-  "trusted_mcp_servers": ["claude_ai_acme-assistant"],
+  "trusted_mcp_tools": ["mcp__claude_ai_acme-assistant__sonarqube_get_issues"],
   "trusted_domains": ["status.acme.example"]
 }
 ```
 
-MCP tools you list yourself under `permissions` in the answers count as trusted. The guard and the per-job settings then apply exactly as for public jobs: read and write only inside the vault, protected areas, no outward action.
-
-A pack may not contain symlinks: they would copy files from anywhere on disk into your vault.
+What a pack may not contain: symlinks (a `vault/` or `jobs/` folder that is itself a link included), a vocabulary file outside the pack, anything the guard protects except skills, rules, templates and dashboards (so no `.claude/settings*.json`, hooks, agents or commands, no `.git`, `.github`, `.vscode`, `.obsidian`, `.control-tower`, `.mcp.json`), and the same names nested deeper. Only private packs may ship `CLAUDE.md`. These checks ignore case, as macOS and Windows do.
 
 ## Runtime-only installs
 
@@ -89,6 +90,8 @@ python3 installer/install.py --answers my-answers.json --runtime-only
 | Setup notes | `library/setup-next-steps.md` | `~/.control-tower/setup-next-steps.md` |
 | `doctor.py` | checks the vault and the runtime | checks the runtime only |
 | `uninstall.py` | removes the runtime and the kit files you did not edit | removes the runtime only |
+
+Jobs run inside your vault and load its project settings (`<vault>/.claude/settings.json`). If that file allows commands or defines hooks for your own sessions, every unattended job inherits them: the installer warns about it in runtime-only mode, and `doctor.py` flags the file. Keep it empty and put your own rules in your user settings.
 
 Public-pack jobs expect the kit's folders (`journal/reports/`, `work/`...). In runtime-only mode the installer warns when you install them: use them only if your vault has the same layout, or write your own jobs in a private pack.
 

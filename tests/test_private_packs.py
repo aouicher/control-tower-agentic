@@ -116,57 +116,80 @@ class PrivatePackTests(unittest.TestCase):
 
 
 class PermissionPolicyTests(unittest.TestCase):
-    """What a pack may grant an unattended job: an allow-list (plan.permission_problem), enforced at install."""
-    TRUST = {'trusted_commands': ['twg', 'slackcli'], 'trusted_env': ['TWG_AGENT_DEFAULTS'], 'trusted_mcp_servers': ['acme'],
-             'trusted_domains': ['acme.test']}
+    """What a pack may grant an unattended job. The installer checks the RULE names an allowed tool or command
+    (plan.permission_problem); the guard checks the ACTUAL arguments of every call at run time (guard.command_reason)."""
+    TRUST = plan.Trust(commands=('twg', 'slackcli'), env=('TWG_AGENT_DEFAULTS',), mcp_tools=('mcp__acme__get_issues',),
+                       domains=('acme.test',))
     ALLOWED = ['Read', 'Grep', 'Glob', 'Read(notes/**)', 'mcp__acme__get_issues', 'WebFetch(domain:acme.test)', 'Bash(gh pr list:*)',
-               'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(sort)', 'Bash(jq .items)',
+               'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(sort:*)', 'Bash(jq .items)',
                'Bash(twg jira workitem query *)', 'Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query *)', 'Bash(slackcli conversations unread *)']
     REFUSED = ['Bash', 'Bash(*)', 'Write', 'Edit', 'Edit(//etc/**)', 'WebFetch', 'WebSearch', 'mcp__*', 'mcp__acme',
-               'mcp__other__get_issues', 'mcp__acme__send_message', 'mcp__acme__create_issue', 'WebFetch(domain:evil.test)',
-               # interpreters, wrappers, case and quoting tricks, paths
+               'mcp__acme__create_issue', 'mcp__other__get_issues', 'mcp__acme__x__get', 'WebFetch(domain:evil.test)',
                'Bash(python -c x)', 'Bash(Python3:*)', 'Bash(OSASCRIPT:*)', 'Bash(timeout:*)', 'Bash(nohup:*)', 'Bash(command:*)',
-               'Bash(java:*)', 'Bash("sh" -c:*)', "Bash(s''h:*)", 'Bash(./script)', 'Bash(/bin/sh -c x)',
-               # write, send or run through an allowed command
-               'Bash(gh gist create:*)', 'Bash(gh api --method POST x)', 'Bash(gh api -X POST x)', 'Bash(git push:*)',
-               'Bash(git log --output=/x:*)', 'Bash(git -c core.pager=sh log)', 'Bash(sort -o x)', 'Bash(jq --rawfile a /etc/passwd .)',
-               'Bash(cp x ~/.zshrc)', 'Bash(cat /etc/passwd)',
-               # shell syntax and environment
+               'Bash(java:*)', 'Bash("sh" -c:*)', "Bash(s''h:*)", 'Bash(./script)', 'Bash(/bin/sh -c x)', 'Bash(cat /etc/passwd)',
+               'Bash(gh gist create:*)', 'Bash(git push:*)', 'Bash(git -c core.pager=sh log)',
                'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(PAGER=sh git log:*)',
-               'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(OTHER=1 twg x)',
-               # unknown or untrusted tools, unrendered tokens
-               'Bash(twg2 x)', 'Bash(git log {{ct.team}}:*)']
+               'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(OTHER=1 twg x)', 'Bash(twg2 x)', 'Bash(git log {{ct.team}}:*)']
+    # allowed by a rule, refused by the guard when the job actually runs them
+    RUNTIME_REFUSED = ['sort -o ~/.zshrc notes/x', 'sort -uo /tmp/x a', 'sort --output=/tmp/x', 'git log -1 --output=~/.zshrc',
+                       'git diff --no-index /etc/passwd /dev/null', 'jq -R . ~/.zsh_history', 'cut -d: -f1 /etc/passwd',
+                       'gh api -XPOST /gists', 'gh api -fpublic=true repos/x', 'gh api graphql', 'gh api --method DELETE repos/o/r',
+                       'gh api -Fbody=@x repos/x', 'uniq a .claude/settings.json', 'git -c core.pager=sh log', 'PAGER=sh git log',
+                       '/bin/ls', 'ls /etc', 'ls ../..', 'sort a > /tmp/x', 'jq --rawfile a /etc/passwd .', 'echo $(id)', 'ls `id`',
+                       'wc --files0-from=/etc/x', 'twg x > ~/.zshrc']
+    RUNTIME_ALLOWED = ['sort', 'sort -u notes/x', 'git log --oneline -5', 'gh pr list --limit 100',
+                       'gh api repos/acme/app/dependabot/alerts --paginate --jq .[].severity', 'jq .items notes/x.json',
+                       'cut -d: -f1 notes/x', 'uniq -c', 'sort | uniq -c', 'ls notes', 'date +%F', 'wc -l notes/x',
+                       'gh api repos/x/y 2>/dev/null', 'tr a-z A-Z', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
 
     def test_allowed_rules(self):
         for rule in self.ALLOWED:
             with self.subTest(rule=rule):
-                self.assertIsNone(plan.permission_problem(rule, **self.TRUST))
+                self.assertIsNone(plan.permission_problem(rule, self.TRUST))
 
     def test_refused_rules(self):
         for rule in self.REFUSED:
             with self.subTest(rule=rule):
-                self.assertIsNotNone(plan.permission_problem(rule, **self.TRUST))
+                self.assertIsNotNone(plan.permission_problem(rule, self.TRUST))
 
-    def test_company_tools_need_the_users_trust_not_the_packs(self):
+    def test_the_guard_checks_actual_arguments(self):
+        guard = plan.guard_rules
+        with tempfile.TemporaryDirectory() as v:
+            os.makedirs(os.path.join(v, 'notes'))
+            run = lambda c: guard.check({'tool_name': 'Bash', 'tool_input': {'command': c}, 'cwd': v}, v)
+            for cmd in self.RUNTIME_REFUSED:
+                with self.subTest(refused=cmd):
+                    self.assertIsNotNone(run(cmd))
+            for cmd in self.RUNTIME_ALLOWED:
+                with self.subTest(allowed=cmd):
+                    self.assertIsNone(run(cmd))
+
+    def test_one_command_table_for_installer_and_guard(self):
+        for cmd, rule in plan.guard_rules.JOB_COMMANDS.items():
+            with self.subTest(cmd=cmd):
+                probe = f'Bash({cmd} {sorted(rule["subcommands"])[0]}:*)' if rule.get('subcommands') else f'Bash({cmd}:*)'
+                self.assertIsNone(plan.permission_problem(probe))
+
+    def test_company_tools_mcp_tools_and_domains_need_the_users_trust(self):
         self.assertIsNotNone(plan.permission_problem('Bash(twg jira workitem query *)'))
-        self.assertIsNone(plan.permission_problem('Bash(twg jira workitem query *)', trusted_commands=['twg']))
-        self.assertIsNotNone(plan.permission_problem('Bash(PATH=/tmp twg x)', trusted_commands=['twg'], trusted_env=['PATH']),
+        self.assertIsNone(plan.permission_problem('Bash(twg jira workitem query *)', plan.Trust(commands=('twg',))))
+        self.assertIsNotNone(plan.permission_problem('Bash(PATH=/tmp twg x)', plan.Trust(commands=('twg',), env=('PATH',))),
                              'some variables can never be trusted')
-
-    def test_mcp_servers_and_domains_need_the_users_trust(self):
         self.assertIsNotNone(plan.permission_problem('mcp__acme__get_issues'))
-        self.assertIsNone(plan.permission_problem('mcp__acme__get_issues', trusted_mcp_servers=['acme']))
+        self.assertIsNone(plan.permission_problem('mcp__acme__get_issues', plan.Trust(mcp_tools=('mcp__acme__get_issues',))))
+        self.assertIsNotNone(plan.permission_problem('mcp__acme__createIssue', plan.Trust(mcp_tools=('mcp__acme__get_issues',))),
+                             'only the exact tools listed')
         self.assertIsNotNone(plan.permission_problem('WebFetch(domain:acme.test)'))
 
     def test_every_public_rule_passes(self):
         import glob
         for f in glob.glob(os.path.join(ROOT, 'adapters', '*', '*.json')) + glob.glob(os.path.join(ROOT, 'packs', '*', 'jobs', '*', 'job.json')):
             data = json.load(open(f))
-            for rule in data.get('permissions_allow', []) + data.get('permissions', {}).get('allow', []):
-                # choosing a tool at install is trusting its MCP server; its tools must still be read-only
-                server = plan.MCP_TOOL.match(rule).group(1) if plan.MCP_TOOL.match(rule) else None
+            rules = data.get('permissions_allow', []) + data.get('permissions', {}).get('allow', [])
+            trust = plan.Trust(mcp_tools=tuple(r for r in rules if r.startswith('mcp__')))  # choosing a tool trusts its listed tools
+            for rule in rules:
                 with self.subTest(file=os.path.relpath(f, ROOT), rule=rule):
-                    self.assertIsNone(plan.permission_problem(rule, trusted_mcp_servers=[server] if server else []))
+                    self.assertIsNone(plan.permission_problem(rule, trust))
 
     def test_install_refuses_a_bad_rule_before_writing_anything(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,6 +288,43 @@ class PackContentTests(unittest.TestCase):
         for pid in install.list_packs():  # the public packs pass the same rule
             plan.check_pack(plan.resolve_packs(ROOT)[pid])
 
+    def test_pack_folders_must_be_real_and_inside_the_pack(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = os.path.join(tmp, 'outside')
+            write(os.path.join(outside, 'notes', 'secret.md'), 'TOPSECRET')
+            for sub_dir in ('vault', 'jobs'):
+                with self.subTest(folder=sub_dir):
+                    pd = private_pack(os.path.join(tmp, 'p-' + sub_dir))
+                    shutil.rmtree(os.path.join(pd, sub_dir))
+                    os.symlink(outside, os.path.join(pd, sub_dir))
+                    with self.assertRaises(install.InstallError):
+                        install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+            pd = private_pack(os.path.join(tmp, 'p-vocab'), vocabulary='../../etc/x.json')
+            with self.assertRaises(install.InstallError):
+                install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+
+    def test_nested_git_or_claude_folders_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for rel in ('.claude/skills/x/.git/hooks/post-commit', '.claude/rules/x/.claude/settings.json', '_system/templates/.git/config'):
+                with self.subTest(rel=rel):
+                    pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(rel)))))
+                    write(os.path.join(pd, 'vault', rel), 'x')
+                    with self.assertRaises(install.InstallError):
+                        install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+
+    def test_skill_allowed_tools_follow_the_job_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pd = private_pack(os.path.join(tmp, 'p'))
+            write(os.path.join(pd, 'vault', '.claude', 'skills', 'evil', 'SKILL.md'),
+                  '---\nname: evil\ndescription: x\nallowed-tools: Bash, Write\n---\n# x\n')
+            with self.assertRaises(install.InstallError) as ctx:
+                install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+            self.assertIn('allowed-tools', str(ctx.exception))
+            pd2 = private_pack(os.path.join(tmp, 'p2'))
+            write(os.path.join(pd2, 'vault', '.claude', 'skills', 'ok', 'SKILL.md'),
+                  '---\nname: ok\ndescription: x\nallowed-tools:\n  - Read\n  - Bash(git log:*)\n---\n# x\n')
+            install.install(answers(tmp, ['acme-private'], [pd2]), dry_run=True)
+
     def test_symlinks_in_a_pack_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             secret = os.path.join(tmp, 'secret.txt')
@@ -334,6 +394,14 @@ class RuntimeOnlyTests(unittest.TestCase):
                     self.assertEqual(self.snapshot(v), before, 'no kit file lands in a runtime-only vault')
             report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='full'), dry_run=True, log=lambda *x: None)
             self.assertEqual(report['vault_mode'], 'full', 'switching to full is possible, only when asked explicitly')
+
+    def test_wide_vault_settings_are_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            v = self.existing_vault(tmp)
+            write(os.path.join(v, '.claude', 'settings.json'), json.dumps({'permissions': {'allow': ['Bash(git commit:*)']}}))
+            pd = private_pack(os.path.join(tmp, 'p'))
+            report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), dry_run=True, log=lambda *x: None)
+            self.assertTrue(any('widens what they can do' in w for w in report['warnings']))
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -12,14 +12,24 @@ One place for:
 import fnmatch
 import json
 import os
+import importlib.util
 import re
-import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-sys.path.insert(0, os.path.join(REPO, 'scheduler'))
-import guard as guard_rules  # noqa: E402  (standalone file copied to the runtime: the single source of protected paths)
+
+
+def _load_guard():
+    """scheduler/guard.py is copied standalone to the runtime; it is the single source of the protected paths and of the
+    commands a job may run. Loaded by file so that importing plan does not change sys.path."""
+    spec = importlib.util.spec_from_file_location('ct_guard', os.path.join(REPO, 'scheduler', 'guard.py'))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+guard_rules = _load_guard()
 
 ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,62}$')
 # Under the guard's protected paths, packs may only ship skills, rules, templates, dashboards and (private packs) CLAUDE.md.
@@ -42,6 +52,8 @@ def expand(path):
 def vault_files(base):
     """Vault paths a source folder installs: '/'-separated, '.tmpl' stripped. The one walk used by every check."""
     out = []
+    if not os.path.isdir(base):
+        return out
     for root, _, files in os.walk(base):
         for f in files:
             rel = os.path.relpath(os.path.join(root, f), base).replace(os.sep, '/')
@@ -74,11 +86,17 @@ def path_match(rel, pattern, ignore_case=False):
     return any(_segs_match(segs[:k], pats) for k in range(1, len(segs) + 1))
 
 
+NESTED_FORBIDDEN = {'.git', '.claude', '.obsidian', '.control-tower', '.mcp.json', '.github', '.vscode'}
+
+
 def forbidden_pack_file(rel):
-    """True for a vault path no pack may ship: anything the guard protects, except the shippable kinds above."""
+    """True for a vault path no pack may ship: anything the guard protects (except the shippable kinds above), and git, Claude
+    or editor folders nested anywhere (`.claude/skills/x/.git/hooks/...`)."""
     protected = list(guard_rules.PROTECTED) + list(guard_rules.PROTECTED_FILES)
-    return any(path_match(rel, p, ignore_case=True) for p in protected) and \
-        not any(path_match(rel, p, ignore_case=True) for p in PACK_SHIPPABLE)
+    if any(path_match(rel, p, ignore_case=True) for p in protected) and \
+            not any(path_match(rel, p, ignore_case=True) for p in PACK_SHIPPABLE):
+        return True
+    return any(seg.casefold() in NESTED_FORBIDDEN for seg in rel.replace(os.sep, '/').split('/')[1:])
 
 
 # ----------------------------------------------------------------------------- packs
@@ -101,35 +119,66 @@ def check_id(kind, value):
     return value
 
 
-def check_pack(pk):
-    """Everything about one pack that can be checked before writing: ids, job ids, shipped files, symlinks, core policy shape."""
+def check_pack(pk, trust=None):
+    """Everything about one pack that can be checked before writing: ids, job ids, folders and symlinks, shipped files,
+    core policy shape, and the tools its skills ask for."""
+    root = os.path.realpath(pk.dir)
+    def contained(path, what):
+        if os.path.islink(path) or not (os.path.realpath(path) + os.sep).startswith(root + os.sep):
+            raise InstallError(f'pack "{pk.id}": {what} must be a real folder or file inside the pack, not a symlink or a path outside')
+    for sub in ('vault', 'jobs', 'routines'):  # a symlink would copy a file from anywhere on disk into the vault or the runtime
+        top = os.path.join(pk.dir, sub)
+        if os.path.lexists(top):
+            contained(top, sub + '/')
+        for base, dirs, files in os.walk(top):
+            for n in dirs + files:
+                if os.path.islink(os.path.join(base, n)):
+                    raise InstallError(f'pack "{pk.id}": {os.path.relpath(os.path.join(base, n), pk.dir)} is a symlink: packs may not contain symlinks')
+    if pk.manifest.get('vocabulary'):
+        contained(os.path.join(pk.dir, pk.manifest['vocabulary']), 'vocabulary')
     for j in pk.manifest.get('jobs', []):
         check_id(f'job (pack {pk.id})', j)
         jp = os.path.join(pk.dir, 'jobs', j, 'job.json')
-        if not os.path.isfile(jp):
-            raise InstallError(f'pack "{pk.id}": jobs/{j}/job.json is missing')
+        if not os.path.isfile(jp) or not os.path.isfile(os.path.join(pk.dir, 'jobs', j, 'prompt.md.tmpl')):
+            raise InstallError(f'pack "{pk.id}": jobs/{j} needs job.json and prompt.md.tmpl')
         if jload(jp).get('id', j) != j:
             raise InstallError(f'pack "{pk.id}": jobs/{j}/job.json has another id: it must equal the folder name')
     for r in pk.manifest.get('routines', []):
         check_id(f'routine (pack {pk.id})', r)
-    for sub in ('vault', 'jobs', 'routines'):  # a symlink would copy a file from anywhere on disk into the vault or the runtime
-        for root, dirs, files in os.walk(os.path.join(pk.dir, sub)):
-            for n in dirs + files:
-                if os.path.islink(os.path.join(root, n)):
-                    raise InstallError(f'pack "{pk.id}": {os.path.relpath(os.path.join(root, n), pk.dir)} is a symlink: packs may not contain symlinks')
-    for rel in vault_files(os.path.join(pk.dir, 'vault')):
+    shipped = vault_files(os.path.join(pk.dir, 'vault'))
+    for rel in shipped:
         if forbidden_pack_file(rel):
             raise InstallError(f'pack "{pk.id}" may not ship {rel}: installer state, git, editor, Obsidian and Claude settings are off limits')
+        if rel.casefold() == 'claude.md' and not pk.private:
+            raise InstallError(f'pack "{pk.id}": only private packs may ship CLAUDE.md (public packs add rules in .claude/rules/)')
+        if rel.endswith('SKILL.md'):  # a skill may grant itself tools while it runs: same policy as job permissions
+            tools = skill_allowed_tools(os.path.join(pk.dir, 'vault', rel + ('.tmpl' if not os.path.isfile(os.path.join(pk.dir, 'vault', rel)) else '')))
+            if tools:
+                check_permissions(f'pack "{pk.id}" skill {rel} allowed-tools', tools, trust or Trust())
     rep, exc = list(pk.manifest.get('replaces') or []), list(pk.manifest.get('excludes') or [])
     if (rep or exc) and not pk.private:
         raise InstallError(f'pack "{pk.id}": only private packs (answers["pack_dirs"]) may replace or exclude core files')
     for p in rep + exc:
         if p.startswith('/') or '..' in p.replace(os.sep, '/').split('/'):
             raise InstallError(f'pack "{pk.id}": pattern "{p}" must be a vault path such as _system/templates/daily.md')
-    shipped = vault_files(os.path.join(pk.dir, 'vault'))
     for p in rep:
         if not any(path_match(rel, p) for rel in shipped):
             raise InstallError(f'pack "{pk.id}" replaces "{p}" but ships no such file under vault/: add it, or use excludes')
+
+
+def skill_allowed_tools(path):
+    """The `allowed-tools` entries of a SKILL.md frontmatter (comma-separated or a YAML list)."""
+    with open(path, encoding='utf-8') as fh:
+        text = fh.read()
+    m = re.match(r'---\n(.*?)\n---', text, re.S)
+    if not m:
+        return []
+    fm = m.group(1)
+    one = re.search(r'^allowed-tools:[ \t]*(\S.*)$', fm, re.M)
+    if one:
+        return [t.strip() for t in re.split(r',(?![^(]*\))', one.group(1).strip('[]')) if t.strip()]
+    many = re.search(r'^allowed-tools:[ \t]*\n((?:[ \t]*-.*\n?)+)', fm, re.M)
+    return [l.strip()[1:].strip().strip('"\'') for l in many.group(1).splitlines() if l.strip()] if many else []
 
 
 def resolve_packs(repo, answers=None):
@@ -149,8 +198,9 @@ def resolve_packs(repo, answers=None):
         if pid in packs:
             raise InstallError(f'answers: private pack "{pid}" ({raw}) has the same id as another pack: rename it in its pack.json')
         packs[pid] = Pack(pid, d, manifest, True)
+    trust = Trust.from_answers(answers or {})
     for pk in packs.values():
-        check_pack(pk)
+        check_pack(pk, trust)
     return packs
 
 
@@ -188,84 +238,86 @@ class CorePolicy:
 
 # ----------------------------------------------------------------------------- job permissions
 # What an unattended job may be granted, as an ALLOW-list. The installer grants the vault write itself; scheduler/guard.py confines
-# Read/Grep/Glob to the vault and blocks secrets, so `Read(<path>)` here is not a way out. Anything not listed is refused.
+# Read/Grep/Glob to the vault, blocks secrets and checks the ACTUAL arguments of every Bash call against guard.JOB_COMMANDS. Here,
+# a rule may only name an allowed tool or command: anything not listed is refused.
 SAFE_TOOLS = {'Read', 'Grep', 'Glob', 'TodoWrite', 'Skill'}
-# Text tools for data a job already has (pipes such as `gh api ... | jq | sort | uniq -c`). No cat/head: files go through Read.
-READ_COMMANDS = {'date', 'ls', 'wc', 'sort', 'uniq', 'jq', 'cut', 'tr', 'column'}
-# Commands with read-only subcommands: the first word(s) after the command must be one of these.
-READ_SUBCOMMANDS = {
-    'git': {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files'},
-    'gh': {'pr list', 'pr view', 'pr checks', 'pr diff', 'issue list', 'issue view', 'release list', 'release view', 'run list',
-           'run view', 'repo view', 'api'},
-}
-# Options that make an allowed command write a file, run code or send data.
-DANGEROUS_OPTIONS = re.compile(r'(^|\s)(-o|-c|-X|-f|-F|--output\S*|--ext-diff|--exec\S*|--upload-pack\S*|--config\S*|--method\S*|'
-                               r'--field\S*|--raw-field\S*|--input\S*|--rawfile|--slurpfile|--from-file\S*)(?=\s|$|:)')
-SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r]')
+SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r"\']')
 COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]*$')
 ENV_PREFIX = re.compile(r'^([A-Z_][A-Z0-9_]*)=(\S*)$')
-UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|DYLD_\w*|'
-                        r'GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
-MCP_TOOL = re.compile(r'^mcp__([A-Za-z0-9_.-]+?)__([A-Za-z0-9_.-]+)$')
-# MCP tool names that act rather than read; refused even on a trusted server
-MCP_WRITE_VERB = re.compile(r'(^|[_-])(send|post|create|update|delete|remove|write|edit|merge|close|publish|upload|set|add|'
-                            r'transition|comment|reply|react|move|archive|assign|invite|share|trigger|deploy)([_-]|$)', re.I)
+MCP_TOOL = re.compile(r'^mcp__([A-Za-z0-9_.-]+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
+TRUST_PATTERNS = {'trusted_commands': COMMAND_NAME, 'trusted_env': re.compile(r'^[A-Z_][A-Z0-9_]*$'),
+                  'trusted_mcp_tools': re.compile(r'^mcp__[A-Za-z0-9_.-]+$'), 'trusted_domains': re.compile(r'^[A-Za-z0-9.-]+$')}
 
 
-def permission_problem(rule, trusted_commands=(), trusted_env=(), trusted_mcp_servers=(), trusted_domains=()):
-    """Why `rule` may not be granted to an unattended job, or None. The trusted_* lists come from the user's answers (a company
-    CLI such as `twg`, the variables it needs, the MCP servers and web domains a job may read), never from a pack."""
+@dataclass(frozen=True)
+class Trust:
+    """What the user (never a pack) trusts unattended jobs to use, from the answers: a company CLI, the variables it needs,
+    exact MCP tools, web domains."""
+    commands: tuple = ()
+    env: tuple = ()
+    mcp_tools: tuple = ()
+    domains: tuple = ()
+
+    @classmethod
+    def from_answers(cls, answers, extra_mcp_tools=()):
+        get = lambda k: tuple(answers.get(k) or ())
+        return cls(get('trusted_commands'), get('trusted_env'), get('trusted_mcp_tools') + tuple(extra_mcp_tools), get('trusted_domains'))
+
+    @staticmethod
+    def problems(answers):
+        out = []
+        for key, rx in TRUST_PATTERNS.items():
+            val = answers.get(key) or []
+            if not isinstance(val, list) or not all(isinstance(x, str) and rx.match(x) for x in val):
+                out.append(f'answers: "{key}" must be a list of plain names, for example ["twg"]')
+        return out
+
+
+def permission_problem(rule, trust=None):
+    """Why `rule` may not be granted to an unattended job, or None."""
+    trust = trust or Trust()
     rule = str(rule).strip()
     if '{{' in rule:
         return 'unrendered template token in a permission'
-    if rule in SAFE_TOOLS:
+    if rule in SAFE_TOOLS or re.fullmatch(r'Read\([^()]+\)', rule):
         return None
     if rule.startswith('mcp__'):
-        m = MCP_TOOL.match(rule)
-        if not m:
+        if not MCP_TOOL.match(rule) or '__' in rule.split('__', 2)[2]:
             return 'MCP permissions must name one tool (mcp__<server>__<tool>), never a whole server or a wildcard'
-        if m.group(1) not in trusted_mcp_servers:
-            return f'MCP server "{m.group(1)}" is not trusted: list it in the answers under "trusted_mcp_servers"'
-        if MCP_WRITE_VERB.search(m.group(2)):
-            return f'"{m.group(2)}" looks like a tool that acts (send, create, update...): unattended jobs only read'
-        return None
-    if re.fullmatch(r'Read\([^()]+\)', rule):
-        return None
+        return None if rule in trust.mcp_tools else 'MCP tool not trusted: list this exact tool in the answers under "trusted_mcp_tools"'
     m = re.fullmatch(r'WebFetch\(domain:([A-Za-z0-9.-]+)\)', rule)
     if m:  # a fetch can carry vault text in its URL: only domains the user trusts
-        return None if m.group(1).lower() in [d.lower() for d in trusted_domains] else \
+        return None if m.group(1).lower() in [d.lower() for d in trust.domains] else \
             f'domain {m.group(1)} is not trusted: list it in the answers under "trusted_domains"'
     if re.match(r'(Edit|Write|MultiEdit|NotebookEdit)\b', rule):
         return 'jobs get write access to the vault from the installer; packs may not grant Edit or Write'
     m = re.fullmatch(r'Bash\((.+)\)', rule, re.S)
     if not m:
-        return 'not an allowed job permission (allowed: Read, Grep, Glob, exact mcp__ tools, Bash(<read command> ...), WebFetch(domain:...))'
+        return 'not an allowed job permission (allowed: Read, Grep, Glob, Bash(<allowed command> ...), trusted MCP tools and domains)'
     body = m.group(1).strip()
-    if SHELL_CHARS.search(body) or '"' in body or "'" in body:
+    if SHELL_CHARS.search(body):
         return 'Bash permissions may not contain shell operators, quotes or substitutions'
-    body = body[:-2] if body.endswith(':*') else body
-    tokens = body.split()
+    tokens = (body[:-2] if body.endswith(':*') else body).split()
     while tokens and ENV_PREFIX.match(tokens[0]):
         name = ENV_PREFIX.match(tokens[0]).group(1)
-        if name not in trusted_env or UNSAFE_ENV.match(name):
+        if name not in trust.env or guard_rules.UNSAFE_ENV.match(name):
             return f'environment variable {name} in a permission: declare it in the answers under "trusted_env" (never PATH, PAGER, GIT_*, LD_*...)'
         tokens.pop(0)
     if not tokens or not COMMAND_NAME.match(tokens[0]):
         return 'Bash permissions must start with a plain lowercase command name (no path, no quotes, no wildcard)'
     cmd, rest = tokens[0], tokens[1:]
-    if DANGEROUS_OPTIONS.search(' ' + ' '.join(rest)):
-        return 'options that write files, run code or send data are not allowed (-o, -c, --output, --exec, --method, -f/-F...)'
-    if cmd in READ_COMMANDS or cmd in trusted_commands:
+    if cmd in trust.commands:
         return None
-    if cmd in READ_SUBCOMMANDS:
-        allowed = READ_SUBCOMMANDS[cmd]
-        if ' '.join(rest[:1]) in allowed or ' '.join(rest[:2]) in allowed:
-            return None
-        return f'only read-only {cmd} subcommands are allowed: {", ".join(sorted(allowed))}'
-    return f'"{cmd}" is not an allowed read command; if you trust this tool, list it in the answers under "trusted_commands"'
+    rule_def = guard_rules.JOB_COMMANDS.get(cmd)
+    if rule_def is None:
+        return f'"{cmd}" is not an allowed job command; if you trust this tool, list it in the answers under "trusted_commands"'
+    allowed = rule_def.get('subcommands')
+    if allowed and ' '.join(rest[:1]) not in allowed and ' '.join(rest[:2]) not in allowed:
+        return f'only these {cmd} subcommands are allowed: {", ".join(sorted(allowed))}'
+    return None  # its arguments are checked at run time by the guard
 
 
-def check_permissions(where, rules, **trust):
-    problems = [f'{where}: "{r}": {p}' for r in rules for p in [permission_problem(r, **trust)] if p]
+def check_permissions(where, rules, trust=None):
+    problems = [f'{where}: "{r}": {p}' for r in rules for p in [permission_problem(r, trust)] if p]
     if problems:
         raise InstallError('\n'.join(problems))

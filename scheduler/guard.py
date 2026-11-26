@@ -92,6 +92,114 @@ def date_reason(cmd):
 
 WRITE_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
 
+# ----------------------------------------------------------------------------- job commands (one table, two uses)
+# The installer only lets a pack grant these commands (installer/plan.py reads this table), and the guard below checks the
+# ACTUAL arguments of every Bash call at run time: a permission such as `Bash(sort:*)` is a prefix, so the installer cannot see
+# `sort -o ~/.zshrc` coming. For every command: path arguments must stay inside the vault, output redirection only to /dev/null.
+#   subcommands: the first word(s) allowed after the command (installer check)
+#   long / short: options refused at run time (`--output` also refuses `--output=x`; short ones also inside clusters like `-uo`)
+#   no_global_options: no option between the command and its subcommand (`git -c core.pager=sh log`)
+#   max_operands / value_options: commands whose extra operand is an OUTPUT file (`uniq in out`)
+JOB_COMMANDS = {
+    'date': {},  # checked by date_reason
+    'ls': {},
+    'wc': {'long': ('--files0-from',)},
+    'sort': {'long': ('--output', '--compress-program', '--temporary-directory', '--files0-from'), 'short': 'oT'},
+    'uniq': {'max_operands': 1, 'value_options': ('-f', '-s', '-w')},
+    'cut': {},
+    'tr': {},
+    'column': {},
+    'jq': {'long': ('--rawfile', '--slurpfile', '--from-file', '--args', '--jsonargs'), 'short': 'fL'},
+    'git': {'subcommands': {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files'},
+            'no_global_options': True,
+            'long': ('--output', '--ext-diff', '--no-index', '--exec', '--exec-path', '--upload-pack', '--receive-pack', '--textconv')},
+    'gh': {'subcommands': {'pr list', 'pr view', 'pr checks', 'pr diff', 'issue list', 'issue view', 'release list', 'release view',
+                           'run list', 'run view', 'repo view', 'api'},
+           'long': ('--method', '--field', '--raw-field', '--input', '--hostname'), 'short': 'XfF', 'no_operand': ('graphql',)},
+}
+UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
+                        r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
+SEPARATORS = {';', '&&', '||', '|', '&', '(', ')', '$(', '`', ';;', '|&'}
+REDIRECTS = {'>', '>>', '>|', '&>', '<', '<<', '<<<', '<>'}
+
+
+def path_like(arg):
+    return arg.startswith(('/', '~')) or '..' in arg.replace('\\', '/').split('/')
+
+
+def segment_reason(seg, vault):
+    """One simple command (no separators): its environment prefix, command name and arguments."""
+    while seg and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', seg[0]):
+        if UNSAFE_ENV.match(seg[0].split('=', 1)[0]):
+            return f'environment variable {seg[0].split("=", 1)[0]} can change what a command runs'
+        seg = seg[1:]
+    if not seg:
+        return None
+    cmd, args = seg[0], seg[1:]
+    if '/' in cmd:
+        return f'commands are called by name, not by path: {cmd}'
+    rule = JOB_COMMANDS.get(cmd, {})
+    i = 0
+    if rule.get('no_global_options') and args and args[0].startswith('-'):
+        return f'{cmd}: no option before the subcommand ({args[0]})'
+    operands = []
+    while i < len(args):
+        a = args[i]
+        if a in REDIRECTS:
+            target = args[i + 1] if i + 1 < len(args) else ''
+            if a.startswith('<'):
+                if path_like(target) and not inside(os.path.join(vault, os.path.expanduser(target)), vault):
+                    return f'reads outside the vault: {target}'
+            elif target != '/dev/null':
+                return 'output redirection: jobs write files with the Edit tool, inside the vault'
+            i += 2
+            continue
+        if a.startswith('--'):
+            name = a.split('=', 1)[0]
+            if any(name == o or name.startswith(o) for o in rule.get('long', ())):
+                return f'{cmd} {name}: writes a file, runs code or sends data'
+        elif a.startswith('-') and len(a) > 1 and not a[1:].isdigit():
+            flags, short = a[1:], rule.get('short', '')
+            # `-o x`, `-ofile`, `-XPOST` start with the flag; `-uo` is a cluster of single-letter flags
+            if flags[0] in short or (flags.isalpha() and set(flags) & set(short)):
+                return f'{cmd} {a}: writes a file, runs code or sends data'
+            if a in rule.get('value_options', ()):
+                i += 2
+                continue
+        else:
+            if a in rule.get('no_operand', ()):
+                return f'{cmd} {a} is not allowed in jobs'
+            if path_like(a) and cmd != 'gh' and not inside(os.path.join(vault, os.path.expanduser(a)), vault):
+                return f'{cmd}: path outside the vault: {a}'
+            operands.append(a)
+        i += 1
+    if 'max_operands' in rule and len(operands) > rule['max_operands']:
+        return f'{cmd}: an extra operand is an output file'
+    return None
+
+
+def command_reason(cmd, vault):
+    """Run-time check of every simple command in a Bash call. Fails closed on what it cannot parse."""
+    if re.search(r'[`\n\r]|\$\(', cmd):
+        return 'command substitution or several lines'
+    try:
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        lex.commenters = ''
+        tokens = list(lex)
+    except ValueError:
+        return 'cannot parse this command'
+    seg = []
+    for tok in tokens + [';']:
+        if tok in SEPARATORS:
+            reason = segment_reason(seg, vault)
+            if reason:
+                return reason
+            seg = []
+        else:
+            seg.append(tok)
+    return None
+
 
 def real(path):
     return os.path.realpath(os.path.expanduser(path))
@@ -202,7 +310,7 @@ def check(event, vault):
         for rx, reason in BASH_RULES:
             if re.search(rx, cmd, re.I):
                 return f'{reason}: {cmd[:120]}'
-        reason = date_reason(cmd)
+        reason = date_reason(cmd) or command_reason(cmd, vault)
         return f'{reason}: {cmd[:120]}' if reason else None
     if tool in ('Glob', 'Grep'):
         return search_reason(tool, inp, event, vault)

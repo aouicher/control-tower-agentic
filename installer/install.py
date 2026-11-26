@@ -34,20 +34,16 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (MCP_TOOL, CorePolicy, InstallError, check_permissions, expand, guard_rules, jload,  # noqa: E402
+from plan import (REPO, CorePolicy, InstallError, Trust, check_permissions, expand, guard_rules, jload,  # noqa: E402
                   list_packs, resolve_packs, vault_files)
 
-REPO = os.path.dirname(HERE)
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
 DAYS = {'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0}
 BASE_ALLOW = ['Read', 'Grep', 'Glob', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)']
 BASE_DENY = ['Agent']
-PROTECTED_DIRS, PROTECTED_FILES = guard_rules.PROTECTED, guard_rules.PROTECTED_FILES_CASED  # one source: scheduler/guard.py
+PROTECTED_DIRS, PROTECTED_FILES_CASED = guard_rules.PROTECTED, guard_rules.PROTECTED_FILES_CASED  # one source: scheduler/guard.py
 DAY_ALIASES = {'weekdays': 'mon-fri', 'weekends': 'sat-sun', 'daily': 'mon-sun', 'every day': 'mon-sun', '*': 'mon-sun'}
-# what the user (never a pack) trusts unattended jobs to use; see docs/private-packs.md
-TRUST_KEYS = {'trusted_commands': r'[a-z0-9][a-z0-9._-]*', 'trusted_env': r'[A-Z_][A-Z0-9_]*',
-              'trusted_mcp_servers': r'[A-Za-z0-9_.-]+', 'trusted_domains': r'[A-Za-z0-9.-]+'}
 GUARD_MATCHER = 'Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob'
 
 
@@ -91,10 +87,7 @@ def validate(answers, repo=REPO):
     except InstallError as exc:
         errors.append(str(exc))
         available = list_packs(repo)
-    for key, rx in TRUST_KEYS.items():
-        val = answers.get(key) or []
-        if not isinstance(val, list) or not all(isinstance(x, str) and re.fullmatch(rx, x) for x in val):
-            errors.append(f'answers: "{key}" must be a list of plain names, for example ["twg"]')
+    errors += Trust.problems(answers)
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -361,11 +354,11 @@ def job_settings(repo, answers, job):
     vault = expand(answers['vault_path'])
     req, opt = job_capabilities(job['meta'])
     allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')]  # every job writes its report in the vault
-    allow += [fix_rule(render.render_text(p, {'vault_path': vault}, job['id'], [])) for p in job['meta']['permissions'].get('allow', [])]
+    allow += [fix_rule(p) for p in job['meta']['permissions'].get('allow', [])]  # rendered and checked in Ctx.plan_jobs
     deny = list(BASE_DENY) + [fix_rule(p) for p in job['meta']['permissions'].get('deny', [])]
     deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
     # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
-    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES]
+    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
     for cap in req + opt:
         tool = answers['tools'].get(cap, 'none')
         if tool != 'none':
@@ -485,11 +478,11 @@ class Ctx:
     def plan_jobs(self):
         """Which jobs run, their final (rendered) definition, and every check on them: nothing is written if one fails."""
         a, on, off = self.a, [], []
-        trust = {k: a.get(k) or [] for k in TRUST_KEYS}
-        # MCP tools the user lists in the answers are trusted by being listed (still read-only); a pack's need the server trusted
-        own = [m.group(1) for rules in (a.get('permissions') or {}).values() for r in rules for m in [MCP_TOOL.match(str(r))] if m]
+        # MCP tools the user lists under `permissions` in the answers are trusted by being listed there
+        own = [str(r) for rules in (a.get('permissions') or {}).values() for r in rules if str(r).startswith('mcp__')]
+        trust = Trust.from_answers(a, extra_mcp_tools=own)
         for cap, rules in (a.get('permissions') or {}).items():
-            check_permissions(f'answers permissions "{cap}"', rules, **{**trust, 'trusted_mcp_servers': trust['trusted_mcp_servers'] + own})
+            check_permissions(f'answers permissions "{cap}"', rules, trust)
         for j in eligible_jobs(a['packs'], self.packs, a['tools']):
             cfg = (a.get('jobs') or {}).get(j['id'], {})
             if j['missing'] or cfg.get('enabled') is False:
@@ -500,12 +493,16 @@ class Ctx:
             meta['schedule'] = {**meta['schedule'], **{k: v for k, v in cfg.items() if k in ('time', 'days')}}
             j['rendered'] = json.loads(render.render_text(json.dumps(meta), self.table, j['id'], []))
             # checked on the FINAL strings: a pack's vocabulary could otherwise inject text into a rule after the check
-            check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []), **trust)
+            check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []), trust)
+            sched = j['rendered']['schedule']
+            self.report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
             on.append(j)
         if self.runtime_only and any(not self.packs[j['pack']].private for j in on):
             self.report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
                                            'check they fit your vault, or use jobs from your own private pack')
         self.report['warnings'] += mcp_warnings(self.repo, a)
+        if self.runtime_only:
+            self.report['warnings'] += vault_settings_warnings(self.vault)
         return on, off
 
     def record(self, res):
@@ -519,6 +516,21 @@ class Ctx:
     def render(self, src, **kw):
         self.record(render.render_tree(src, self.vault, self.table, dry_run=self.dry_run, installed=self.installed,
                                        stash_dir=self.stash_dir, **kw))
+
+
+def vault_settings_warnings(vault):
+    """Jobs run in the vault and load its project settings: rules or hooks there widen every unattended job."""
+    out = []
+    for name in ('settings.json', 'settings.local.json'):
+        p = os.path.join(vault, '.claude', name)
+        try:
+            data = jload(p) if os.path.isfile(p) else {}
+        except ValueError:
+            data = {'unreadable': True}
+        if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
+            out.append(f'{p} has allow rules or hooks: unattended jobs load it too, so it widens what they can do. '
+                       'Keep it empty for jobs, or move those rules to your user settings')
+    return out
 
 
 def mcp_warnings(repo, a):
@@ -582,13 +594,20 @@ def step_runtime(ctx):
             shutil.rmtree(os.path.join(jobs_root, old), ignore_errors=True)
     for j in ctx.jobs_on:
         jdir = os.path.join(jobs_root, j['id'])
-        render.render_tree(j['dir'], jdir, ctx.table, force=True)
+        os.makedirs(jdir, exist_ok=True)
+        with open(os.path.join(j['dir'], 'prompt.md.tmpl'), encoding='utf-8') as fh:
+            errs = []
+            prompt = render.render_text(fh.read(), ctx.table, j['id'], errs)
+        if errs:
+            raise InstallError('; '.join(errs))
+        with open(os.path.join(jdir, 'prompt.md'), 'w', encoding='utf-8') as fh:  # only the prompt: nothing else from the pack
+            fh.write(prompt)
         jdump(os.path.join(jdir, 'job.json'), j['rendered'])
         jdump(os.path.join(jdir, 'settings.json'), job_settings(ctx.repo, ctx.a, {'id': j['id'], 'meta': j['rendered']}))
 
 
 def step_schedule(ctx):
-    """launchd plists or a crontab block mirroring the jobs that are on. Returns {'kind', 'dir', 'applied', 'plist_paths'}."""
+    """launchd plists or a crontab block mirroring the jobs that are on. Sets report['schedule'], returns the plist paths."""
     a, ct_home = ctx.a, ctx.ct_home
     sched_dir = os.path.join(ct_home, 'schedule')
     kind = pick_scheduler(a.get('scheduler', 'auto'))
@@ -597,7 +616,6 @@ def step_schedule(ctx):
     plist_paths, cron_lines = [], []
     for j in ctx.jobs_on:
         sched = j['rendered']['schedule']
-        ctx.report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
         args = [python_bin(a), os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home]
         lt, shift, warn = local_time(sched['time'], a['timezone'])
         days = shift_days(parse_days(sched['days']), shift)
@@ -618,7 +636,7 @@ def step_schedule(ctx):
         with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:
             fh.write('# BEGIN control-tower\n' + '\n'.join(cron_lines) + '\n# END control-tower\n')
     ctx.report['schedule'] = {'kind': kind, 'applied': False, 'dir': sched_dir}
-    return {'kind': kind, 'dir': sched_dir, 'plist_paths': plist_paths}
+    return plist_paths
 
 
 def step_routines(ctx):
@@ -702,18 +720,19 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         step_vault(ctx)
         step_adapters(ctx)
     step_runtime(ctx)
-    schedule = step_schedule(ctx)
+    plist_paths = step_schedule(ctx)
     routines = step_routines(ctx)
     step_next_steps(ctx, routines)
     if not ctx.runtime_only:
         step_obsidian(ctx)
     step_manifest(ctx)                         # last: checksums every file the steps above wrote
+    sched = ctx.report['schedule']
     if apply_schedule and not dry_run:
-        if schedule['kind'] == 'none':
+        if sched['kind'] == 'none':
             ctx.report['warnings'].append('--apply-schedule ignored: scheduler is "none" in the answers')
         else:
-            ctx.report['schedule']['applied'] = apply(schedule['kind'], schedule['plist_paths'],
-                                                      os.path.join(schedule['dir'], 'crontab.txt'), launch_agents_dir, no_launchctl, ctx.report)
+            sched['applied'] = apply(sched['kind'], plist_paths, os.path.join(sched['dir'], 'crontab.txt'), launch_agents_dir,
+                                     no_launchctl, ctx.report)
     return ctx.report
 
 
