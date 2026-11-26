@@ -208,6 +208,8 @@ def segment_reason(seg, vault, extra_commands=()):
             continue
         if BRACE_EXPANSION.search(a):
             return f'{cmd}: brace expansion is not allowed in jobs ({a})'  # the shell would turn it into other words
+        if cmd == 'gh' and a.startswith('-') and not a.startswith(('--', '-R')) and 'R' in a:
+            return f'gh {a}: give -R on its own (owner/name), not inside a group of options'
         repo = gh_repo_value(args, i) if cmd == 'gh' else None
         if repo is not None and not GH_REPO.match(repo):
             return f'gh: only owner/name repositories on GitHub ({repo or "missing"})'
