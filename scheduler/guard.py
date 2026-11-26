@@ -109,7 +109,8 @@ JOB_COMMANDS = {
     'cut': {},
     'tr': {},
     'column': {},
-    'jq': {'long': ('--rawfile', '--slurpfile', '--from-file', '--args', '--jsonargs'), 'short': 'fL'},
+    'jq': {'long': ('--rawfile', '--slurpfile', '--from-file', '--args', '--jsonargs'), 'short': 'fL',
+           'refuse_words': ('env', 'input_filename', 'getpath', '$__loc__')},  # env exposes the job's tokens
     'git': {'subcommands': {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files'},
             'no_global_options': True,
             'long': ('--output', '--ext-diff', '--no-index', '--exec', '--exec-path', '--upload-pack', '--receive-pack', '--textconv')},
@@ -120,11 +121,24 @@ JOB_COMMANDS = {
 UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
                         r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
 SEPARATORS = {';', '&&', '||', '|', '&', '(', ')', '$(', '`', ';;', '|&'}
-REDIRECTS = {'>', '>>', '>|', '&>', '<', '<<', '<<<', '<>'}
+REDIRECT = re.compile(r'^[0-9]*[<>&|]+$')  # any token made of redirection characters that is not a separator
+
+
+def expansions(arg):
+    """The words the shell will make of `arg` by brace expansion (`{/etc,x}` -> /etc, x), one level; else [arg]."""
+    m = re.search(r'\{([^{}]*)\}', arg)
+    if not m or not (',' in m.group(1) or '..' in m.group(1)):
+        return [arg]
+    return [arg[:m.start()] + part + arg[m.end():] for part in re.split(r',|\.\.', m.group(1))]
 
 
 def path_like(arg):
     return arg.startswith(('/', '~')) or '..' in arg.replace('\\', '/').split('/')
+
+
+def outside_vault(arg, vault):
+    """An argument (after brace expansion) that names a path outside the vault."""
+    return any(path_like(w) and not inside(os.path.join(vault, os.path.expanduser(w)), vault) for w in expansions(arg))
 
 
 def segment_reason(seg, vault):
@@ -145,13 +159,17 @@ def segment_reason(seg, vault):
     operands = []
     while i < len(args):
         a = args[i]
-        if a in REDIRECTS:
+        if REDIRECT.match(a):
             target = args[i + 1] if i + 1 < len(args) else ''
-            if a.startswith('<'):
-                if path_like(target) and not inside(os.path.join(vault, os.path.expanduser(target)), vault):
+            if a in ('<', '0<'):
+                if outside_vault(target, vault):
                     return f'reads outside the vault: {target}'
-            elif target != '/dev/null':
-                return 'output redirection: jobs write files with the Edit tool, inside the vault'
+            elif a.rstrip('0123456789') in ('>', '>>') and target == '/dev/null':
+                pass
+            elif a in ('>&', '2>&', '1>&') and target in ('1', '2'):
+                pass  # 2>&1 style: duplicates a stream, opens no file
+            else:
+                return f'redirection {a} {target}: jobs write files with the Edit tool, inside the vault'
             i += 2
             continue
         if a.startswith('--'):
@@ -159,17 +177,20 @@ def segment_reason(seg, vault):
             if any(name == o or name.startswith(o) for o in rule.get('long', ())):
                 return f'{cmd} {name}: writes a file, runs code or sends data'
         elif a.startswith('-') and len(a) > 1 and not a[1:].isdigit():
-            flags, short = a[1:], rule.get('short', '')
-            # `-o x`, `-ofile`, `-XPOST` start with the flag; `-uo` is a cluster of single-letter flags
-            if flags[0] in short or (flags.isalpha() and set(flags) & set(short)):
+            short = rule.get('short', '')
+            # any refused letter anywhere in the token (`-o`, `-ofile`, `-uo`, `-k1o`, `-XPOST`): conservative on purpose,
+            # since a value glued after another flag could hide it
+            if set(a[1:]) & set(short):
                 return f'{cmd} {a}: writes a file, runs code or sends data'
             if a in rule.get('value_options', ()):
                 i += 2
                 continue
         else:
+            if any(re.search(r'(^|[^A-Za-z_])' + re.escape(w) + r'($|[^A-Za-z_])', a) for w in rule.get('refuse_words', ())):
+                return f'{cmd}: "{a}" can expose the environment or files'
             if a in rule.get('no_operand', ()):
                 return f'{cmd} {a} is not allowed in jobs'
-            if path_like(a) and cmd != 'gh' and not inside(os.path.join(vault, os.path.expanduser(a)), vault):
+            if cmd != 'gh' and outside_vault(a, vault):
                 return f'{cmd}: path outside the vault: {a}'
             operands.append(a)
         i += 1
@@ -180,8 +201,8 @@ def segment_reason(seg, vault):
 
 def command_reason(cmd, vault):
     """Run-time check of every simple command in a Bash call. Fails closed on what it cannot parse."""
-    if re.search(r'[`\n\r]|\$\(', cmd):
-        return 'command substitution or several lines'
+    if re.search(r'[`$\n\r]', cmd):  # $VAR, $(...), backticks: the path the shell will use is not the text the guard reads
+        return 'variables, command substitution or several lines'
     try:
         lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
         lex.whitespace_split = True

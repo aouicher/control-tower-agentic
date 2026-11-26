@@ -136,11 +136,15 @@ class PermissionPolicyTests(unittest.TestCase):
                        'gh api -XPOST /gists', 'gh api -fpublic=true repos/x', 'gh api graphql', 'gh api --method DELETE repos/o/r',
                        'gh api -Fbody=@x repos/x', 'uniq a .claude/settings.json', 'git -c core.pager=sh log', 'PAGER=sh git log',
                        '/bin/ls', 'ls /etc', 'ls ../..', 'sort a > /tmp/x', 'jq --rawfile a /etc/passwd .', 'echo $(id)', 'ls `id`',
-                       'wc --files0-from=/etc/x', 'twg x > ~/.zshrc']
+                       'wc --files0-from=/etc/x', 'twg x > ~/.zshrc', 'sort -k1o /tmp/x', 'sort -t, -o /tmp/x',
+                       'ls >& /tmp/x', 'ls &>> /tmp/x', 'ls 3> /tmp/x', 'ls <& 3', 'gh api -H x -XPUT repos/x',
+                       'sort -o $HOME/.zshrc', 'ls ${HOME}', 'ls {/etc,x}', 'cut -f1 {/etc/passwd,x}', 'jq -n env', 'jq env.GH_TOKEN',
+                       'jq -n input_filename']
     RUNTIME_ALLOWED = ['sort', 'sort -u notes/x', 'git log --oneline -5', 'gh pr list --limit 100',
                        'gh api repos/acme/app/dependabot/alerts --paginate --jq .[].severity', 'jq .items notes/x.json',
                        'cut -d: -f1 notes/x', 'uniq -c', 'sort | uniq -c', 'ls notes', 'date +%F', 'wc -l notes/x',
-                       'gh api repos/x/y 2>/dev/null', 'tr a-z A-Z', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
+                       'gh api repos/x/y 2>/dev/null', 'ls 2>&1', 'tr a-z A-Z', 'jq {name:.n,id:.i} notes/x.json',
+                       'jq .environment notes/x.json', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
 
     def test_allowed_rules(self):
         for rule in self.ALLOWED:
@@ -324,6 +328,14 @@ class PackContentTests(unittest.TestCase):
             write(os.path.join(pd2, 'vault', '.claude', 'skills', 'ok', 'SKILL.md'),
                   '---\nname: ok\ndescription: x\nallowed-tools:\n  - Read\n  - Bash(git log:*)\n---\n# x\n')
             install.install(answers(tmp, ['acme-private'], [pd2]), dry_run=True)
+            for i, header in enumerate(('\ufeff---\r\nname: x\r\nallowed-tools: Bash\r\n---\r\n', '---\nname: x\nallowed_tools: [Write]\n---\n',
+                                        '---\nname: x\nAllowed-Tools:\n  - Bash\n---\n', '---\nname: x\nallowed-tools: Bash\n',
+                                        '---\nname: x\n{{ct.team}}: Bash\n---\n')):
+                with self.subTest(header=header[:30]):
+                    pdx = private_pack(os.path.join(tmp, f'px{i}'))
+                    write(os.path.join(pdx, 'vault', '.claude', 'skills', 'evil', 'SKILL.md'), header + '# x\n')
+                    with self.assertRaises(install.InstallError):
+                        install.install(answers(tmp, ['acme-private'], [pdx]), dry_run=True)
 
     def test_symlinks_in_a_pack_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -151,7 +151,7 @@ def check_pack(pk, trust=None):
             raise InstallError(f'pack "{pk.id}" may not ship {rel}: installer state, git, editor, Obsidian and Claude settings are off limits')
         if rel.casefold() == 'claude.md' and not pk.private:
             raise InstallError(f'pack "{pk.id}": only private packs may ship CLAUDE.md (public packs add rules in .claude/rules/)')
-        if rel.endswith('SKILL.md'):  # a skill may grant itself tools while it runs: same policy as job permissions
+        if rel.casefold().endswith('skill.md'):  # a skill may grant itself tools while it runs: same policy as job permissions
             tools = skill_allowed_tools(os.path.join(pk.dir, 'vault', rel + ('.tmpl' if not os.path.isfile(os.path.join(pk.dir, 'vault', rel)) else '')))
             if tools:
                 check_permissions(f'pack "{pk.id}" skill {rel} allowed-tools', tools, trust or Trust())
@@ -166,19 +166,42 @@ def check_pack(pk, trust=None):
             raise InstallError(f'pack "{pk.id}" replaces "{p}" but ships no such file under vault/: add it, or use excludes')
 
 
+TOOLS_KEY = re.compile(r'^[ \t]*["\']?allowed[-_ ]?tools["\']?[ \t]*:', re.I | re.M)
+
+
 def skill_allowed_tools(path):
-    """The `allowed-tools` entries of a SKILL.md frontmatter (comma-separated or a YAML list)."""
+    """The `allowed-tools` entries of a SKILL.md frontmatter (comma-separated, flow list or block list). Fails closed: a key
+    spelled like allowed-tools that cannot be read, or a frontmatter that never closes, raises InstallError."""
     with open(path, encoding='utf-8') as fh:
-        text = fh.read()
-    m = re.match(r'---\n(.*?)\n---', text, re.S)
+        text = fh.read().lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n')
+    if not text.startswith('---'):
+        return []
+    m = re.match(r'---[ \t]*\n(.*?)\n---[ \t]*(\n|$)', text, re.S)
     if not m:
+        if TOOLS_KEY.search(text):
+            raise InstallError(f'{path}: frontmatter does not close but mentions allowed-tools')
         return []
     fm = m.group(1)
-    one = re.search(r'^allowed-tools:[ \t]*(\S.*)$', fm, re.M)
-    if one:
-        return [t.strip() for t in re.split(r',(?![^(]*\))', one.group(1).strip('[]')) if t.strip()]
-    many = re.search(r'^allowed-tools:[ \t]*\n((?:[ \t]*-.*\n?)+)', fm, re.M)
-    return [l.strip()[1:].strip().strip('"\'') for l in many.group(1).splitlines() if l.strip()] if many else []
+    if re.search(r'^[^:\n]*\{\{', fm, re.M):  # a template token in a key could render into allowed-tools
+        raise InstallError(f'{path}: template tokens are not allowed in frontmatter keys')
+    keys = list(TOOLS_KEY.finditer(fm))
+    if not keys:
+        return []
+    if len(keys) > 1:
+        raise InstallError(f'{path}: allowed-tools is declared more than once')
+    rest = fm[keys[0].end():]
+    line, _, after = rest.partition('\n')
+    if line.strip():
+        return [t.strip().strip('"\'') for t in re.split(r',(?![^(]*\))', line.strip().strip('[]')) if t.strip()]
+    items = []
+    for l in after.split('\n'):
+        if re.match(r'^[ \t]*-', l):
+            items.append(l.strip()[1:].strip().strip('"\''))
+        elif l.strip():
+            break
+    if not items:
+        raise InstallError(f'{path}: allowed-tools has no readable value')
+    return items
 
 
 def resolve_packs(repo, answers=None):
