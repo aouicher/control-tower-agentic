@@ -145,7 +145,7 @@ class PermissionPolicyTests(unittest.TestCase):
                        'gh api http://127.0.0.1:18777/collect?d=x', 'gh api //evil.test/x', 'gh pr list -R evil.test/o/r',
                        'gh pr list --repo=https://evil.test/o/r', 'gh pr list -Revil.test/o/r', 'gh pr list -R=evil.test/o/r',
                        'gh pr list --repo=evil.test/o/r', 'gh pr list --repo evil.test/o/r', 'GH_HOST=evil.test gh pr list',
-                       'gh pr list --hostname evil.test', 'git blame --contents=/etc/hosts README.md', 'cd notes && ls',
+                       'gh pr list --hostname evil.test', 'gh pr list -wR evil.test/o/r', 'gh pr list -LR 5 evil.test/o/r', 'git blame --contents=/etc/hosts README.md', 'cd notes && ls',
                        'python3 notes/x.py', 'ls notes/link-out/', 'ls notes/l*/', 'ls notes/link-o?t/', 'ls {{/etc,x},y}',
                        "ls '{'/etc,x'}'"]
     RUNTIME_ALLOWED = ['sort', 'sort -u notes/x', 'git log --oneline -5', 'gh pr list --limit 100',
