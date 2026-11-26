@@ -12,7 +12,6 @@ Usage in a hook:  python3 guard.py --vault /path/to/vault
 """
 import argparse
 import fnmatch
-import glob
 import json
 import os
 import re
@@ -133,14 +132,8 @@ def path_like(arg):
 
 
 def outside_vault(arg, vault):
-    """An argument that resolves outside the vault, symlinks included (relative arguments are relative to the vault).
-    A glob pattern is expanded the way the shell will, and every match must stay inside."""
-    path = os.path.join(vault, os.path.expanduser(arg))
-    if re.search(r'[*?\[]', arg):
-        matches = glob.glob(path)
-        if matches:
-            return any(not inside(m, vault) for m in matches[:1000]) or len(matches) > 1000
-    return not inside(path, vault)
+    """An argument that resolves outside the vault, symlinks included (relative arguments are relative to the vault)."""
+    return not inside(os.path.join(vault, os.path.expanduser(arg)), vault)
 
 
 GH_REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
@@ -189,7 +182,11 @@ def segment_reason(seg, vault, extra_commands=()):
     def value_problem(value):
         if cmd == 'gh':
             return remote(value) and f'gh: only GitHub API paths, not hosts or URLs ({value})'
-        return cmd not in NO_PATH_CHECK and outside_vault(value, vault) and f'{cmd}: path outside the vault: {value}'
+        if cmd in NO_PATH_CHECK:
+            return None
+        if re.search(r'[*?\[\]]', value):  # the guard cannot expand a pattern exactly like the shell: list files with the Glob tool
+            return f'{cmd}: file patterns are not allowed in job commands ({value}); use the Glob tool'
+        return outside_vault(value, vault) and f'{cmd}: path outside the vault: {value}'
     operands, i = [], 0
     while i < len(args):
         a = args[i]
@@ -251,8 +248,8 @@ def command_reason(cmd, vault, extra_commands=()):
         return 'command too long to check'
     if re.search(r'[`$\n\r]', cmd):  # $VAR, $(...), backticks: the path the shell will use is not the text the guard reads
         return 'variables, command substitution or several lines'
-    if re.search(r'\{[^{}]*(,|\.\.)', cmd):  # on the raw text: brace expansion in any quoting or nesting
-        return 'brace expansion is not allowed in jobs'
+    if re.search(r'[{}]', cmd) and not re.fullmatch(r'\s*jq\s.*', cmd, re.S):
+        return 'braces are only allowed in a single jq command'  # raw text: brace expansion in any quoting or nesting
     try:
         lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
