@@ -136,6 +136,22 @@ def outside_vault(arg, vault):
     return not inside(os.path.join(vault, os.path.expanduser(arg)), vault)
 
 
+GH_REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+
+
+def gh_repo_value(args, i):
+    """The repository a gh option at args[i] names, in any spelling (-R x, -Rx, -R=x, --repo x, --repo=x), or None."""
+    a = args[i]
+    for flag in ('--repo', '-R'):
+        if a == flag:
+            return args[i + 1] if i + 1 < len(args) else ''
+        if a.startswith(flag + '='):
+            return a[len(flag) + 1:]
+        if flag == '-R' and a.startswith('-R'):
+            return a[2:]
+    return None
+
+
 def remote(arg):
     """A URL or a host-qualified target: gh would talk to that host instead of GitHub's API."""
     return '://' in arg or arg.startswith('//')
@@ -185,6 +201,9 @@ def segment_reason(seg, vault, extra_commands=()):
             continue
         if BRACE_EXPANSION.search(a):
             return f'{cmd}: brace expansion is not allowed in jobs ({a})'  # the shell would turn it into other words
+        repo = gh_repo_value(args, i) if cmd == 'gh' else None
+        if repo is not None and not GH_REPO.match(repo):
+            return f'gh: only owner/name repositories on GitHub ({repo or "missing"})'
         if a.startswith('--'):
             name, eq, value = a.partition('=')
             if any(name == o or name.startswith(o) for o in rule.get('long', ())):
@@ -193,15 +212,11 @@ def segment_reason(seg, vault, extra_commands=()):
                 problem = value_problem(value)  # `--contents=/etc/hosts`, `--repo=https://host/...`
                 if problem:
                     return problem
-            if cmd == 'gh' and name == '--repo' and not eq and i + 1 < len(args) and (remote(args[i + 1]) or args[i + 1].count('/') > 1):
-                return f'gh --repo: only owner/name on GitHub ({args[i + 1]})'
         elif a.startswith('-') and len(a) > 1 and not a[1:].isdigit():
             short = rule.get('short', '')
             # any refused letter anywhere in the token (`-o`, `-ofile`, `-uo`, `-k1o`, `-XPOST`): conservative on purpose
             if set(a[1:]) & set(short):
                 return f'{cmd} {a}: writes a file, runs code or sends data'
-            if cmd == 'gh' and a == '-R' and i + 1 < len(args) and (remote(args[i + 1]) or args[i + 1].count('/') > 1):
-                return f'gh -R: only owner/name on GitHub ({args[i + 1]})'
             if a in rule.get('value_options', ()):
                 i += 2
                 continue
