@@ -43,8 +43,10 @@ BASH_RULES = [
 # Areas that an unattended job must never modify. `.claude` and `.control-tower` matter most: the vault's Claude settings are loaded by
 # the job runner, so a job able to edit them could widen its own permissions or hooks for the next run.
 # `.git` matters as much: a hook or `core.fsmonitor` written there would run as the user at the next git command.
+# The single source of these lists: installer/plan.py imports them (job deny rules, files a pack may never ship).
 PROTECTED = ('.obsidian', '_system/templates', '_system/dashboards', '.claude', '.control-tower', '.control-tower-backup', '.git', '.github', '.vscode')
-PROTECTED_FILES = ('claude.md', 'claude.local.md', '.mcp.json')
+PROTECTED_FILES_CASED = ('CLAUDE.md', 'CLAUDE.local.md', '.mcp.json')
+PROTECTED_FILES = tuple(f.lower() for f in PROTECTED_FILES_CASED)  # compared lowercase: macOS and Windows file systems
 # `date` is allowed to every job, so its arguments are allow-listed after shell tokenising: display formats and date
 # arithmetic only. GNU `date -f FILE` / `-r FILE` would print a file's content or metadata, in any flag spelling.
 DATE_FLAGS = re.compile(r'^(-u|--utc|-j|-R|-I\w*|--iso-8601(=\w+)?|--rfc-3339=\w+|-v[+-]?\w+|--date=.*)$')

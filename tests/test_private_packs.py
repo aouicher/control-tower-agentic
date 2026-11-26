@@ -115,71 +115,115 @@ class PrivatePackTests(unittest.TestCase):
             self.assertFalse(m.get('replaces') or m.get('excludes'), f'public pack {pid} must not replace or exclude core files')
 
 
-class ReviewRegressionTests(unittest.TestCase):
-    """One test per finding of the PR #5 review."""
+class PermissionPolicyTests(unittest.TestCase):
+    """What a pack may grant an unattended job: an allow-list (plan.permission_problem), enforced at install."""
+    TRUST = {'trusted_commands': ['twg', 'slackcli'], 'trusted_env': ['TWG_AGENT_DEFAULTS'], 'trusted_mcp_servers': ['acme'],
+             'trusted_domains': ['acme.test']}
+    ALLOWED = ['Read', 'Grep', 'Glob', 'Read(notes/**)', 'mcp__acme__get_issues', 'WebFetch(domain:acme.test)', 'Bash(gh pr list:*)',
+               'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(sort)', 'Bash(jq .items)',
+               'Bash(twg jira workitem query *)', 'Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query *)', 'Bash(slackcli conversations unread *)']
+    REFUSED = ['Bash', 'Bash(*)', 'Write', 'Edit', 'Edit(//etc/**)', 'WebFetch', 'WebSearch', 'mcp__*', 'mcp__acme',
+               'mcp__other__get_issues', 'mcp__acme__send_message', 'mcp__acme__create_issue', 'WebFetch(domain:evil.test)',
+               # interpreters, wrappers, case and quoting tricks, paths
+               'Bash(python -c x)', 'Bash(Python3:*)', 'Bash(OSASCRIPT:*)', 'Bash(timeout:*)', 'Bash(nohup:*)', 'Bash(command:*)',
+               'Bash(java:*)', 'Bash("sh" -c:*)', "Bash(s''h:*)", 'Bash(./script)', 'Bash(/bin/sh -c x)',
+               # write, send or run through an allowed command
+               'Bash(gh gist create:*)', 'Bash(gh api --method POST x)', 'Bash(gh api -X POST x)', 'Bash(git push:*)',
+               'Bash(git log --output=/x:*)', 'Bash(git -c core.pager=sh log)', 'Bash(sort -o x)', 'Bash(jq --rawfile a /etc/passwd .)',
+               'Bash(cp x ~/.zshrc)', 'Bash(cat /etc/passwd)',
+               # shell syntax and environment
+               'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(PAGER=sh git log:*)',
+               'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(OTHER=1 twg x)',
+               # unknown or untrusted tools, unrendered tokens
+               'Bash(twg2 x)', 'Bash(git log {{ct.team}}:*)']
 
-    def test_m2_private_job_permissions_are_checked(self):
+    def test_allowed_rules(self):
+        for rule in self.ALLOWED:
+            with self.subTest(rule=rule):
+                self.assertIsNone(plan.permission_problem(rule, **self.TRUST))
+
+    def test_refused_rules(self):
+        for rule in self.REFUSED:
+            with self.subTest(rule=rule):
+                self.assertIsNotNone(plan.permission_problem(rule, **self.TRUST))
+
+    def test_company_tools_need_the_users_trust_not_the_packs(self):
+        self.assertIsNotNone(plan.permission_problem('Bash(twg jira workitem query *)'))
+        self.assertIsNone(plan.permission_problem('Bash(twg jira workitem query *)', trusted_commands=['twg']))
+        self.assertIsNotNone(plan.permission_problem('Bash(PATH=/tmp twg x)', trusted_commands=['twg'], trusted_env=['PATH']),
+                             'some variables can never be trusted')
+
+    def test_mcp_servers_and_domains_need_the_users_trust(self):
+        self.assertIsNotNone(plan.permission_problem('mcp__acme__get_issues'))
+        self.assertIsNone(plan.permission_problem('mcp__acme__get_issues', trusted_mcp_servers=['acme']))
+        self.assertIsNotNone(plan.permission_problem('WebFetch(domain:acme.test)'))
+
+    def test_every_public_rule_passes(self):
+        import glob
+        for f in glob.glob(os.path.join(ROOT, 'adapters', '*', '*.json')) + glob.glob(os.path.join(ROOT, 'packs', '*', 'jobs', '*', 'job.json')):
+            data = json.load(open(f))
+            for rule in data.get('permissions_allow', []) + data.get('permissions', {}).get('allow', []):
+                # choosing a tool at install is trusting its MCP server; its tools must still be read-only
+                server = plan.MCP_TOOL.match(rule).group(1) if plan.MCP_TOOL.match(rule) else None
+                with self.subTest(file=os.path.relpath(f, ROOT), rule=rule):
+                    self.assertIsNone(plan.permission_problem(rule, trusted_mcp_servers=[server] if server else []))
+
+    def test_install_refuses_a_bad_rule_before_writing_anything(self):
         with tempfile.TemporaryDirectory() as tmp:
-            for bad in (['Bash'], ['Write'], ['WebFetch'], ['Edit(//etc/**)'], ['mcp__*'], ['mcp__server'], ['Bash(python -c x)'],
-                        ['Bash(cp x ~/.zshrc)'], ['Bash(*)'], ['Bash(git push:*)'], ['Bash(ls; rm -rf x)']):
-                with self.subTest(allow=bad):
-                    pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(str(bad))))))
-                    jp = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
-                    job = json.load(open(jp))
-                    job['permissions']['allow'] = bad
-                    json.dump(job, open(jp, 'w'))
-                    with self.assertRaises(install.InstallError):
-                        install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
-            pd = private_pack(os.path.join(tmp, 'ok'))
+            pd = private_pack(os.path.join(tmp, 'p'))
             jp = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
             job = json.load(open(jp))
-            job['permissions']['allow'] = ['mcp__acme__get_issues', 'Bash(gh pr list:*)', 'Bash(TWG=1 twg query *)', 'WebFetch(domain:acme.test)']
+            job['permissions']['allow'] = ['Bash(timeout:*)']
             json.dump(job, open(jp, 'w'))
-            install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+            a = answers(tmp, ['acme-private'], [pd])
+            with self.assertRaises(install.InstallError):
+                install.install(a, log=lambda *x: None)
+            self.assertFalse(os.path.exists(a['vault_path']), 'the plan fails before the first write')
+            self.assertFalse(os.path.exists(a['ct_home']))
             with self.assertRaises(install.InstallError):
                 install.install(answers(tmp, ['acme-private'], [pd], permissions={'tracker': ['Bash']}), dry_run=True)
 
-    def test_m1_runtime_mode_is_remembered(self):
+    def test_rules_are_checked_after_rendering(self):
         with tempfile.TemporaryDirectory() as tmp:
-            v = os.path.join(tmp, 'vault')
-            write(os.path.join(v, 'CLAUDE.md'), 'Mine.\n')
             pd = private_pack(os.path.join(tmp, 'p'))
-            install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), log=lambda *x: None)
-            plain = answers(tmp, ['acme-private'], [pd])  # no vault_mode: the user's own answers file
-            for kw in ({}, {'update': True}):
-                with self.subTest(**kw):
-                    report = install.install(plain, log=lambda *x: None, **kw)
-                    self.assertEqual(report['vault_mode'], 'runtime')
-                    self.assertFalse(os.path.exists(os.path.join(v, '.claude')), 'no kit file lands in a runtime-only vault')
-                    self.assertEqual(open(os.path.join(v, 'CLAUDE.md')).read(), 'Mine.\n')
-            report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='full'), dry_run=True, log=lambda *x: None)
-            self.assertEqual(report['vault_mode'], 'full', 'switching to full is possible, but only when asked explicitly')
+            write(os.path.join(pd, 'vocabulary.json'), json.dumps({'team': {'singular': 'x; touch PWNED', 'plural': 'xs'}}))
+            jp = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
+            job = json.load(open(jp))
+            job['permissions']['allow'] = ['Bash(git log {{ct.team}}:*)']
+            json.dump(job, open(jp, 'w'))
+            with self.assertRaises(install.InstallError):
+                install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
 
-    def test_l1_patterns_are_segment_aware_and_doctor_agrees(self):
+
+class PackContentTests(unittest.TestCase):
+    """What a pack may ship, and how its ids and patterns are read."""
+
+    def test_patterns_are_segment_aware_and_the_doctor_agrees(self):
         self.assertTrue(plan.path_match('x.base', '*.base'))
         self.assertFalse(plan.path_match('_system/dashboards/people.base', '*.base'), '* does not cross /')
         self.assertTrue(plan.path_match('_system/dashboards/people.base', '**/*.base'))
         self.assertTrue(plan.path_match('.claude/skills/time-review/SKILL.md', '.claude/skills/time-review'), 'a folder covers its files')
+        self.assertTrue(plan.path_match('CLAUDE.md', './CLAUDE.md'))
         self.assertFalse(plan.path_match('a/b', '../a'))
         with tempfile.TemporaryDirectory() as tmp:
             pd = private_pack(os.path.join(tmp, 'p'), replaces=[], excludes=['CLAUDE.md', '_system/dashboards'])
-            a = answers(tmp, ['acme-private'], [pd])
             os.remove(os.path.join(pd, 'vault', 'CLAUDE.md.tmpl'))
-            os.remove(os.path.join(pd, 'vault', '_system', 'templates', 'daily.md'))  # replaces nothing now
+            os.remove(os.path.join(pd, 'vault', '_system', 'templates', 'daily.md'))
+            a = answers(tmp, ['acme-private'], [pd])
             install.install(a, log=lambda *x: None)
             self.assertFalse(os.path.exists(os.path.join(a['vault_path'], 'CLAUDE.md')))
             self.assertFalse(os.path.exists(os.path.join(a['vault_path'], '_system', 'dashboards')))
             fails = [i for i in doctor.check(a['vault_path'], a['ct_home'], 'python3').items if i['level'] == 'FAIL']
             self.assertEqual(fails, [], 'excluded CLAUDE.md and dashboards are not reported missing')
 
-    def test_l2_replaces_needs_the_file(self):
+    def test_replaces_needs_the_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             pd = private_pack(os.path.join(tmp, 'p'), replaces=['CLAUDE.md', 'cockpit.md'])
             with self.assertRaises(install.InstallError) as ctx:
                 install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
             self.assertIn('ships no such file', str(ctx.exception))
 
-    def test_l3_a_symlinked_public_pack_stays_public(self):
+    def test_a_symlinked_public_pack_stays_public(self):
         with tempfile.TemporaryDirectory() as tmp:
             kit = os.path.join(tmp, 'kit')
             shutil.copytree(ROOT, kit, ignore=shutil.ignore_patterns('.git', 'tests', '__pycache__', '*.local'))
@@ -189,7 +233,7 @@ class ReviewRegressionTests(unittest.TestCase):
                 install.install(answers(tmp, ['evil']), repo=kit, dry_run=True)
             self.assertIn('only private packs', str(ctx.exception))
 
-    def test_l4_ids_cannot_escape(self):
+    def test_ids_cannot_become_paths_outside(self):
         with tempfile.TemporaryDirectory() as tmp:
             for kw in ({'id': '../../x'}, {'jobs': ['../../escape']}, {'routines': ['../r']}, {'id': 'Acme'}):
                 with self.subTest(**kw):
@@ -198,16 +242,41 @@ class ReviewRegressionTests(unittest.TestCase):
                         install.install(answers(tmp, [kw.get('id', 'acme-private')], [pd]), dry_run=True)
             self.assertFalse(os.path.exists(os.path.join(tmp, 'escape')))
 
-    def test_l5_packs_cannot_ship_protected_files(self):
+    def test_protected_files_whatever_their_case(self):
         with tempfile.TemporaryDirectory() as tmp:
-            for rel in ('.claude/settings.json', '.control-tower/manifest.json', '.obsidian/app.json', '.mcp.json', '.git/config'):
+            for rel in ('.claude/settings.json', '.CLAUDE/settings.json', '.Claude/Settings.json', '.control-tower/manifest.json',
+                        '.Obsidian/app.json', '.mcp.json', '.Mcp.json', '.git/config', '.GIT/hooks/post-commit', '.claude/hooks/x.sh',
+                        '.github/workflows/x.yml', '.vscode/settings.json', '.claude/adapters/x.md'):
                 with self.subTest(rel=rel):
                     pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(rel)))))
                     write(os.path.join(pd, 'vault', rel), '{}')
                     with self.assertRaises(install.InstallError):
                         install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+
+    def test_shippable_and_protected_lists_come_from_the_guard(self):
+        sys.path.insert(0, os.path.join(ROOT, 'scheduler'))
+        import guard
+        for p in list(guard.PROTECTED) + list(guard.PROTECTED_FILES):
+            shippable = any(plan.path_match(p + '/x', s, ignore_case=True) or plan.path_match(p, s, ignore_case=True)
+                            for s in plan.PACK_SHIPPABLE)
+            with self.subTest(protected=p):
+                self.assertTrue(shippable or plan.forbidden_pack_file(p + '/x') or plan.forbidden_pack_file(p))
+        self.assertEqual(install.PROTECTED_DIRS, guard.PROTECTED, 'job deny rules use the guard list')
         for pid in install.list_packs():  # the public packs pass the same rule
-            plan.check_pack_files(plan.resolve_packs(ROOT)[pid])
+            plan.check_pack(plan.resolve_packs(ROOT)[pid])
+
+    def test_symlinks_in_a_pack_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            secret = os.path.join(tmp, 'secret.txt')
+            write(secret, 'TOPSECRET')
+            for where in ('vault/notes/leak.md', 'jobs/acme-brief/extra.md'):
+                with self.subTest(where=where):
+                    pd = private_pack(os.path.join(tmp, 'p' + str(abs(hash(where)))))
+                    os.makedirs(os.path.dirname(os.path.join(pd, where)), exist_ok=True)
+                    os.symlink(secret, os.path.join(pd, where))
+                    with self.assertRaises(install.InstallError) as ctx:
+                        install.install(answers(tmp, ['acme-private'], [pd]), dry_run=True)
+                    self.assertIn('symlink', str(ctx.exception))
 
 
 class RuntimeOnlyTests(unittest.TestCase):
@@ -251,6 +320,20 @@ class RuntimeOnlyTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertFalse(os.path.exists(a['ct_home']))
             self.assertEqual(self.snapshot(v), before, 'uninstall removes the runtime, never the user\'s files')
+
+    def test_runtime_mode_is_remembered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            v = self.existing_vault(tmp)
+            before = self.snapshot(v)
+            pd = private_pack(os.path.join(tmp, 'p'))
+            install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), log=lambda *x: None)
+            plain = answers(tmp, ['acme-private'], [pd])  # the user's own answers file, without vault_mode
+            for kw in ({}, {'update': True}):
+                with self.subTest(**kw):
+                    self.assertEqual(install.install(plain, log=lambda *x: None, **kw)['vault_mode'], 'runtime')
+                    self.assertEqual(self.snapshot(v), before, 'no kit file lands in a runtime-only vault')
+            report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='full'), dry_run=True, log=lambda *x: None)
+            self.assertEqual(report['vault_mode'], 'full', 'switching to full is possible, only when asked explicitly')
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:

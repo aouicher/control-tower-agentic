@@ -43,16 +43,34 @@ A pack may never ship installer state, git, Obsidian or Claude settings: `.contr
 
 ### Jobs in a private pack
 
-Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`). A pack is often written by someone else than the person who installs it, so the installer checks every `permissions.allow` entry and stops on the first one that would widen what an unattended job can do:
+Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`). A pack is often written by someone else than the person who installs it, so the installer checks every `permissions.allow` entry **before writing anything**, on the final text (after `{{ct.*}}` tokens are filled in), and stops on the first one that would widen what an unattended job can do. The check is an allow-list: anything not listed below is refused.
 
-| Allowed | Refused |
+| Allowed | Notes |
 |---|---|
-| `Read`, `Grep`, `Glob`, `Read(<path>)` | `Edit`, `Write` in any form: the installer grants the vault write itself |
-| One MCP tool by exact name: `mcp__<server>__<tool>` | A whole server or a wildcard: `mcp__<server>`, `mcp__*` |
-| `Bash(<command> ...)` for a read command: `Bash(gh pr list:*)`, `Bash(TWG=1 twg jira workitem query *)`, `Bash(git log:*)` | `Bash`, `Bash(*)`, shells and interpreters (`sh`, `python`, `node`...), file and network commands (`cp`, `rm`, `curl`...), git subcommands that write, shell operators |
-| `WebFetch(domain:<host>)` | `WebFetch`, `WebSearch` |
+| `Read`, `Grep`, `Glob`, `Read(<path>)` | the guard still confines reads to the vault and blocks secrets |
+| `Bash(<command> ...)` for `date`, `ls`, `wc`, `sort`, `uniq`, `jq`, `cut`, `tr`, `column` | text tools for data the job already has |
+| `Bash(git log ...)` and the other read-only git subcommands | `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files` |
+| `Bash(gh pr list ...)` and the other read-only gh subcommands | `pr list/view/checks/diff`, `issue list/view`, `release list/view`, `run list/view`, `repo view`, `api` (GET only) |
+| `Bash(<tool> ...)` for a tool **you** trust | list it in the answers under `trusted_commands` |
+| `mcp__<server>__<tool>`, one read tool | the server must be in `trusted_mcp_servers`; tools named like actions (`send_`, `create_`, `update_`...) are refused |
+| `WebFetch(domain:<host>)` | the host must be in `trusted_domains` (a fetch can carry vault text in its URL) |
 
-The same check runs on the `permissions` you add in the answers. The guard and the per-job settings then apply exactly as for public jobs: read and write only inside the vault, protected areas, no outward action.
+Always refused: `Edit`/`Write` (the installer grants the vault write itself), bare `Bash`, `WebFetch` or `WebSearch`, whole MCP servers and wildcards, shell operators, quotes and substitutions, paths as commands, options that write or send (`-o`, `-c`, `--output`, `--exec`, `--method`, `-f`/`-F`...), and `VAR=value` prefixes unless the variable is in `trusted_env` (never `PATH`, `PAGER`, `GIT_*`, `LD_*`...).
+
+The trust lists belong to the person installing, in the answers file:
+
+```json
+{
+  "trusted_commands": ["twg", "slackcli"],
+  "trusted_env": ["TWG_AGENT_DEFAULTS"],
+  "trusted_mcp_servers": ["claude_ai_acme-assistant"],
+  "trusted_domains": ["status.acme.example"]
+}
+```
+
+MCP tools you list yourself under `permissions` in the answers count as trusted. The guard and the per-job settings then apply exactly as for public jobs: read and write only inside the vault, protected areas, no outward action.
+
+A pack may not contain symlinks: they would copy files from anywhere on disk into your vault.
 
 ## Runtime-only installs
 
