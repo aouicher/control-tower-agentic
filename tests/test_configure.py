@@ -120,6 +120,24 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
         self.assertIn('Bootstrap failed', r.stderr)
 
+    def test_set_schedule_with_cron(self):
+        bin_dir, store = os.path.join(self._tmp.name, 'bin'), os.path.join(self._tmp.name, 'crontab.store')
+        os.makedirs(bin_dir)
+        open(store, 'w').write('')
+        with open(os.path.join(bin_dir, 'crontab'), 'w') as fh:
+            fh.write(f'#!/bin/sh\nif [ "$1" = "-l" ]; then cat {store}; else cat > {store}; fi\n')
+        os.chmod(os.path.join(bin_dir, 'crontab'), 0o755)
+        data = self.saved()
+        json.dump(dict(data, scheduler='cron'), open(self.path, 'w'))
+        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ['PATH'])
+        cli = lambda *a: subprocess.run([sys.executable, CONFIGURE] + list(a) + ['--vault', self.vault], capture_output=True, text=True, env=env)
+        self.assertEqual(cli('set', '--schedule', 'on').returncode, 0)
+        self.assertIn('--job morning-prs', open(store).read())
+        self.assertEqual(cli('set', '--job', 'morning-prs', '--enabled', 'false').returncode, 0)
+        r = cli('set', '--job', 'weekly-wrap', '--enabled', 'false')
+        self.assertEqual(r.returncode, 0, 'no job left to load is not a failure: ' + r.stderr)
+        self.assertNotIn('control-tower', open(store).read())
+
     def test_another_install_s_agents_are_never_touched(self):
         os.makedirs(self.la)
         other = os.path.join(self._tmp.name, 'other.plist')

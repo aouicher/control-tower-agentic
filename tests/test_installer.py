@@ -361,6 +361,12 @@ class CrontabTests(unittest.TestCase):
         install.apply('cron', [], os.path.join(a['ct_home'], 'schedule'), None, True, {'warnings': []}, unload=True)
         self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n' + block, 'unloading removes only its own block')
 
+    def test_a_block_from_before_blocks_had_a_path_counts_as_this_install(self):
+        open(self.store, 'a').write(f'{install.CRON_BEGIN}\n0 8 * * 1 python3 /x/run_job.py\n{install.CRON_END}\n')
+        self.assertTrue(install.cron_applied('/x/.control-tower/schedule'))
+        install.apply('cron', [], '/x/.control-tower/schedule', None, True, {'warnings': []}, unload=True)
+        self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n')
+
     def test_block_is_installed_and_replaced_keeping_user_lines(self):
         a = answers_for(self.tmp.name, ['developer'], scheduler='cron')
         report = install.install(a, schedule='load')
