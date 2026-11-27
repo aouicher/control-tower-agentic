@@ -1,0 +1,14 @@
+{
+  "gh": {
+    "network": ["api.github.com"],
+    "weaker_network_isolation": true
+  },
+  "twg": {
+    "network": ["api.atlassian.com"]
+  },
+  "slackcli": {
+    "network": [],
+    "ask_host": "your company's Slack address, for example acme.slack.com",
+    "allow_write": ["~/Library/Logs/slackcli"]
+  }
+}

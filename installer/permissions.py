@@ -23,7 +23,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from plan import ID_RE, MCP_TOOL, describe_rules, expand, jload, name_words, permission_problem  # noqa: E402
+from plan import (ID_RE, MCP_TOOL, bash_parts, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
+                  permission_problem)
 
 SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
 MAX_SUBCOMMANDS = 3  # `twg jira workitem query`: enough for real tools, too short to carry a message to the reader
@@ -111,9 +112,8 @@ def cmd_list(args):
     vault = args.vault
     if not vault and os.path.isfile(os.path.join(ct_home, 'install.json')):
         vault = jload(os.path.join(ct_home, 'install.json')).get('vault')
-    grants = {}
-    if vault and os.path.isfile(answers_path(vault)):
-        grants = jload(answers_path(vault)).get('job_permissions') or {}
+    data = jload(answers_path(vault)) if vault and os.path.isfile(answers_path(vault)) else {}
+    grants, table, mine = data.get('job_permissions') or {}, known_commands(), data.get('commands') or {}
     items = []
     for path in sorted(glob.glob(os.path.join(ct_home, 'logs', '*.denials.json'))):
         job = os.path.basename(path)[:-len('.denials.json')]
@@ -138,6 +138,13 @@ def cmd_list(args):
                               'rule': rule, 'allow_means': plain(rule) if rule else None,
                               'verdict': 'never' if why else 'can-allow', 'why': why or None,
                               'granted': bool(rule and rule in grants.get(job, []))})
+                parts = bash_parts(rule) if rule and not why else None
+                if parts:  # what the command will reach in the sandbox; an unknown one needs a host answer first
+                    known, own = table.get(parts[1], {}), mine.get(parts[1], {})
+                    hosts = sorted(set(known.get('network', []) + own.get('network', [])))
+                    items[-1].update(hosts=hosts, needs_host=not hosts and parts[1] not in mine)  # answered "no web address": none
+                    if known.get('ask_host') and not hosts:
+                        items[-1]['ask_host'] = known['ask_host']
     print(json.dumps({'denials': items}, indent=2, ensure_ascii=False))
     return 0
 
@@ -220,6 +227,50 @@ def cmd_revoke(args):
     return rc
 
 
+def cmd_add_command(args):
+    """Record the hosts a command reaches and the per-user folders it writes (`commands` in the answers), then reinstall."""
+    path = answers_path(args.vault)
+    if not os.path.isfile(path):
+        print(f'error: {path} not found: this vault was not installed by the control tower installer', file=sys.stderr)
+        return 2
+    data = jload(path)
+    commands = data.get('commands') or {}
+    entry = {k: list(v) for k, v in (commands.get(args.command) or {}).items()}
+    for key, values in (('network', args.host), ('allow_write', args.allow_write)):
+        for v in values or []:
+            if v not in entry.setdefault(key, []):
+                entry[key].append(v)
+    entry = {k: v for k, v in entry.items() if v}
+    if not (args.host or args.allow_write or args.no_network):
+        print('error: give --host, --allow-write or --no-network', file=sys.stderr)
+        return 2
+    why = command_problem(args.command, entry)
+    if why:
+        print(f'never: {why}' if 'never' in why else f'error: {why}', file=sys.stderr)
+        return 2
+    data['commands'] = dict(commands, **{args.command: entry})
+    rc = reinstall(path, data)
+    if rc == 0:
+        print(f'recorded: {args.command} may reach {", ".join(entry.get("network", [])) or "no web address"}'
+              + (f' and write in {", ".join(entry["allow_write"])}' if entry.get('allow_write') else ''))
+    return rc
+
+
+def cmd_remove_command(args):
+    path = answers_path(args.vault)
+    data = jload(path) if os.path.isfile(path) else None
+    if not data or args.command not in (data.get('commands') or {}):
+        print(f'nothing recorded for {args.command}')
+        return 0
+    del data['commands'][args.command]
+    if not data['commands']:
+        del data['commands']
+    rc = reinstall(path, data)
+    if rc == 0:
+        print(f'removed: {args.command} reaches only the addresses of the known-command table, if any')
+    return rc
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='action', required=True)
@@ -231,8 +282,18 @@ def main(argv=None):
         p.add_argument('--vault', required=True)
         p.add_argument('--job', required=True)
         p.add_argument('--rule', required=True)
+    p = sub.add_parser('add-command', help='the web addresses a command reaches and the folders it writes, inside the sandbox')
+    p.add_argument('--vault', required=True)
+    p.add_argument('--command', required=True)
+    p.add_argument('--host', action='append', help='an exact host name, for example acme.atlassian.net (repeatable)')
+    p.add_argument('--allow-write', action='append', help='a per-user log or cache folder, for example ~/Library/Logs/x (repeatable)')
+    p.add_argument('--no-network', action='store_true', help='the answer "it needs no web address"')
+    p = sub.add_parser('remove-command', help='forget the addresses and folders recorded for a command')
+    p.add_argument('--vault', required=True)
+    p.add_argument('--command', required=True)
     args = ap.parse_args(argv)
-    return {'list': cmd_list, 'grant': cmd_grant, 'revoke': cmd_revoke}[args.action](args)
+    return {'list': cmd_list, 'grant': cmd_grant, 'revoke': cmd_revoke, 'add-command': cmd_add_command,
+            'remove-command': cmd_remove_command}[args.action](args)
 
 
 if __name__ == '__main__':

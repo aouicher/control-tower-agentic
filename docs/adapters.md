@@ -33,6 +33,10 @@ The installer renders the notes into `<vault>/.claude/adapters/` and writes the 
 
 Jobs are read-only on external systems. Where a tool has no read-only mode, use an account with view-only permissions and allow only read tools by exact name. Wildcard MCP permissions are rejected by the tests. Adapter status `documented` means written from the tool's documentation, `verified` means tested against a live account.
 
+## Command-line tools in jobs
+
+A job that runs a command runs it in Claude Code's sandbox, which reaches only the web addresses the job was given. `adapters/commands.json` lists the addresses of known tools, measured with the real CLI ([runtime facts](design/runtime-facts.md)): `gh` reaches `api.github.com` (and needs `enableWeakerNetworkIsolation` on macOS for its certificate checks), `twg` reaches `api.atlassian.com`, and `slackcli` reaches the company's own Slack address, which the person granting it is asked for. For any other command, `/job-permissions` asks which address it talks to before allowing it, and records the answer as `commands` in the answers (`installer/permissions.py add-command`). Addresses are exact public host names: no wildcard, no IP address, no local-only name (`.local`, `.localhost`, `.internal`). A public name that points to a private address is not detected: check the address you give. An address recorded for a command applies to every job that is allowed that command; `/job-permissions` can take it back.
+
 ## Adding an adapter
 
 Copy a sibling manifest, keep to the capability contract, and run the tests. See [CONTRIBUTING.md](../CONTRIBUTING.md).
