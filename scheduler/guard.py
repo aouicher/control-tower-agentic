@@ -400,7 +400,8 @@ def check(event, vault, extra_commands=()):
         reason = date_reason(cmd) or command_reason(cmd, vault, extra_commands)
         return f'{reason}: {cmd[:120]}' if reason else None
     if tool in ('Glob', 'Grep'):
-        if inp.get('path') and own_tool_result(os.path.expanduser(str(inp['path'])), event) and not inp.get('glob'):
+        if tool == 'Grep' and inp.get('path') and not inp.get('glob') and \
+                own_tool_result(os.path.join(event.get('cwd') or vault, os.path.expanduser(str(inp['path']))), event):
             return None  # searching the job's own saved output
         return search_reason(tool, inp, event, vault)
     path = inp.get('file_path') or inp.get('notebook_path') or inp.get('path')
