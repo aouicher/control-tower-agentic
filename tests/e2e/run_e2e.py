@@ -125,7 +125,6 @@ def scenario(packs):
         step('a vault skill scheduled as a report: rendered, scheduled, runs', r1.returncode == r.returncode == 0
              and '.claude/skills/e2e-digest/SKILL.md' in open(os.path.join(ct, 'jobs', 'e2e-digest', 'prompt.md')).read()
              and any('e2e-digest' in open(f).read() for f in sched_files), (r1.stderr + r.stderr)[-300:])
-        jobs.append('e2e-digest')
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
         idx = os.path.join(ct, 'routines', 'routines.json')
