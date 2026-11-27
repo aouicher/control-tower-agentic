@@ -10,6 +10,8 @@ The review depends on `work/` and `team/`, not on daily notes: daily notes are o
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. Get the ISO week with `date +%G-W%V` (or use the argument) and the Monday to Sunday dates.
 2. Read this week's daily notes in `journal/daily/<YYYY>/` when they exist, for context only. If none exist, continue and say so in one line. Never read tasks from older daily notes: they are stale.
 3. Extract from `work/` and `team/`:

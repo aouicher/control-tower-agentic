@@ -10,6 +10,8 @@ Output: section `## 🧍 Standup` of today's daily note `journal/daily/<YYYY>/<Y
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. Dates: `date +%F` for today. "Yesterday" is the previous working day (on Monday, Friday), computed with `date`.
 2. Done, from git: in the current repository and any repository the user names, run `git log --author="$(git config user.name)" --since="<yesterday 00:00>" --until="<today 00:00>" --oneline --all`. Group commits by branch or pull request. Merged pull requests: use the code adapter described in `.claude/adapters/code.md` with a limit of 100 and report "at least N (truncated)" if reached.
 3. Done, from tickets: if a tracker adapter exists (`.claude/adapters/tracker.md`), list tickets assigned to the user and resolved yesterday. Trackers return at most 100 items per page: paginate or say "at least N (truncated)". With no tracker configured, skip and say so in one line.

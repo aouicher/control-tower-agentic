@@ -11,6 +11,8 @@ Layout read from <ct-home>:
     jobs/<id>/settings.json         permissions and the guard hook for this job
 
 What it does:
+  * writes a `## Run context` block (now, today, ISO weeks, previous working day, in the installed timezone) at the top of
+    the prompt, so a job never runs `date`
   * one run at a time per job (lock directory with the PID; a stale lock is reclaimed)
   * runs `claude -p` inside the vault with the job's settings and `--permission-mode dontAsk`
     (anything not explicitly allowed is refused) and a time limit (default 30 minutes)
@@ -29,12 +31,43 @@ import signal
 import subprocess
 import sys
 import time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_TIMEOUT = 1800
 EXTRA_PATH = ['~/.local/bin', '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
 BLOCKED = 'BLOCKED by control-tower guard: '
 SECRET_KEY = re.compile(r'token|secret|passw|api.?key|auth|cookie|credential|bearer', re.I)
 SECRET_VALUE = re.compile(r'\b(\w*(?:token|secret|passw|api_?key|auth)\w*=|bearer\s+|token\s+)\S+', re.I)
+
+# Shipped skills that mention a `date` command say this first: a job finds its dates in the Run context, a person gets them
+# from `date` in an interactive session.
+RUN_CONTEXT_RULE = 'If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.'
+DAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+
+
+def now_in(timezone):
+    try:
+        return datetime.datetime.now(ZoneInfo(timezone))
+    except (ZoneInfoNotFoundError, ValueError):  # unknown zone, or no time zone data on this computer: UTC, the installer's default
+        return datetime.datetime.now(datetime.timezone.utc)
+
+
+def run_context(now):
+    """Every date a job needs, computed once by the runner (`now` is timezone-aware)."""
+    day, one = now.date(), datetime.timedelta(days=1)
+
+    def week(d):
+        year, number, _ = d.isocalendar()
+        monday = d - d.weekday() * one
+        return f'{year}-W{number:02d}, Monday {monday} to Sunday {monday + 6 * one}'
+    before = day - {0: 3, 6: 2}.get(day.weekday(), 1) * one  # Monday and Sunday: Friday; Saturday: Friday too (1 day)
+    zone = getattr(now.tzinfo, 'key', None) or now.tzname()
+    return '\n'.join([
+        '## Run context', '', 'Computed by the job runner: take every date and time from here and do not run `date`.', '',
+        f'- Now: {now:%Y-%m-%d %H:%M} ({now:%d/%m/%Y at %H:%M}), {DAYS[day.weekday()]}, {zone}',
+        f'- Today: {day}', f'- Year: {day.year}', f'- ISO week: {week(day)}',
+        f'- Last complete ISO week: {week(day - 7 * one)}', f'- The week before: {week(day - 14 * one)}',
+        f'- Previous working day: {before}, {DAYS[before.weekday()]}', ''])
 
 
 def redact(text):
@@ -137,7 +170,7 @@ def main():
         return 2
     job = load(os.path.join(jdir, 'job.json'))
     with open(os.path.join(jdir, 'prompt.md'), encoding='utf-8') as fh:
-        prompt = fh.read()
+        prompt = run_context(now_in(install.get('timezone') or 'UTC')) + '\n' + fh.read()
     settings = os.path.join(jdir, 'settings.json')
     vault = os.path.expanduser(install['vault'])
     claude_bin = os.environ.get('CT_CLAUDE_BIN') or install.get('claude_bin', 'claude')

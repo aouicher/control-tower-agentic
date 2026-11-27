@@ -10,6 +10,8 @@ Target note: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`. Reading page: `cockpit/toda
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. Get the date with `date +%F` (or use the argument) and the year with `date +%Y`. Create the year folder if it is missing.
 2. If the daily note exists, read it and summarise it in one line. Otherwise build it from `_system/templates/daily.md`: replace the Obsidian `{{date:...}}` placeholders with real values, the heading is the weekday and full date.
 3. Collect open tasks: `grep -rn "^- \[ \]" work team` (never `journal/daily/`). Keep those due today or earlier, overdue first, as the candidates for the day. Count the tasks that carry `#to-triage`.

@@ -240,7 +240,9 @@ class RunJobTests(unittest.TestCase):
         self.assertEqual(os.path.realpath(rec['cwd']), os.path.realpath(self.vault))
         argv = rec['argv']
         self.assertEqual(argv[0], '-p')
-        self.assertEqual(argv[1], 'Unattended job. Never ask.')
+        self.assertTrue(argv[1].startswith('## Run context\n'), 'the runner gives the job its dates first')
+        self.assertIn(', UTC\n- Today: ', argv[1], 'in the installed timezone')
+        self.assertTrue(argv[1].endswith('\nUnattended job. Never ask.'))
         for flag, value in (('--permission-mode', 'dontAsk'), ('--setting-sources', 'project'), ('--output-format', 'json'), ('--model', 'sonnet')):
             self.assertEqual(argv[argv.index(flag) + 1], value)
         self.assertTrue(argv[argv.index('--settings') + 1].endswith('settings.json'))

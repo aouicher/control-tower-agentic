@@ -3,7 +3,7 @@ Unattended scheduled job: never ask, never wait. Read-only on every external sys
 Data window: the previous 7 full days (Monday 00:00 to Sunday 23:59, {{ct.timezone}}), compared with the 7 days before. Capabilities `crm`, `analytics` and `tracker` are optional: use those with an adapter note in `.claude/adapters/`, and say which were unavailable.
 
 ## Steps
-1. Get the ISO week the report covers, the previous week (on macOS `date -v-7d +%G-W%V`, on Linux `date -d '7 days ago' +%G-W%V`), and the real time with `date "+%d/%m/%Y at %H:%M"`. The report is named after the week it covers, never the week of the run.
+1. Take from the Run context at the top of this prompt the ISO week the report covers ("Last complete ISO week"), the week before it ("The week before") and the time. The report is named after the week it covers, never the week of the run.
 2. CRM adapter (`.claude/adapters/crm.md`): customer feedback of the window (tickets, notes, survey answers, lost-deal reasons if exposed). Group by theme and segment. Paginate to the end; if a page limit stops you, write "at least N (truncated)".
 3. Analytics adapter (`.claude/adapters/analytics.md`): the primary metrics of active {{ct.workstreams}} for the window versus the previous window. Same definitions, same segments. Mark sampled data as "sampled".
 4. Tracker adapter (`.claude/adapters/tracker.md`): bugs or requests opened in the window that relate to a feedback theme. Report counts only from complete pages.

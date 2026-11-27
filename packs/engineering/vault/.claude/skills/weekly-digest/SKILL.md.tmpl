@@ -10,6 +10,8 @@ Output: `journal/reports/delivery-<YYYY-Www>.md`, a refreshed `cockpit/delivery.
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. Get the ISO week (`date +%G-W%V`, or the argument) and its Monday to Sunday dates, in the user's timezone.
 2. Read the previous delivery report in `journal/reports/` (for trends) and the notes in `team/` of `type: team`: their `tracker` property gives the issue key prefixes per {{ct.team}}.
 3. **Merged PRs** (capability `code`, see `.claude/adapters/code.md`): for each repository, list PRs merged in the week with an explicit limit of at least 100. If the result length equals the limit, split the window by day until each query returns fewer items. Attribute each PR to {{ct.a_team}} through the key prefix in its title or branch; the rest is "unattributed".

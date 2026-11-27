@@ -2,8 +2,8 @@ Unattended scheduled job. Never ask, never wait. Read-only on every external sys
 
 ## Data window
 
-- Report week: the last COMPLETE ISO week, Monday to Sunday, in {{ct.timezone}}. Compute it with `date` (on macOS `date -v-7d +%G-W%V`, on Linux `date -d '7 days ago' +%G-W%V`). `YYYY-Www` below is always this reported week, never the week of the run.
-- Comparison week: the 7 days before it. Both periods have the same length and the same definitions. Compute both date ranges before reading any data.
+- Report week: the last COMPLETE ISO week, Monday to Sunday, in {{ct.timezone}}. It is the "Last complete ISO week" of the Run context at the top of this prompt. `YYYY-Www` below is always this reported week, never the week of the run.
+- Comparison week: the 7 days before it ("The week before" in the Run context). Both periods have the same length and the same definitions. Compute both date ranges before reading any data.
 
 ## Steps
 
@@ -22,7 +22,7 @@ Frontmatter: `title: "Marketing metrics YYYY-Www"`, `date: YYYY-MM-DD` (today), 
 
 Body:
 - `# Marketing metrics YYYY-Www`
-- `🕐 Generated on DD/MM/YYYY at HH:MM` (real time from `date`), then the two periods in words.
+- `🕐 Generated on DD/MM/YYYY at HH:MM` (time from the Run context), then the two periods in words.
 - `> [!summary] Summary`: 3 bullets (headline result, biggest change, what to do).
 - `## 📊 KPIs vs previous week`: table `| KPI | This week | Previous week | Change | Trend |`, trend ▲ ▼ or ▬.
 - `## 📣 {{ct.Workstreams}}`: table `| {{ct.Workstream}} | KPI | Result | Target | Note |`, campaigns as wikilinks.
