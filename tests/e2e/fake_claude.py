@@ -48,4 +48,6 @@ if ok != 0:
 os.makedirs(os.path.join(cwd, 'journal', 'reports'), exist_ok=True)
 with open(os.path.join(cwd, 'journal', 'reports', f'e2e-{date.today()}.md'), 'w') as fh:
     fh.write('---\ntitle: "e2e"\ntype: report\n---\n\n# e2e\n')
-print(json.dumps({'is_error': False, 'result': 'e2e ok', 'total_cost_usd': 0, 'num_turns': 1}))
+# a command no rule allows: the real CLI refuses it in dontAsk mode and lists it in permission_denials
+print(json.dumps({'is_error': False, 'result': 'e2e ok', 'total_cost_usd': 0, 'num_turns': 1,
+                  'permission_denials': [{'tool_name': 'Bash', 'tool_use_id': 'e2e', 'tool_input': {'command': 'acme-cli tickets list --mine'}}]}))
