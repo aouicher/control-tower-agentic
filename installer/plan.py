@@ -502,8 +502,9 @@ def job_capabilities(meta):
 
 def job_adapters(repo, answers, meta):
     """{capability: (tool, manifest)} for the job's capabilities whose tool is chosen."""
-    return {c: (answers['tools'][c], jload(os.path.join(repo, 'adapters', c, answers['tools'][c] + '.json')))
-            for c in sum(job_capabilities(meta), []) if answers['tools'].get(c, 'none') != 'none'}
+    tools = answers.get('tools') or {}
+    return {c: (tools[c], jload(os.path.join(repo, 'adapters', c, tools[c] + '.json')))
+            for c in sum(job_capabilities(meta), []) if tools.get(c, 'none') != 'none'}
 
 
 def mcp_server(rule):
@@ -758,6 +759,13 @@ def unreachable_servers(adapters, answers, allow, approved):
         if man.get('access') == 'mcp' and not own & set(approved):
             out.add((cap, tool))
     return out
+
+
+def connection_of(rule):
+    """What a rule reaches: the MCP server of a tool, the command of a Bash rule, or the site of a WebFetch rule (else None)."""
+    parts = bash_parts(rule)
+    m = re.fullmatch(r'WebFetch\(domain:([^()]+)\)', str(rule))
+    return mcp_server(rule) or (parts[1] if parts else None) or (m.group(1).lower() if m else None)
 
 
 def describe_rules(rules, network=()):

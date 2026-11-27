@@ -198,7 +198,13 @@ if mode == "slow":
 if mode == "fail":
     sys.stderr.write("boom")
     sys.exit(1)
-out = {"result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
+if mode == "noresult":
+    print(json.dumps({"type": "assistant", "message": {"content": []}}))
+    sys.exit(0)
+if mode == "authfail":
+    sys.stderr.write("x" * 3000 + " MCP server Amplitude: authentication required (401)")
+    sys.exit(1)
+out = {"type": "result", "result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
 if mode == "denied":
     out["permission_denials"] = [
         {"tool_name": "Bash", "tool_use_id": "t1", "tool_input": {"command": "GH_TOKEN=s3cr3t twg jira workitem query " + "x" * 400}},
@@ -256,6 +262,19 @@ class RunJobTests(unittest.TestCase):
                     self.assertNotEqual(r.returncode, 0)
                     self.assertIn('settings.json', open(os.path.join(self.home, 'logs', 'demo.log')).read())
 
+    def test_every_run_leaves_its_outcome(self):
+        def record():
+            with open(os.path.join(self.home, 'logs', 'demo.run.json')) as fh:
+                return json.load(fh)
+        for mode, want in (('ok', 'ok'), ('denied', 'refused'), ('authfail', 'auth'), ('fail', 'failed'), ('noresult', 'failed')):
+            with self.subTest(mode):
+                self.run_job(mode)
+                self.assertEqual(record()['outcome'], want)
+                if mode == 'authfail':
+                    self.assertIn('(401)', record()['error'], 'the end of a long error is kept: it says why')
+        self.run_job('slow', timeout_override=1)
+        self.assertEqual((record()['outcome'], record()['rc']), ('timeout', 124))
+
     def test_runs_claude_in_the_vault_with_safe_flags(self):
         r = self.run_job()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -266,7 +285,7 @@ class RunJobTests(unittest.TestCase):
         self.assertTrue(argv[1].startswith('## Run context\n'), 'the runner gives the job its dates first')
         self.assertIn(', UTC\n- Today: ', argv[1], 'in the installed timezone')
         self.assertTrue(argv[1].endswith('\nUnattended job. Never ask.'))
-        for flag, value in (('--permission-mode', 'dontAsk'), ('--setting-sources', 'project'), ('--output-format', 'json'), ('--model', 'sonnet')):
+        for flag, value in (('--permission-mode', 'dontAsk'), ('--setting-sources', 'project'), ('--output-format', 'stream-json'), ('--model', 'sonnet')):
             self.assertEqual(argv[argv.index(flag) + 1], value)
         self.assertTrue(argv[argv.index('--settings') + 1].endswith('settings.json'))
         self.assertIn('--strict-mcp-config', argv, 'a job starts only the MCP servers the installer copied for it')

@@ -23,8 +23,10 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
+sys.path.insert(0, os.path.join(ROOT, 'scheduler'))
 import install  # noqa: E402
 import plan  # noqa: E402
+from run_job import blocked_hosts, init_of, messages, result_of, tool_output, tool_results  # noqa: E402  the runner's own stream parser
 
 PROBE = """You are a test probe. Never ask questions. Do exactly these steps, then stop:
 0. Read the file .claude/adapters/code.md with the Read tool and note its first heading.
@@ -87,50 +89,13 @@ def run_prompt(command):
             'Then reply with its complete output, verbatim, including any error text.')
 
 
-def messages(text):
-    out = []
-    for line in text.splitlines():
-        try:
-            m = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(m, dict):
-            out.append(m)
-    return out
-
-
-def init_of(msgs):
-    return next((m for m in msgs if m.get('type') == 'system' and m.get('subtype') == 'init'), {})
-
-
-def result_of(msgs):
-    return next((m for m in reversed(msgs) if m.get('type') == 'result'), {})
-
-
 def denied(msgs):
     return {str(d.get('tool_name')) for d in result_of(msgs).get('permission_denials') or [] if isinstance(d, dict)}
-
-
-def tool_output(msgs):
-    """Every tool result the model saw, as one text (stream-json `user` messages)."""
-    parts = []
-    for m in msgs:
-        content = (m.get('message') or {}).get('content') if m.get('type') == 'user' else None
-        for block in content if isinstance(content, list) else []:
-            if isinstance(block, dict) and block.get('type') == 'tool_result':
-                inner = block.get('content')
-                parts += [inner] if isinstance(inner, str) else [str(b.get('text', '')) for b in inner or [] if isinstance(b, dict)]
-    return '\n'.join(parts)
 
 
 def denied_commands(msgs):
     return [str((d.get('tool_input') or {}).get('command', '')) for d in result_of(msgs).get('permission_denials') or []
             if isinstance(d, dict) and d.get('tool_name') == 'Bash' and isinstance(d.get('tool_input'), dict)]
-
-
-def blocked_hosts(text):
-    """Hosts the sandbox refused, from the `<sandbox_violations>` block Claude Code appends to a command's output."""
-    return sorted({h.lower() for h in re.findall(r'deny network-outbound ([A-Za-z0-9.-]+):\d+', text)})
 
 
 def server_names(init):
@@ -248,7 +213,7 @@ def facts(save_init=None):
             out.append((fact, False if ran else True if refused else None,
                         ('YES: ' if ran else 'no: ' if refused else 'not attempted: ') + what + ' under dontAsk'))
 
-        r8 = tool_output(claude(vault, run_prompt('gh api /zen'), job(['Bash(gh api:*)'], sandbox=box(enableWeakerNetworkIsolation=True))))
+        r8 = '\n'.join(tool_results(claude(vault, run_prompt('gh api /zen'), job(['Bash(gh api:*)'], sandbox=box(enableWeakerNetworkIsolation=True))))[-1:])
         out.append(('F8', 'api.github.com' in blocked_hosts(r8) or (None if not r8 else False),
                     'blocked host in the sandboxed command output: ' + (r8.strip().replace('\n', ' ')[:200] or 'no output')))
         out.append(('hosts:gh', bool(blocked_hosts(r8)) or None, ', '.join(blocked_hosts(r8)) or 'none blocked'))

@@ -475,7 +475,7 @@ class GrantByAnsweringTests(unittest.TestCase):
     def test_list_without_refusals(self):
         with tempfile.TemporaryDirectory() as tmp:
             r = self.cli('denials', '--ct-home', tmp)
-            self.assertEqual(json.loads(r.stdout), {'denials': []})
+            self.assertEqual(json.loads(r.stdout), {'denials': [], 'runs': []})
 
 
 if __name__ == '__main__':

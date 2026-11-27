@@ -17,8 +17,10 @@ What it does:
   * runs `claude -p` inside the vault with the job's settings and `--permission-mode dontAsk`
     (anything not explicitly allowed is refused) and a time limit (default 30 minutes)
   * appends the cost, turns and the final answer to <ct-home>/logs/<id>.log, errors to <id>.stderr.log
-  * writes what was refused during the run to <ct-home>/logs/<id>.denials.json (the /job-permissions skill reads it)
-  * sends a desktop notification when the run fails (best effort)
+  * reads Claude Code's stream-json output and writes what was refused during the run to <ct-home>/logs/<id>.denials.json,
+    and the run's outcome (ok, refused, auth, timeout, network, failed), the MCP servers that did not start and the hosts the
+    sandbox blocked to <ct-home>/logs/<id>.run.json (the /job-permissions skill reads both)
+  * when a job was refused something or failed, sends a desktop notification that says what to type in the vault (best effort)
 Set CT_CLAUDE_BIN to use another executable (used by the tests).
 """
 import argparse
@@ -72,14 +74,16 @@ def run_context(now):
         f'- Previous working day: {before}, {DAYS[before.weekday()]}', ''])
 
 
-def redact(text):
-    return SECRET_VALUE.sub(lambda m: m.group(1) + '[hidden]', str(text))[:300]
+def redact(text, tail=False):
+    """The text with values that look like secrets hidden, then cut to 300 characters (its start, or its end)."""
+    clean = SECRET_VALUE.sub(lambda m: m.group(1) + '[hidden]', str(text))
+    return clean[-300:] if tail else clean[:300]
 
 
 def denials(data, errtxt, at):
     """What was refused during the run: Claude Code's permission denials (rule missing) and the guard's blocks."""
     out = []
-    for d in (data.get('permission_denials') if isinstance(data, dict) else None) or []:
+    for d in data.get('permission_denials') or []:
         if not isinstance(d, dict):
             continue
         tool, inp = str(d.get('tool_name') or '?'), d.get('tool_input')
@@ -150,6 +154,77 @@ def notify(title, message):
         pass
 
 
+def notice(name, vault, blocked):
+    """What the notification says: what happened, and the words that start the fix in the vault."""
+    return f'{name} {"was blocked" if blocked else "failed"}. Open Claude on your {os.path.basename(os.path.normpath(vault))} folder and say: fix my job.'
+
+
+def messages(text):
+    """The JSON objects of Claude Code's stream-json output, one per line."""
+    out = []
+    for line in text.split('\n'):  # never splitlines: U+2028 and its kin stay unescaped inside a JSON string
+        try:
+            m = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(m, dict):
+            out.append(m)
+    return out
+
+
+def init_of(msgs):
+    return next((m for m in msgs if m.get('type') == 'system' and m.get('subtype') == 'init'), {})
+
+
+def result_of(msgs):
+    return next((m for m in reversed(msgs) if m.get('type') == 'result'), {})
+
+
+def tool_output(msgs, tool=None):
+    """The tool results the model saw, as one text (see tool_results)."""
+    return '\n'.join(tool_results(msgs, tool))
+
+
+def tool_results(msgs, tool=None):
+    """The tool results the model saw (stream-json `user` messages), one text each: every one, or only those of `tool` calls."""
+    calls = {b.get('id') for m in msgs if tool and m.get('type') == 'assistant' for b in ((m.get('message') or {}).get('content') or [])
+             if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('name') == tool}
+    parts = []
+    for m in msgs:
+        content = (m.get('message') or {}).get('content') if m.get('type') == 'user' else None
+        for block in content if isinstance(content, list) else []:
+            if isinstance(block, dict) and block.get('type') == 'tool_result' and (tool is None or block.get('tool_use_id') in calls):
+                inner = block.get('content')
+                parts.append(inner if isinstance(inner, str) else '\n'.join(str(b.get('text', '')) for b in inner or [] if isinstance(b, dict)))
+    return parts
+
+
+SANDBOX_BLOCK = re.compile(r'<sandbox_violations>((?:(?!<sandbox_violations>).)*)</sandbox_violations>\s*\Z', re.S)
+
+
+def blocked_hosts(text):
+    """Hosts the sandbox refused, from the `<sandbox_violations>` block Claude Code appends at the very end of one command's
+    output; a block anywhere else is text the command printed (a ticket, a page) and is ignored."""
+    m = SANDBOX_BLOCK.search(text)
+    return sorted({h.lower() for h in re.findall(r'deny network-outbound ([A-Za-z0-9.-]+):\d+', m.group(1))}) if m else []
+
+
+AUTH = re.compile(r'(?i)\b(401|unauthori[sz]ed|authenticat\w*|needs[- ]auth|sign[- ]?in|log[- ]?in again|expired)\b')
+
+
+def outcome(rc, failed, refused, servers, hosts, error):
+    """The run in one word, for the diagnosis in /job-permissions."""
+    if rc == 124:
+        return 'timeout'
+    if refused:
+        return 'refused'
+    if hosts:
+        return 'network'
+    if any(s['status'] == 'needs-auth' for s in servers) or (failed and AUTH.search(error)):
+        return 'auth'
+    return 'failed' if failed else 'ok'
+
+
 NO_SERVERS = '{"mcpServers": {}}'  # for a job installed without an mcp.json
 
 
@@ -158,7 +233,7 @@ def build_command(claude_bin, job, prompt, settings_path):
     mcp = os.path.join(os.path.dirname(settings_path), 'mcp.json')
     return [claude_bin, '-p', prompt, '--model', job.get('model', 'sonnet'),
             '--permission-mode', 'dontAsk', '--setting-sources', 'project', '--settings', settings_path,
-            '--mcp-config', mcp if os.path.isfile(mcp) else NO_SERVERS, '--strict-mcp-config', '--output-format', 'json']
+            '--mcp-config', mcp if os.path.isfile(mcp) else NO_SERVERS, '--strict-mcp-config', '--output-format', 'stream-json', '--verbose']
 
 
 def main():
@@ -229,15 +304,23 @@ def main():
     finally:
         shutil.rmtree(lock, ignore_errors=True)
 
-    summary, failed, data = '', rc != 0, None
-    try:
-        data = json.loads(out)
-        failed = failed or bool(data.get('is_error'))
+    msgs = messages(out)
+    data = result_of(msgs)
+    failed = rc != 0 or not data or bool(data.get('is_error'))  # no result message at all: the run is not trusted to be fine
+    if data:
         summary = f"cost=${data.get('total_cost_usd', '?')} turns={data.get('num_turns', '?')} error={data.get('is_error', '?')}\n"
         summary += '\n'.join(str(data.get('result', '')).split('\n')[:60])
-    except (json.JSONDecodeError, AttributeError):
+    else:
         summary = out[:2000]
     refused = denials(data, errtxt, started)
+    servers = [{'name': str(s.get('name')), 'status': str(s.get('status'))} for s in init_of(msgs).get('mcp_servers') or []
+               if isinstance(s, dict) and s.get('status') != 'connected']
+    hosts = sorted({h for r in tool_results(msgs, 'Bash') for h in blocked_hosts(r)})  # the sandbox's own refusals only
+    why = str(data.get('result', '')) if data.get('is_error') else errtxt or ('' if data else 'no result from Claude Code')
+    error = redact(why, tail=True) if failed else ''  # its end says why
+    with open(os.path.join(logs, f'{args.job}.run.json'), 'w', encoding='utf-8') as fh:  # the latest run, for the diagnosis
+        json.dump({'at': started, 'rc': rc, 'outcome': outcome(rc, failed, refused, servers, hosts, error), 'servers': servers,
+                   'blocked_hosts': hosts, 'error': error}, fh, indent=2, ensure_ascii=False)
     with open(os.path.join(logs, f'{args.job}.denials.json'), 'w', encoding='utf-8') as fh:  # the latest run only
         json.dump(refused, fh, indent=2, ensure_ascii=False)
     with open(log, 'a', encoding='utf-8') as fh:
@@ -248,8 +331,8 @@ def main():
     if errtxt:
         with open(err, 'a', encoding='utf-8') as fh:
             fh.write(f'=== {started} {args.job}\n{errtxt}\n')
-    if failed:
-        notify('Control tower', f'Job {args.job} failed (rc={rc}). See {log}')
+    if failed or refused:
+        notify('Control tower', notice(job.get('name', args.job), vault, bool(refused)))
     return rc
 
 
