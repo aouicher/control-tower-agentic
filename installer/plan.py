@@ -371,7 +371,9 @@ UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYT
 # an MCP tool whose name says it acts (sends, changes, deletes...) can carry vault text out or change the user's data
 ACTION_WORDS = {'send', 'post', 'create', 'update', 'delete', 'remove', 'write', 'edit', 'merge', 'close', 'publish', 'upload',
                 'comment', 'reply', 'react', 'transition', 'assign', 'invite', 'share', 'trigger', 'deploy',
-                'add', 'set', 'manage', 'move', 'archive', 'respond', 'approve', 'submit'}
+                'add', 'set', 'manage', 'move', 'archive', 'respond', 'approve', 'submit', 'call', 'invoke', 'insert', 'upsert',
+                'put', 'patch', 'save', 'cancel', 'drop', 'navigate', 'click', 'fill', 'draft', 'destructive', 'sql'}
+# not 'execute' or 'run': read queries use them (execute_log_insights_query); a tool named run_query is an accepted risk
 
 
 def name_words(name):

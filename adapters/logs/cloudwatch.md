@@ -20,7 +20,7 @@ The server name `cloudwatch` is a local choice. The documentation also gives a D
 
 ## Commands or tools to call
 
-Logs tools: `describe_log_groups`, `analyze_log_group` (anomalies, message and error patterns), `execute_log_insights_query` (returns a query id), `get_logs_insight_query_results`, `cancel_logs_insight_query`, `execute_cwl_insights_batch` (one query across several groups and regions, at most 50 groups, 10,000-record split). Timestamps are ISO 8601 with a timezone. Use `| limit N` in queries to bound results.
+Logs tools: `describe_log_groups`, `analyze_log_group` (anomalies, message and error patterns), `execute_log_insights_query` (returns a query id), `get_logs_insight_query_results`, `execute_cwl_insights_batch` (one query across several groups and regions, at most 50 groups, 10,000-record split). Timestamps are ISO 8601 with a timezone. Use `| limit N` in queries to bound results. Scheduled jobs are not allowed `cancel_logs_insight_query`: an unfinished query expires on its own.
 
 Logs Insights query language syntax: check the official AWS documentation for CloudWatch Logs Insights.
 

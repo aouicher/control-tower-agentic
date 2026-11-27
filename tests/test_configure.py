@@ -295,5 +295,110 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(open(self.path, 'rb').read(), before)
 
 
+class ProbeAndChoicesTests(unittest.TestCase):
+    """What a job can see (probe, from Claude Code's init message) and long lists asked in pages of 4 (choices)."""
+    FIXTURE = os.path.join(ROOT, 'tests', 'e2e', 'fixtures', 'init_message.json')
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.a = answers(self._tmp.name, ['developer'], tools={'code': 'github'})
+        install.install(self.a, log=lambda *x: None)
+        self.vault, self.ct = self.a['vault_path'], self.a['ct_home']
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def cli(self, *args, env=None):
+        return subprocess.run([sys.executable, CONFIGURE] + list(args), capture_output=True, text=True, env=env)
+
+    def probe_file(self, tools):
+        with open(os.path.join(self.ct, 'probe.json'), 'w') as fh:
+            json.dump({'servers': [{'name': 'acme', 'status': 'connected'}], 'tools': tools, 'connectors': 0}, fh)
+
+    def choices(self, *args):
+        r = self.cli('choices', '--vault', self.vault, *args)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_probe_reads_the_init_message_of_a_job_run(self):
+        sys.path.insert(0, os.path.join(ROOT, 'installer'))
+        import configure
+        init = json.load(open(self.FIXTURE))
+        seen = configure.probe_result(dict(init, mcp_servers=init['mcp_servers'] + [{'name': 'claude.ai Gmail', 'status': 'connected'}],
+                                           tools=init['tools'] + ['mcp__claude_ai_Gmail__search_threads']))
+        self.assertEqual(seen['servers'], [{'name': 'facts', 'status': 'connected'}])
+        self.assertEqual(seen['tools'], ['mcp__facts__create_fact', 'mcp__facts__get_fact'])
+        self.assertEqual(seen['connectors'], 1, 'claude.ai connectors are counted, not offered: jobs cannot use them')
+
+    def test_probe_runs_claude_in_the_job_mode_and_saves_what_it_saw(self):
+        fake = os.path.join(self._tmp.name, 'fake-claude')
+        with open(fake, 'w') as fh:
+            fh.write(f'#!/bin/sh\necho "$@" > {self._tmp.name}/argv\ncat {self.FIXTURE} | tr -d "\\n"; echo\n')
+        os.chmod(fake, 0o755)
+        r = self.cli('probe', '--vault', self.vault, env=dict(os.environ, CT_CLAUDE_BIN=fake))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('mcp__facts__get_fact', json.loads(r.stdout)['tools'])
+        self.assertIn('mcp__facts__get_fact', json.load(open(os.path.join(self.ct, 'probe.json')))['tools'])
+        argv = open(os.path.join(self._tmp.name, 'argv')).read()
+        for flag in ('--setting-sources project', '--permission-mode dontAsk', '--output-format stream-json', '--max-turns 1'):
+            self.assertIn(flag, argv)
+
+    def test_probe_starts_only_the_servers_the_user_named(self):
+        json.dump({'mcpServers': {'facts': {'command': 'x'}, 'other': {'command': 'y'}}}, open(os.path.join(self.vault, '.mcp.json'), 'w'))
+        fake = os.path.join(self._tmp.name, 'fake-claude')
+        with open(fake, 'w') as fh:  # keeps the settings it was given
+            fh.write(f'#!/bin/sh\nwhile [ "$1" != "--settings" ]; do shift; done\ncp "$2" {self._tmp.name}/settings.json\n'
+                     f'cat {self.FIXTURE} | tr -d "\\n"; echo\n')
+        os.chmod(fake, 0o755)
+        env = dict(os.environ, CT_CLAUDE_BIN=fake)
+        self.assertEqual(self.cli('probe', '--vault', self.vault, env=env).returncode, 0)
+        self.assertEqual(json.load(open(os.path.join(self._tmp.name, 'settings.json')))['enabledMcpjsonServers'], [])
+        self.assertEqual(self.cli('probe', '--vault', self.vault, '--server', 'facts', env=env).returncode, 0)
+        self.assertEqual(json.load(open(os.path.join(self._tmp.name, 'settings.json')))['enabledMcpjsonServers'], ['facts'])
+        self.assertEqual(self.cli('probe', '--vault', self.vault, '--server', 'nope', env=env).returncode, 2)
+
+    def test_read_tools_in_pages_of_four(self):
+        for n, pages in ((0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 2), (13, 4)):
+            with self.subTest(read_tools=n):
+                self.probe_file([f'mcp__acme__get_thing_{i}' for i in range(n)] + ['mcp__acme__create_issue'])
+                c = self.choices('--kind', 'read-tools', '--server', 'acme')
+                self.assertEqual(len(c['items']), n)
+                self.assertEqual(len(c['pages']), pages)
+                self.assertTrue(all(2 <= len(p) <= 4 for p in c['pages']), c['pages'])
+                if n == 0:
+                    self.assertIsNone(c['first'], 'nothing to ask')
+                elif n == 1:
+                    self.assertEqual(c['first']['options'], c['items'] + ['None'])
+                elif n <= 4:
+                    self.assertTrue(c['first']['multi_select'])
+                    self.assertEqual(c['first']['options'], c['items'])
+                else:
+                    self.assertEqual(c['first']['options'], [f'All {n} read tools (recommended)', 'Let me choose', 'None'])
+                self.assertEqual(c['never'], ['mcp__acme__create_issue'])
+
+    def test_an_action_tool_is_never_an_option(self):
+        self.probe_file(['mcp__acme__create_issue', 'mcp__acme__get_issue', 'mcp__acme__search_issues', 'mcp__acme__send_message'])
+        c = self.choices('--kind', 'read-tools', '--server', 'acme')
+        self.assertEqual(c['items'], ['mcp__acme__get_issue', 'mcp__acme__search_issues'])
+        self.assertEqual(c['never'], ['mcp__acme__create_issue', 'mcp__acme__send_message'])
+        self.assertNotIn('create_issue', json.dumps(c['first']) + json.dumps(c['pages']))
+
+    def test_connections_reports_and_any_list(self):
+        c = self.choices('--kind', 'connections')
+        self.assertEqual(c['items'], ['my notes', 'code: github'])
+        c = self.choices('--kind', 'reports')
+        self.assertEqual((c['items'], c['first']['options']), (['a new report'], ['a new report', 'None']))
+        r = self.cli('choices', '--items', 'a', 'b', 'c', 'd', 'e', 'f')
+        c = json.loads(r.stdout)
+        self.assertEqual(c['first']['options'], ['All 6 (recommended)', 'Let me choose', 'None'])
+        self.assertEqual(c['pages'], [['a', 'b', 'c'], ['d', 'e', 'f']])
+        self.assertNotEqual(self.cli('choices', '--vault', self.vault, '--kind', 'read-tools').returncode, 0, 'read tools need --server')
+        r = self.cli('choices', '--vault', self.vault, '--kind', 'read-tools', '--server', 'unprobed')
+        self.assertEqual(r.returncode, 2, 'a server the probe did not start is not a server without read tools')
+        self.assertIn('configure.py probe --server unprobed', r.stderr)
+        c = json.loads(self.cli('choices', '--items', 'a', 'b', 'c', 'd', 'e', '--recommended', 'none').stdout)
+        self.assertEqual((c['first']['options'][0], c['recommended']), ('All 5', []))
+
+
 if __name__ == '__main__':
     unittest.main()

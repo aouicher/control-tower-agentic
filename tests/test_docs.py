@@ -56,6 +56,22 @@ class DocTests(unittest.TestCase):
         for route in ('connect', 'automate', 'update', 'uninstall'):  # only what works today is offered
             self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
 
+    def test_every_question_from_a_list_is_asked_in_pages(self):
+        # the question tool shows at most 4 options: a longer list goes through configure.py choices, never by hand
+        import glob
+        import re
+        skills = (glob.glob(os.path.join(ROOT, 'core', 'vault', '.claude', 'skills', '*', 'SKILL.md'))
+                  + glob.glob(os.path.join(ROOT, 'packs', '*', 'vault', '.claude', 'skills', '*', 'SKILL.md*'))
+                  + glob.glob(os.path.join(ROOT, '.claude', 'skills', '*', 'SKILL.md')))
+        for path in skills:
+            for n, line in enumerate(open(path, encoding='utf-8'), 1):
+                with self.subTest(skill=os.path.relpath(path, ROOT), line=n):
+                    m = re.search(r'options? ((?:"[^"]+"(?:,| and| or| /)? ?)+)', line)
+                    if m:
+                        self.assertLessEqual(len(re.findall(r'"[^"]+"', m.group(1))), 4, 'at most 4 options per question')
+                    if re.search(r'multi-select|let me choose', line, re.I):
+                        self.assertIn('configure.py choices', line, 'a list is asked through configure.py choices')
+
     def test_docs_are_english(self):
         for doc in DOCS:
             text = open(doc, encoding='utf-8').read()
