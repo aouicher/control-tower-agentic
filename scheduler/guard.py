@@ -377,6 +377,17 @@ def search_reason(tool, inp, event, vault):
     return None
 
 
+def own_tool_result(path, event):
+    """Claude Code saves a large tool output under ~/.claude/projects/<project>/<session>/tool-results/ and the job then reads it
+    back. Only that folder of THIS session is readable (not other sessions, not other projects)."""
+    sid, transcript = str(event.get('session_id') or ''), str(event.get('transcript_path') or '')
+    projects = real('~/.claude/projects')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,}', sid) or not transcript or not inside(transcript, projects):
+        return False
+    folder = os.path.join(os.path.dirname(real(transcript)), sid, 'tool-results')
+    return inside(path, folder) and not os.path.islink(path)
+
+
 def check(event, vault, extra_commands=()):
     """Return a human-readable reason when the call must be blocked, else None. One rule per tool family."""
     tool = event.get('tool_name', '')
@@ -389,6 +400,8 @@ def check(event, vault, extra_commands=()):
         reason = date_reason(cmd) or command_reason(cmd, vault, extra_commands)
         return f'{reason}: {cmd[:120]}' if reason else None
     if tool in ('Glob', 'Grep'):
+        if inp.get('path') and own_tool_result(os.path.expanduser(str(inp['path'])), event) and not inp.get('glob'):
+            return None  # searching the job's own saved output
         return search_reason(tool, inp, event, vault)
     path = inp.get('file_path') or inp.get('notebook_path') or inp.get('path')
     if path and not os.path.isabs(os.path.expanduser(path)):  # relative to the job's directory, not the hook's
@@ -398,7 +411,7 @@ def check(event, vault, extra_commands=()):
     if tool in WRITE_TOOLS:
         return write_reason(path, vault)
     if tool == 'Read':
-        return read_reason(path, vault)
+        return None if own_tool_result(path, event) else read_reason(path, vault)
     return None
 
 

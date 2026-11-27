@@ -189,6 +189,21 @@ class PermissionPolicyTests(unittest.TestCase):
             self.assertIsNotNone(ev('Read', {'file_path': '../outside.md'}))
             self.assertIsNotNone(ev('Grep', {'pattern': 'x', 'path': '../..'}))
 
+    def test_a_job_can_reread_only_its_own_saved_tool_output(self):
+        guard = plan.guard_rules
+        home = os.path.expanduser('~/.claude/projects/-tmp-ct-test')
+        sid, other = 'aaaaaaaa-1111-2222-3333-444444444444', 'bbbbbbbb-1111-2222-3333-444444444444'
+        mine = os.path.join(home, sid, 'tool-results', 'out.txt')
+        theirs = os.path.join(home, other, 'tool-results', 'out.txt')
+        with tempfile.TemporaryDirectory() as v:
+            ev = lambda p, s=sid, t=os.path.join(home, sid + '.jsonl'): guard.check(
+                {'tool_name': 'Read', 'tool_input': {'file_path': p}, 'cwd': v, 'session_id': s, 'transcript_path': t}, v)
+            self.assertIsNone(ev(mine))
+            self.assertIsNotNone(ev(theirs), 'another session')
+            self.assertIsNotNone(ev(os.path.join(home, sid, 'other.txt')), 'outside tool-results')
+            self.assertIsNotNone(ev(mine, s='../x'), 'bad session id')
+            self.assertIsNotNone(ev(mine, t='/tmp/fake.jsonl'), 'transcript outside ~/.claude/projects')
+
     def test_no_git_or_claude_files_anywhere_in_the_vault(self):
         guard = plan.guard_rules
         with tempfile.TemporaryDirectory() as v:
