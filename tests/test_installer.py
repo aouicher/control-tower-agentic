@@ -154,7 +154,7 @@ class InstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             a = answers_for(tmp, ['developer'], scheduler='launchd')
             la = os.path.join(tmp, 'LaunchAgents')
-            report = install.install(a, apply_schedule=True, launch_agents_dir=la, no_launchctl=True)
+            report = install.install(a, schedule='load', launch_agents_dir=la, no_launchctl=True)
             self.assertTrue(report['schedule']['applied'])
             links = [f for f in os.listdir(la) if f.startswith('com.control-tower.')]
             self.assertTrue(links)
@@ -247,10 +247,10 @@ class RobustnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             a = answers_for(tmp, ['developer'], scheduler='launchd')
             la = os.path.join(tmp, 'LA')
-            install.install(a, apply_schedule=True, launch_agents_dir=la, no_launchctl=True)
+            install.install(a, schedule='load', launch_agents_dir=la, no_launchctl=True)
             self.assertTrue(os.path.lexists(os.path.join(la, 'com.control-tower.morning-prs.plist')))
             a['jobs'] = {'morning-prs': {'enabled': False}}
-            install.install(a, apply_schedule=True, launch_agents_dir=la, no_launchctl=True)
+            install.install(a, schedule='load', launch_agents_dir=la, no_launchctl=True)
             self.assertFalse(os.path.lexists(os.path.join(la, 'com.control-tower.morning-prs.plist')))
             self.assertFalse(os.path.exists(os.path.join(a['ct_home'], 'jobs', 'morning-prs')))
             self.assertTrue(os.path.lexists(os.path.join(la, 'com.control-tower.weekly-wrap.plist')))
@@ -347,19 +347,26 @@ class CrontabTests(unittest.TestCase):
         os.environ.pop('FAIL_READ', None)
         self.tmp.cleanup()
 
+    def test_the_block_belongs_to_one_install_only(self):
+        other = '/x/.control-tower-b'
+        open(self.store, 'a').write(f'{install.CRON_BEGIN}\n0 8 * * 1 python3 {other}/bin/run_job.py --job a --ct-home {other}\n'
+                                    f'{install.CRON_END}\n')
+        self.assertTrue(install.cron_applied(other + '/schedule'))
+        self.assertFalse(install.cron_applied('/x/.control-tower/schedule'), 'a path that is a prefix of another install')
+
     def test_block_is_installed_and_replaced_keeping_user_lines(self):
         a = answers_for(self.tmp.name, ['developer'], scheduler='cron')
-        report = install.install(a, apply_schedule=True)
+        report = install.install(a, schedule='load')
         self.assertTrue(report['schedule']['applied'], report['warnings'])
         cur = open(self.store).read()
         self.assertIn('my-own-backup', cur)
         self.assertEqual(cur.count('# BEGIN control-tower'), 1)
-        install.install(a, apply_schedule=True)
+        install.install(a, schedule='load')
         self.assertEqual(open(self.store).read().count('# BEGIN control-tower'), 1, 'a second apply replaces the block')
 
     def test_read_error_leaves_the_crontab_alone(self):
         os.environ['FAIL_READ'] = '1'
-        report = install.install(answers_for(self.tmp.name, ['developer'], scheduler='cron'), apply_schedule=True)
+        report = install.install(answers_for(self.tmp.name, ['developer'], scheduler='cron'), schedule='load')
         self.assertFalse(report['schedule']['applied'])
         self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n')
 

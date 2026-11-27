@@ -694,7 +694,7 @@ def step_schedule(ctx):
     if kind == 'cron' and not ctx.dry_run:  # an empty block is written too, so applying it removes jobs that are gone
         os.makedirs(sched_dir, exist_ok=True)
         with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:
-            fh.write('# BEGIN control-tower\n' + '\n'.join(cron_lines) + '\n# END control-tower\n')
+            fh.write(CRON_BEGIN + '\n' + '\n'.join(cron_lines) + '\n' + CRON_END + '\n')
     ctx.report['schedule'] = {'kind': kind, 'applied': False, 'dir': sched_dir}
     return plist_paths
 
@@ -774,7 +774,7 @@ def step_manifest(ctx):
     jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k not in ('claude_bin', 'strict')})
 
 
-def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agents_dir=None, no_launchctl=False, log=print, update=False):
+def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=None, no_launchctl=False, log=print, update=False):
     ctx = Ctx(answers, repo, dry_run, update)  # plan: everything is checked here, before the first write
     if not ctx.runtime_only:                   # runtime-only: the vault is the user's own, nothing of the kit goes in it
         step_vault(ctx)
@@ -787,23 +787,60 @@ def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agen
         step_obsidian(ctx)
     step_manifest(ctx)                         # last: checksums every file the steps above wrote
     sched = ctx.report['schedule']
-    if apply_schedule and not dry_run:
+    if schedule and not dry_run:  # 'load' this install's jobs in the scheduler, or 'unload' them all
         if sched['kind'] == 'none':
-            ctx.report['warnings'].append('--apply-schedule ignored: scheduler is "none" in the answers')
+            ctx.report['warnings'].append(f'schedule not {schedule}ed: scheduler is "none" in the answers')
         else:
-            sched['applied'] = apply(sched['kind'], plist_paths, os.path.join(sched['dir'], 'crontab.txt'), launch_agents_dir,
-                                     no_launchctl, ctx.report)
+            problems = {'warnings': []}  # why the scheduler refused, apart from the installer's other warnings
+            done = apply(sched['kind'], plist_paths, sched['dir'], launch_agents_dir, no_launchctl, problems, unload=schedule == 'unload')
+            sched['problems'] = problems['warnings']
+            sched['applied'] = done and not sched['problems'] and schedule == 'load'
+            ctx.report['warnings'] += sched['problems']
     return ctx.report
 
 
-def apply(kind, plist_paths, cron_file, launch_agents_dir, no_launchctl, report):
+LAUNCH_AGENTS = '~/Library/LaunchAgents'
+CRON_BEGIN, CRON_END = '# BEGIN control-tower', '# END control-tower'
+CRON_BLOCK = re.compile(re.escape(CRON_BEGIN) + r'.*?' + re.escape(CRON_END) + r'\n?', re.S)
+
+
+def cron_applied(sched_dir):
+    """Whether the user's crontab holds the kit's block with the jobs of the install whose schedule is in `sched_dir`."""
+    if not shutil.which('crontab'):
+        return False
+    m = CRON_BLOCK.search(subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout)
+    mine = '--ct-home ' + shlex.quote(os.path.dirname(sched_dir)).replace('%', '\\%') + '\n'  # the last argument, as cron_line writes it
+    return bool(m) and mine in m.group(0)
+
+
+def agents_dir(launch_agents_dir=None):
+    return os.path.abspath(os.path.expanduser(launch_agents_dir or LAUNCH_AGENTS))
+
+
+def schedule_applied(kind, sched_dir, launch_agents_dir=None):
+    """Whether the install whose schedule is in `sched_dir` has its jobs loaded (its launchd agents, or the crontab block)."""
     if kind == 'launchd':
-        dest = launch_agents_dir or os.path.expanduser('~/Library/LaunchAgents')
+        return bool(own_agents(agents_dir(launch_agents_dir), sched_dir))
+    return kind == 'cron' and cron_applied(sched_dir)
+
+
+def own_agents(dest, sched_dir):
+    """The launchd agents of the install whose schedule is in `sched_dir` (links into it): another install's stay untouched."""
+    mine = os.path.realpath(sched_dir) + os.sep
+    return [f for f in sorted(os.listdir(dest)) if f.startswith('com.control-tower.')
+            and os.path.realpath(os.path.join(dest, f)).startswith(mine)] if os.path.isdir(dest) else []
+
+
+def apply(kind, plist_paths, sched_dir, launch_agents_dir, no_launchctl, report, unload=False):
+    """Load this install's schedule (launchd agents or the crontab block), or with `unload` remove all of it."""
+    plist_paths = [] if unload else plist_paths
+    if kind == 'launchd':
+        dest = agents_dir(launch_agents_dir)
         os.makedirs(dest, exist_ok=True)
         current = {label for label, _ in plist_paths}
-        for f in os.listdir(dest):  # unload and remove jobs that are no longer installed
+        for f in own_agents(dest, sched_dir):  # stale agents of this install (labels are per job id, one install per job)
             label = f[:-6] if f.endswith('.plist') else f
-            if f.startswith('com.control-tower.') and label not in current:
+            if label not in current:
                 if not no_launchctl and shutil.which('launchctl'):
                     subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'], capture_output=True)
                 os.remove(os.path.join(dest, f))
@@ -821,17 +858,20 @@ def apply(kind, plist_paths, cron_file, launch_agents_dir, no_launchctl, report)
         return True
     if kind == 'cron':
         if not shutil.which('crontab'):
-            report['warnings'].append('crontab not available: add the lines of schedule/crontab.txt yourself')
+            report['warnings'].append('crontab is not available on this computer: the jobs are not scheduled')
             return False
         got = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
         if got.returncode != 0 and 'no crontab' not in got.stderr.lower():
             report['warnings'].append(f'could not read your crontab, nothing changed: {got.stderr.strip()}')
             return False
         cur = got.stdout if got.returncode == 0 else ''
-        cur = re.sub(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
-        block = open(cron_file, encoding='utf-8').read() if os.path.exists(cron_file) else ''
+        cur = CRON_BLOCK.sub('', cur)
+        cron_file = os.path.join(sched_dir, 'crontab.txt')
+        block = '' if unload or not os.path.exists(cron_file) else open(cron_file, encoding='utf-8').read()
         new = cur.rstrip('\n') + ('\n' if cur.strip() else '') + block
         r = subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)
+        if r.returncode != 0:
+            report['warnings'].append(f'could not write your crontab: {r.stderr.strip()}')
         return r.returncode == 0
     return False
 
@@ -898,7 +938,7 @@ def main():
             ap.error('give --answers FILE or --interactive')
         if args.runtime_only:
             answers['vault_mode'] = 'runtime'
-        report = install(answers, dry_run=args.dry_run, apply_schedule=args.apply_schedule,
+        report = install(answers, dry_run=args.dry_run, schedule='load' if args.apply_schedule else None,
                          launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, update=args.update)
     except (InstallError, render.RenderError) as exc:
         print(f'error: {exc}', file=sys.stderr)

@@ -65,12 +65,12 @@ def scenario(packs):
             dp = os.path.join(ct, 'logs', f'{j}.denials.json')
             refused = json.load(open(dp)) if os.path.exists(dp) else None
             step(f'job {j} refusals recorded', refused and refused[0]['input'] == 'acme-cli tickets list --mine' and 'denied: 1' in text)
-        r = run([PY, os.path.join(ROOT, 'installer', 'permissions.py'), 'list', '--ct-home', ct], env)
+        r = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'denials', '--ct-home', ct], env)
         items = json.loads(r.stdout)['denials'] if r.returncode == 0 else []
         step('refusals explained with a rule the user can allow', bool(items) and all(
             i['rule'] == 'Bash(acme-cli tickets list:*)' and i['verdict'] == 'can-allow' for i in items), r.stderr[-300:])
         if jobs:
-            r = run([PY, os.path.join(ROOT, 'installer', 'permissions.py'), 'grant', '--vault', vault, '--job', jobs[0], '--rule',
+            r = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'grant', '--vault', vault, '--job', jobs[0], '--rule',
                      'Bash(acme-cli tickets list:*)'], env)
             st = json.load(open(os.path.join(ct, 'jobs', jobs[0], 'settings.json')))
             step('a granted rule reaches the job settings', r.returncode == 0 and 'Bash(acme-cli tickets list:*)' in st['permissions']['allow'],
@@ -87,7 +87,7 @@ def scenario(packs):
             r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'weekly-digest', '--ct-home', ct],
                     dict(env, FAKE_CLAUDE_CALLS=json.dumps([{'tool_name': 'Bash', 'tool_input': {'command': 'date +%F'}}])))
             step('the run that tries date still ends normally', r.returncode == 0, (r.stdout + r.stderr)[-300:])
-            r = run([PY, os.path.join(ROOT, 'installer', 'permissions.py'), 'list', '--ct-home', ct], env)
+            r = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'denials', '--ct-home', ct], env)
             item = next((i for i in json.loads(r.stdout)['denials'] if i['job'] == 'weekly-digest'), {}) if r.returncode == 0 else {}
             step('a job that still runs date is refused, and date can never be allowed',
                  item.get('rule') == 'Bash(date:*)' and item.get('verdict') == 'never', str(item)[-300:])
