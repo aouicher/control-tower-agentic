@@ -36,7 +36,7 @@ sys.path.insert(0, HERE)
 import render  # noqa: E402
 from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError,  # noqa: E402
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
-                  eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
+                  eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, kit_commit, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
                   on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers, vault_settings_findings,
                   vault_files)
 
@@ -632,8 +632,9 @@ def step_runtime(ctx):
     os.makedirs(os.path.join(ctx.ct_home, 'bin'), exist_ok=True)
     for name in ('run_job.py', 'guard.py'):
         shutil.copy2(os.path.join(ctx.repo, 'scheduler', name), os.path.join(ctx.ct_home, 'bin', name))
-    jdump(os.path.join(ctx.ct_home, 'install.json'), {'vault': ctx.vault, 'claude_bin': ctx.a.get('claude_bin', 'claude'),
-                                                       'timezone': ctx.a['timezone'], 'version': VERSION})
+    runtime = os.path.join(ctx.ct_home, 'install.json')
+    jdump(runtime, {'vault': ctx.vault, 'claude_bin': ctx.a.get('claude_bin', 'claude'), 'timezone': ctx.a['timezone'], 'version': VERSION,
+                    'kit_commit': jload(runtime, {}).get('kit_commit')})  # the previous one: step_manifest records the new one last
     jobs_root = os.path.join(ctx.ct_home, 'jobs')
     keep = {j['id'] for j in ctx.jobs_on}
     for old in (os.listdir(jobs_root) if os.path.isdir(jobs_root) else []):
@@ -759,7 +760,8 @@ def step_obsidian(ctx):
 
 
 def step_manifest(ctx):
-    """Checksums of every kit file in the vault (doctor, --update, uninstall), the mode, the core policy, and the answers."""
+    """Checksums of every kit file in the vault (doctor, --update, uninstall), the mode, the core policy, and the answers;
+    then the kit commit the runtime now follows, once everything else is written."""
     if ctx.dry_run:
         return
     sums = {rel: render.sha256(os.path.join(ctx.vault, rel)) for rel in ctx.files if os.path.isfile(os.path.join(ctx.vault, rel))}
@@ -768,6 +770,8 @@ def step_manifest(ctx):
                               'packs': ctx.a['packs'], 'tools': ctx.a['tools'], 'ct_home': ctx.ct_home, 'files': files,
                               'vault_mode': ctx.report['vault_mode'], 'repo': ctx.repo, **ctx.policy.to_json()})
     jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k not in ('claude_bin', 'strict')})
+    runtime = os.path.join(ctx.ct_home, 'install.json')
+    jdump(runtime, dict(jload(runtime), kit_commit=kit_commit(ctx.repo)))
 
 
 def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=None, no_launchctl=False, log=print, update=False,

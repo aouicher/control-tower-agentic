@@ -32,6 +32,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
+import update  # noqa: E402
 from plan import (ID_RE, MAX_SUBCOMMANDS, MCP_TOOL, READ_VERBS, SUBCOMMAND, bash_parts, command_needs, command_problem, connection_problem,  # noqa: E402
                   describe_rules, expand, fingerprint, jload, known_commands, mcp_server, my_report_name, name_words, needs_host, permission_problem,
                   recorded_servers, skill_problem, connection_key, connection_of, valid_host, vault_servers)
@@ -233,7 +234,17 @@ def load_answers(vault):
     if not os.path.isfile(path):
         print(f'error: {path} not found: this vault was not installed by the control tower installer', file=sys.stderr)
         return path, None
-    return path, jload(path)
+    try:
+        return path, jload(path)
+    except ValueError as exc:
+        print(f'error: {path} is not valid JSON: {exc}', file=sys.stderr)
+        return path, None
+
+
+def cmd_update(args):
+    """`update`: check, or move the kit's folder and refresh this vault (installer/update.py)."""
+    _, data = load_answers(args.vault)
+    return 2 if data is None else update.run(args, ct_home(data))
 
 
 def schedule_applied(data, args):
@@ -630,6 +641,11 @@ def cmd_add_server(args):
     return 0
 
 
+def refresh(data, args):
+    """`refresh`: the same answers, applied by this version of the kit (after an update): new access needs a yes."""
+    return data, 'the vault and the runtime follow this version of the kit'
+
+
 def probe_result(init):
     """Servers and MCP tools a job sees, from Claude Code's init message. claude.ai connectors are counted, not listed: a job
     cannot use them (docs/design/runtime-facts.md, F2)."""
@@ -810,6 +826,14 @@ def main(argv=None):
     p.add_argument('--added', action='store_true', help='Claude added this server to the vault for the user (recorded in connections_added)')
     p = sub.add_parser('remove-connection', parents=[vault], help='forget a connection to a tool the kit does not know')
     p.add_argument('--id', required=True)
+    p = sub.add_parser('update', help="update the kit from its origin: first without --apply (a check), then --apply --to <commit>")
+    p.add_argument('--vault', required=True)
+    p.add_argument('--launch-agents-dir', help='where the launchd agents are (default ~/Library/LaunchAgents; tests)')
+    p.add_argument('--no-launchctl', action='store_true', help='link agents without loading them (tests)')
+    p.add_argument('--accept-access', action='store_true', help='the user said yes to the new access this version gives jobs')
+    p.add_argument('--apply', action='store_true', help="move the kit's folder to --to, then refresh the vault and the runtime")
+    p.add_argument('--to', help='the commit the check showed (`to`)')
+    sub.add_parser('refresh', parents=[vault], help='apply the same answers with this version of the kit (after an update)')
     p = sub.add_parser('check-skill', parents=[vault], help='can this vault skill run as a scheduled report')
     p.add_argument('--skill', required=True)
     p = sub.add_parser('add-job', parents=[vault], help='schedule one of your vault skills as a report')
@@ -824,12 +848,12 @@ def main(argv=None):
     ap.set_defaults(job=None, schedule=None, accept_access=False, dry_run=False, file=None)  # flags only some changes have
     args = ap.parse_args(argv)
     direct = {'show': cmd_show, 'denials': cmd_denials, 'probe': cmd_probe, 'choices': cmd_choices, 'add-server': cmd_add_server,
-              'check-skill': cmd_check_skill}
+              'check-skill': cmd_check_skill, 'update': cmd_update}
     if args.action in direct:
         return direct[args.action](args)
     build = {'set': edit, 'grant': grant, 'revoke': revoke, 'add-command': add_command, 'remove-command': remove_command,
              'fresh-copy': fresh_copy, 'connect': connect, 'set-permissions': set_permissions, 'add-connection': add_connection,
-             'remove-connection': remove_connection, 'add-job': add_job, 'remove-job': remove_job}[args.action]
+             'remove-connection': remove_connection, 'add-job': add_job, 'remove-job': remove_job, 'refresh': refresh}[args.action]
     return change(args, build)
 
 

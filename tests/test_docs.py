@@ -51,9 +51,9 @@ class DocTests(unittest.TestCase):
         self.assertIn('description:', m.group(1))
         self.assertNotIn('allowed-tools', text)
         for needle in ('doctor.py', 'configure.py show', 'configure.py set', '--dry-run', '--accept-access', '/job-permissions',
-                       'configure.py fresh-copy', 'never edit'):
+                       'configure.py fresh-copy', 'configure.py update', 'never edit'):
             self.assertIn(needle.lower(), text.lower(), f'the hub must mention: {needle}')
-        for route in ('update', 'uninstall'):  # only routes that exist are offered
+        for route in ('uninstall',):  # only routes that exist are offered
             self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
 
     def test_the_automate_conversation(self):

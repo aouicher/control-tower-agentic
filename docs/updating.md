@@ -10,7 +10,16 @@ The kit and your vault are two different things. Updating one never overwrites y
 
 Pulling the kit changes nothing in your vault or runtime by itself. The update step below copies what changed, carefully.
 
-## Update in three commands
+## Update from your vault
+
+In Claude, in your vault, say "update the kit" (or type `/control-tower` and ask for it). Claude checks how far behind the kit is and what changed (`installer/configure.py update`), and asks before anything happens. On yes, `configure.py update --apply --to <the version shown>`:
+
+1. moves the kit's folder to exactly that version (a fast-forward, no new download); if a developer changed or committed anything there, or the move would overwrite a file the kit does not track, it stops and changes nothing;
+2. hands over to the new version's `configure.py refresh`, which applies your answers like any change: if this version gives jobs more access (a new report, a new tool, a new web address), it lists it and changes nothing until you say yes; files you edited are kept, and the automatic runs are loaded again only if they were loaded.
+
+Claude then checks the setup, offers for each kit file you had edited to merge the new parts into your version, and names the cloud routines whose prompt changed (they are not updated automatically). When you say "Not now" to new access, nothing was written and the kit's folder goes back to the version it was on. When the refresh fails after it started writing, the kit stays on the new version and the next check shows the update as "pending", as it does for a kit moved without being installed (a developer's `git pull` alone).
+
+## Update with three commands (developers)
 
 ```bash
 cd ~/control-tower-agentic

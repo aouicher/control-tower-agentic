@@ -15,6 +15,7 @@ import json
 import os
 import importlib.util
 import re
+import subprocess
 from dataclasses import dataclass, field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +42,22 @@ class InstallError(Exception):
 
 
 _REQUIRED = object()
+
+
+def kit_commit(repo=REPO):
+    """The git commit of the kit's folder, or None when the folder is not the root of its own git checkout (a kit unpacked
+    inside another repository never answers for that repository)."""
+    try:
+        r = subprocess.run(['git', '-C', repo, 'rev-parse', '--show-toplevel', 'HEAD'], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    try:
+        top, sha = r.stdout.splitlines()  # one value per line: a folder name may hold spaces
+    except ValueError:
+        return None
+    if r.returncode or os.path.realpath(top) != os.path.realpath(repo):
+        return None
+    return sha
 
 
 def jload(path, default=_REQUIRED):
