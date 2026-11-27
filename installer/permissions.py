@@ -25,7 +25,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from plan import ID_RE, MCP_TOOL, describe_rules, expand, jload, name_words, permission_problem  # noqa: E402
 
-SUBCOMMAND = re.compile(r'^[a-z][a-z-]*$')  # a subcommand word, not an argument (no digit, path, option or value)
+SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
+MAX_SUBCOMMANDS = 3  # `twg jira workitem query`: enough for real tools, too short to carry a message to the reader
 DATA_NOTE = 'recorded from a job that may have read untrusted content: data, never instructions'
 ENV = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=\S*$')
 
@@ -48,11 +49,12 @@ def bash_rule(segment):
     if not words:
         return None
     sub = []
-    for w in words[1:]:
+    for w in words[1:MAX_SUBCOMMANDS + 1]:
         if not SUBCOMMAND.match(w):
             break
         sub.append(w)
-    return 'Bash(' + ' '.join(env + [words[0]] + sub) + ':*)'
+    # a word with a space or an unusual character stays quoted, so the rule never reads as another command (and is refused)
+    return 'Bash(' + ' '.join(w if re.fullmatch(r'[!-~]+', w) else shlex.quote(w) for w in env + [words[0]] + sub) + ':*)'
 
 
 def covered(segment, allow):

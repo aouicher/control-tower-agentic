@@ -338,6 +338,8 @@ def bash_parts(rule):
 def permission_problem(rule):
     """Why `rule` may never be granted to an unattended job (by a pack or by the user), or None when it is acceptable."""
     rule = str(rule).strip()
+    if re.search(r'[^\x20-\x7e]', rule):  # a non-breaking or other unusual space would hide the real command from every check
+        return 'a rule may only contain plain printable characters'
     if '{{' in rule:
         return 'unrendered template token in a permission'
     if rule in SAFE_TOOLS or re.fullmatch(r'Read\([^()]+\)', rule):

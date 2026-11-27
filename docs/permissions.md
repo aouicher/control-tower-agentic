@@ -38,6 +38,8 @@ Some things are refused for every job, even if you say yes. A job runs without y
 
 A safety guard also checks every action while the job runs and stops the ones above, whatever the job's settings say. When it does, `/job-permissions` tells you what was stopped and why, and does not offer to allow it.
 
+One limit, without strict mode: the guard checks every file read and write, but a command you allowed is checked only against a list of known dangerous patterns. A command with an option that writes a file (for example `sort -o`) could therefore write outside the vault. Strict mode (below) closes this: the sandbox lets commands write only in the vault, never in its settings or git files. So allow commands only from tools you know, or use strict mode.
+
 ## Strict mode (optional)
 
 For extra protection, ask for **strict mode** when you install (the answers key `"strict": true`). Every command a job runs is then closed in a sandbox provided by Claude Code: it cannot read your keys folders (`~/.ssh`, `~/.aws`...), cannot write to the vault's settings, and can only reach the web sites the job declared. If the sandbox is not available on the computer, the job refuses to run instead of running unprotected.
