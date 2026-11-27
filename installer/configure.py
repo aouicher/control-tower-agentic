@@ -180,7 +180,7 @@ def reinstall(path, data, args, before, after):
         return install.install(dict(answers, claude_bin=claude), update=True, schedule='load' if then else 'unload' if now else None,
                         launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, log=lambda *a: None)
     try:
-        problems = run(data, before, after)['schedule'].get('problems', [])
+        report = run(data, before, after)
     except ERRORS as exc:
         with open(path, 'w', encoding='utf-8') as fh:
             fh.write(old)
@@ -191,7 +191,8 @@ def reinstall(path, data, args, before, after):
             print(f'error: the installer refused the change ({exc}), and the previous setup could not be applied again ({again}): '
                   'ask /control-tower to check the setup', file=sys.stderr)
         return 1
-    if problems or schedule_applied(data, args) != after:
+    problems = report['schedule'].get('problems', [])
+    if problems or schedule_applied(data, args) != (after and bool(report['jobs'])):  # no job left: nothing to load
         print(f'error: the change is saved, but the schedule could not be {"loaded" if after else "unloaded"}: '
               + ('; '.join(problems) or 'no scheduler on this computer'), file=sys.stderr)
         return 3

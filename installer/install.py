@@ -694,7 +694,7 @@ def step_schedule(ctx):
     if kind == 'cron' and not ctx.dry_run:  # an empty block is written too, so applying it removes jobs that are gone
         os.makedirs(sched_dir, exist_ok=True)
         with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:
-            fh.write(CRON_BEGIN + '\n' + '\n'.join(cron_lines) + '\n' + CRON_END + '\n')
+            fh.write(cron_header(sched_dir) + '\n'.join(cron_lines) + '\n' + CRON_END + '\n')
     ctx.report['schedule'] = {'kind': kind, 'applied': False, 'dir': sched_dir}
     return plist_paths
 
@@ -804,13 +804,14 @@ CRON_BEGIN, CRON_END = '# BEGIN control-tower', '# END control-tower'
 CRON_BLOCK = re.compile(re.escape(CRON_BEGIN) + r'.*?' + re.escape(CRON_END) + r'\n?', re.S)
 
 
+def cron_header(sched_dir):
+    """The first line of the crontab block of the install whose schedule is in `sched_dir`: one block per install."""
+    return f'{CRON_BEGIN} {os.path.dirname(sched_dir)}\n'
+
+
 def cron_applied(sched_dir):
-    """Whether the user's crontab holds the kit's block with the jobs of the install whose schedule is in `sched_dir`."""
-    if not shutil.which('crontab'):
-        return False
-    m = CRON_BLOCK.search(subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout)
-    mine = '--ct-home ' + shlex.quote(os.path.dirname(sched_dir)).replace('%', '\\%') + '\n'  # the last argument, as cron_line writes it
-    return bool(m) and mine in m.group(0)
+    """Whether the user's crontab holds the block of the install whose schedule is in `sched_dir`."""
+    return bool(shutil.which('crontab')) and cron_header(sched_dir) in subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
 
 
 def agents_dir(launch_agents_dir=None):
@@ -865,7 +866,8 @@ def apply(kind, plist_paths, sched_dir, launch_agents_dir, no_launchctl, report,
             report['warnings'].append(f'could not read your crontab, nothing changed: {got.stderr.strip()}')
             return False
         cur = got.stdout if got.returncode == 0 else ''
-        cur = CRON_BLOCK.sub('', cur)
+        mine = (cron_header(sched_dir), CRON_BEGIN + '\n')  # this install's block, and a block from before blocks had a path
+        cur = CRON_BLOCK.sub(lambda m: '' if m.group(0).startswith(mine) else m.group(0), cur)
         cron_file = os.path.join(sched_dir, 'crontab.txt')
         block = '' if unload or not os.path.exists(cron_file) else open(cron_file, encoding='utf-8').read()
         new = cur.rstrip('\n') + ('\n' if cur.strip() else '') + block

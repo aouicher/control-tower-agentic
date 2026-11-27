@@ -349,10 +349,17 @@ class CrontabTests(unittest.TestCase):
 
     def test_the_block_belongs_to_one_install_only(self):
         other = '/x/.control-tower-b'
-        open(self.store, 'a').write(f'{install.CRON_BEGIN}\n0 8 * * 1 python3 {other}/bin/run_job.py --job a --ct-home {other}\n'
-                                    f'{install.CRON_END}\n')
+        block = f'{install.CRON_BEGIN} {other}\n0 8 * * 1 python3 {other}/bin/run_job.py --job a --ct-home {other}\n{install.CRON_END}\n'
+        open(self.store, 'a').write(block)
         self.assertTrue(install.cron_applied(other + '/schedule'))
         self.assertFalse(install.cron_applied('/x/.control-tower/schedule'), 'a path that is a prefix of another install')
+        a = answers_for(self.tmp.name, ['developer'], scheduler='cron')
+        install.install(a, schedule='load')
+        cur = open(self.store).read()
+        self.assertIn(block, cur, "loading one install keeps another install's block")
+        self.assertTrue(install.cron_applied(os.path.join(a['ct_home'], 'schedule')))
+        install.apply('cron', [], os.path.join(a['ct_home'], 'schedule'), None, True, {'warnings': []}, unload=True)
+        self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n' + block, 'unloading removes only its own block')
 
     def test_block_is_installed_and_replaced_keeping_user_lines(self):
         a = answers_for(self.tmp.name, ['developer'], scheduler='cron')
