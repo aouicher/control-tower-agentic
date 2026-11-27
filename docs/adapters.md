@@ -32,6 +32,16 @@ In Claude, in your vault, type `/control-tower` and say "connect" and the tool's
 
 A command-line tool (`gh`), a tool that needs a secret key or a client secret (Rollbar, SonarQube, CloudWatch, Google Analytics, Asana, HubSpot) or one whose address names your own organization (Sentry) is set up once by someone comfortable with the terminal, from the adapter note, run from the vault folder. A key stays a reference read from the environment (`--env 'NAME=${NAME}'`, in single quotes), never written into the vault, so the variable must also be set where scheduled reports run (launchd or cron do not read your shell profile). Claude never asks for or handles a key. Once the server is in the vault's `.mcp.json`, anyone can say "connect" and the tool's name to finish from step 2. A claude.ai connector works when you talk to Claude, but reports on this computer cannot use it.
 
+## Connecting a tool the kit does not know
+
+Say "connect" and the tool's name anyway: `/control-tower` asks how it connects.
+
+- **An MCP address** (a URL): after your yes, Claude adds it to the vault's `.mcp.json` (`configure.py add-server`: an `https` address on a public host, with no key, password or parameters in it; anything else is for a developer to set up), you sign in with `/mcp`, and you choose which of its read tools reports may use (tools that act are never offered). `configure.py add-connection --server` records it as `connections.<id>` in the answers, with a fingerprint of its entry, like a known tool.
+- **A command-line tool** (usually for developers): you name the command and choose which of its read subcommands reports may use. Its web addresses come from `adapters/commands.json` or from your answer (`configure.py add-command --host`, or `--no-network`); `configure.py add-connection --command` refuses a command whose addresses are not known yet.
+- **A claude.ai connector** (Gmail): it works when you talk to Claude, but reports on this computer cannot use it.
+
+A connection gives no report anything by itself: reports use it once you choose it as a source for one of your own reports. `configure.py remove-connection` forgets it; a command's recorded addresses cannot be removed while a connection uses the command.
+
 ## Read-only
 
 Jobs are read-only on external systems. Where a tool has no read-only mode, use an account with view-only permissions and allow only read tools by exact name. Wildcard MCP permissions are rejected by the tests. Adapter status `documented` means written from the tool's documentation, `verified` means tested against a live account.

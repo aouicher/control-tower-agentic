@@ -529,7 +529,8 @@ class Ctx:
                        'permissions_summary': []}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.seen = set()  # every kit file of the vault this run produces, written or not
-        self.approved = approved_servers(self.vault, a)  # the MCP servers jobs may start, as approved at connect
+        # the servers jobs may start: the known tools', as approved; a connection's goes only to the reports that use it
+        self.approved = approved_servers(self.vault, a, set((a.get('servers') or {}).values()))
         self.mcp_blocked = set()  # (capability, tool) of an MCP server no job may call yet: not connected, or no read tool allowed
         self.jobs_on, self.jobs_off = self.plan_jobs()
 
