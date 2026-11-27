@@ -307,7 +307,7 @@ HOST = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-
 NEVER_COMMANDS = {'sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'python', 'node', 'perl', 'ruby', 'php', 'osascript', 'curl', 'wget',
                   'nc', 'ncat', 'ssh', 'scp', 'sftp', 'rsync', 'cp', 'mv', 'rm', 'dd', 'tee', 'chmod', 'chown', 'sudo', 'su', 'env',
                   'xargs', 'eval', 'exec', 'command', 'source', 'timeout', 'nohup', 'nice', 'find', 'awk', 'sed', 'npx'}
-GIT_READ = {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files', 'describe', 'grep'}
+GIT_READ = {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files', 'describe'}
 UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
                         r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
 # an MCP tool whose name says it acts (sends, changes, deletes...) can carry vault text out or change the user's data

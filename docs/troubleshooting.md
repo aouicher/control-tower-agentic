@@ -13,7 +13,7 @@ python3 installer/doctor.py --vault <vault> --ct-home ~/.control-tower
 | Dashboards do not render | Enable the Bases core plugin. |
 | `claude CLI on PATH` warning | Install Claude Code, or set `claude_bin` in the answers file. |
 | A job does nothing | Run it by hand; read the newest file in `~/.control-tower/logs/`. |
-| A job reports `BLOCKED by control-tower guard` | The job tried something outside its limits. Read the reason; do not weaken the guard. If a legitimate read tool is refused, add its exact name to `permissions` in the answers file and re-install. |
+| A job reports `BLOCKED by control-tower guard`, or its log says `denied: N` | The job tried something it may not use. In Claude Code, in the vault, run `/job-permissions`: it explains each refusal and asks whether to allow it (refusals are in `~/.control-tower/logs/<job>.denials.json`). Some things can never be allowed: see [permissions](permissions.md). |
 | A job is missing after install | A capability it needs was set to `none`. The installer lists skipped jobs. |
 | Scheduled job did not run | Machine was asleep or off, or the schedule was never applied (`--apply-schedule`). Check `launchctl list \| grep control-tower` or `crontab -l`. |
 | "lock held" | A previous run is still active or crashed. Check the pid in the lock folder, remove it if the process is gone. |

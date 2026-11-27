@@ -34,16 +34,18 @@ You are the guided installer. You ask the questions, write an answers file, run 
 4. **Private pack** (only if they mention company jobs, their own templates or another language): ask for the folder of their private pack and add it to `pack_dirs`; never copy a private pack into this repository.
 5. **Tools**: for each capability asked by the chosen packs (calendar, tracker, code, errors, quality, logs, analytics, crm), ask which tool they use, with "none" always available. Explain that a job is installed only when all its tools are chosen, and that nothing connects to a tool during installation.
 6. **Schedule**: do they want scheduled jobs (daily and weekly reports)? Default: generate the schedule files but do not load them yet. Show the job list with its default times (from each `job.json`) and let them change times.
+7. **Strict mode** (only if they ask for extra protection, or handle sensitive data): `"strict": true` runs every job command in Claude Code's sandbox. On Linux it needs `bubblewrap` and `socat`. Default: off.
 
 Build `answers.json` (see `installer/install.py`, function `default_answers`, for the keys) in a temporary folder.
 
 ## 3. Check, confirm, install
 
-1. Run `python3 installer/install.py --answers <file> --dry-run` and show the summary: vault path, number of files, jobs installed and skipped (and why), warnings.
-2. Ask for confirmation. Only then run `python3 installer/install.py --answers <file>`.
-3. Run `python3 installer/doctor.py --vault <vault> --ct-home <ct_home>` and report the result in plain words. Fix nothing silently: explain each warning.
-4. Open (read) `library/setup-next-steps.md` in the new vault and summarise the three things the user must do: install the Tasks plugin in Obsidian, connect their tools (the commands are listed there), and test one job by hand.
-5. If they chose a schedule, ask separately whether to load it now (`--apply-schedule`). Explain that it registers jobs with the operating system (launchd or cron) and that `installer/uninstall.py` removes them.
+1. Run `python3 installer/install.py --answers <file> --dry-run --json` and show the summary: vault path, number of files, jobs installed and skipped (and why), warnings.
+2. **Consent.** `permissions_summary` lists, per job, what it may use besides reading the vault and writing its reports: `commands`, `mcp_tools` (connections) and `web` (sites). If it is empty, skip this step. Otherwise show it in plain words, one line per job (for example "Morning pull requests: reads your pull requests on GitHub (gh pr list, gh pr view)"), and ask ONE question: "Do you allow these jobs to use this?". With one job, the options are "Yes" and "No"; with several, a multi-select of the jobs, all ticked (recommended). For each job the user refuses, add `"jobs": {"<id>": {"enabled": false}}` to the answers file and run the dry run again. Never add or remove permission rules yourself: jobs only get what their pack and the chosen tools declare, and later what the user allows with `/job-permissions`.
+3. Ask for confirmation. Only then run `python3 installer/install.py --answers <file>`.
+4. Run `python3 installer/doctor.py --vault <vault> --ct-home <ct_home>` and report the result in plain words. Fix nothing silently: explain each warning.
+5. Open (read) `library/setup-next-steps.md` in the new vault and summarise the three things the user must do: install the Tasks plugin in Obsidian, connect their tools (the commands are listed there), and test one job by hand.
+6. If they chose a schedule, ask separately whether to load it now (`--apply-schedule`). Explain that it registers jobs with the operating system (launchd or cron) and that `installer/uninstall.py` removes them.
 
 ## 4. Cloud routines (offer, then create what the user accepts)
 
@@ -79,4 +81,4 @@ Used after the user pulled a new version of the kit (`git pull` in this reposito
 
 ## 5. Finish
 
-Give a short recap: where the vault is, how to open it in Obsidian, the first command to try (`/today` inside the vault), how to run a job by hand, how to run the health check again, the routines created (with their links), how to add routines later (`/install-control-tower routines`), how to uninstall (`installer/uninstall.py`, dry run by default). Mention that the project documentation is in `docs/`.
+Give a short recap: where the vault is, how to open it in Obsidian, the first command to try (`/today` inside the vault), how to run a job by hand, what to do when a job is blocked (open Claude Code in the vault and run `/job-permissions`: it explains each refusal and asks whether to allow it), how to run the health check again, the routines created (with their links), how to add routines later (`/install-control-tower routines`), how to uninstall (`installer/uninstall.py`, dry run by default). Mention that the project documentation is in `docs/`.

@@ -43,35 +43,43 @@ A pack may never ship installer state, git, Obsidian or Claude settings: `.contr
 
 ### Jobs in a private pack
 
-Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`; only the prompt is copied to the runtime). A pack is often written by someone else than the person who installs it, so permissions are checked twice:
+Same format as public jobs (`jobs/<id>/job.json` and `prompt.md.tmpl`; only the prompt is copied to the runtime).
 
-1. **At install, before anything is written**, on the final text (after `{{ct.*}}` tokens are filled in): every `permissions.allow` entry, and the `allowed-tools` of every skill the pack ships, must name something on the list below. The install stops otherwise.
-2. **At run time, on every call**, by the guard hook: a rule such as `Bash(sort:*)` is a prefix, so the guard checks the real command. Only the allowed commands and the ones you trust may run. Options that write a file, run code or send data are refused (`sort -o`, `git log --output`, `git diff --no-index`, `git blame --contents`, `jq --rawfile`, `jq env`, `gh api -X`/`-f`/`-F`/`--method`, `gh api graphql`, any URL or other host for `gh`...). Every file argument, option value included, must resolve inside the vault (symlinks followed). Output redirection goes to `/dev/null` only. Variables, substitutions, subshells, `cd`, brace expansion and here-strings are refused. Jobs may not create `.git`, `.claude`, `.obsidian`, `.vscode`, `CLAUDE.md` or `.mcp.json` anywhere in the vault, since a later git command or a later job would act on them.
+<a id="job-permissions"></a>
+#### Job permissions
 
-   Known limit: a `jq` filter may not contain `{a,b}` (the guard cannot tell it from shell brace expansion); build objects with `{a: .x} + {b: .y}`.
-
-| A pack may grant | Condition |
-|---|---|
-| `Read`, `Grep`, `Glob`, `Read(<path>)`, `TodoWrite`, `Skill` | the guard confines reads to the vault and blocks secrets; a pack's skills may not grant tools (`allowed-tools` is refused) |
-| `Bash(<command> ...)` for `date`, `ls`, `wc`, `sort`, `uniq`, `cut`, `tr`, `column`, `jq` | arguments checked at run time |
-| `Bash(git <sub> ...)` | `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files`; no option before the subcommand |
-| `Bash(gh <sub> ...)` | `pr list/view/checks/diff`, `issue list/view`, `release list/view`, `run list/view`, `repo view`, `api` (read-only: enforced at run time) |
-| `Bash(<tool> ...)` for another tool | only if **you** list it under `trusted_commands` |
-| `mcp__<server>__<tool>` | only the exact tools **you** list under `trusted_mcp_tools` (or under `permissions` in your answers); a trusted tool that sends data can carry vault text out, so trust read tools only |
-| `WebFetch(domain:<host>)` | only hosts **you** list under `trusted_domains` (a fetch can carry vault text in its URL) |
-
-Always refused: `Edit` and `Write` (the installer grants the vault write itself), bare `Bash`, `WebFetch` or `WebSearch`, whole MCP servers and wildcards, shell operators, quotes, paths as commands, and `VAR=value` prefixes unless the variable is under `trusted_env` (never `PATH`, `PAGER`, `GIT_*`, `LD_*`...).
-
-The trust lists belong to the person installing, in the answers file:
+A job may use only what its rules allow: jobs run with `--permission-mode dontAsk`, so anything else is refused. A pack declares what each job needs in `job.json`:
 
 ```json
 {
-  "trusted_commands": ["twg", "slackcli"],
-  "trusted_env": ["TWG_AGENT_DEFAULTS"],
-  "trusted_mcp_tools": ["mcp__claude_ai_acme-assistant__sonarqube_get_issues"],
-  "trusted_domains": ["status.acme.example"]
+  "permissions": {"allow": ["Bash(twg jira workitem query *)", "Bash(slackcli conversations unread *)", "mcp__acme__get_issues"]},
+  "network": ["acme.atlassian.net", "slack.com"],
+  "sandbox_allow_write": ["~/Library/Logs/slackcli"]
 }
 ```
+
+- `permissions.allow`: the commands, MCP tools and web sites the job uses. The person installing sees them in plain words and says yes or no per job (the guided installer asks one question; the report has `permissions_summary`, also in `install.py --json`). A job that is refused is installed disabled.
+- `network` (optional): the hosts the job's commands reach. Only used in strict mode, where the sandbox lets commands reach these hosts and nothing else.
+- `sandbox_allow_write` (optional): folders a sandboxed command must write to (a CLI's own log folder). Only per-user log and cache folders: `~/Library/Logs/`, `~/Library/Caches/`, `~/.cache/`, `~/.local/state/`.
+
+Later, a user grants a job more access by answering `/job-permissions` in the vault: the skill records the answer as `job_permissions` in `<vault>/.control-tower/answers.json` and re-runs the installer (see [permissions](permissions.md)). Nobody edits a rule by hand.
+
+The installer checks every rule on the final text (after `{{ct.*}}` tokens are filled in), before anything is written, whoever asked for it (the pack, the chosen tool adapters, the user). Well-formed rules are accepted: `Read`, `Grep`, `Glob`, `TodoWrite`, `Skill`, `Bash(<command> ...)` for a plain command name (company CLIs included), one exact `mcp__<server>__<tool>`, `WebFetch(domain:<host>)`. These are refused for everyone, always:
+
+| Never | Why |
+|---|---|
+| `Edit`, `Write`, `MultiEdit`, `NotebookEdit` rules | the installer grants the vault write itself, scoped to the vault |
+| bare `Bash`, `Bash(*)`, bare `WebFetch`, `WebSearch` | everything at once |
+| whole MCP servers or wildcards (`mcp__x`, `mcp__*`, `mcp__x__*`) | one tool at a time |
+| MCP tools whose name says they act: send, post, create, update, delete, remove, write, edit, merge, close, publish, upload, comment, reply, react, transition, assign, invite, share, trigger, deploy, add, set, manage, move, archive, respond, approve, submit (`createIssue`, `chat.postMessage` and `send_message` alike) | jobs only read |
+| shell operators, quotes, substitutions in a `Bash` rule; a path as the command | one plain command per rule |
+| shells, interpreters and file or network tools: `sh`, `bash`, `zsh`, `python`, `node`, `perl`, `ruby`, `osascript`, `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `cp`, `mv`, `rm`, `dd`, `tee`, `chmod`, `chown`, `sudo`, `env`, `xargs`, `eval`, `timeout`, `find`, `awk`, `sed`... | they run any code or move files by themselves |
+| `git` other than `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files`, `describe` | read history only |
+| `VAR=value` prefixes for `PATH`, `PAGER`, `EDITOR`, `HOME`, `SHELL`, `ENV`, `BASH_ENV`, `GIT_*`, `GH_*`, `LD_*`, `DYLD_*`, `*PROXY*`... | they change which program runs |
+
+Answers files from older versions may still hold `trusted_commands`, `trusted_env`, `trusted_mcp_tools` or `trusted_domains`: they are ignored.
+
+At run time, the guard hook checks every call whatever the rules say: reads stay in the vault and never touch secrets, writes stay in the vault and never touch its settings, templates, git or Claude files (nested ones included), and outward or destructive commands are refused (`git push`, `gh pr create`, `gh api -X`, cloud and cluster writes, `rm -r`, `sudo`, reading credential files...). With `"strict": true` in the answers, every shell command also runs in Claude Code's sandbox (see [permissions](permissions.md#strict-mode-optional)).
 
 What a pack may not contain: symlinks (a `vault/` or `jobs/` folder that is itself a link included), a vocabulary file outside the pack, anything the guard protects except skills, rules, templates and dashboards (so no `.claude/settings*.json`, hooks, agents or commands, no `.git`, `.github`, `.vscode`, `.obsidian`, `.control-tower`, `.mcp.json`), and the same names nested deeper. Only private packs may ship `CLAUDE.md`. These checks ignore case, as macOS and Windows do.
 
