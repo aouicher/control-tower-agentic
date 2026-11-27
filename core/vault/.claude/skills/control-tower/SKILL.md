@@ -1,6 +1,6 @@
 ---
 name: control-tower
-description: The control tower's front desk in the vault. Checks the setup, automates a report (writes a skill, tries it, schedules it), connects a tool, changes the setup (profiles, tools, report times, which reports run, automatic runs on or off), fixes a blocked job, updates the kit and restores a kit file, all by answering questions. Use when the user says /control-tower, "check my setup", "is everything working", "add the product profile", "move the triage to 9:00", "stop the debt review", "connect Amplitude", "every morning, sum up my tickets", "schedule this as a report", "fix my job", "update the kit", "I want the original version of a file back", or seems lost.
+description: The control tower's front desk in the vault. Checks the setup, automates a report (writes a skill, tries it, schedules it), connects a tool, changes the setup (profiles, tools, report times, which reports run, automatic runs on or off), fixes a blocked job, updates the kit, restores a kit file and uninstalls, all by answering questions. Use when the user says /control-tower, "check my setup", "is everything working", "add the product profile", "move the triage to 9:00", "stop the debt review", "connect Amplitude", "every morning, sum up my tickets", "schedule this as a report", "fix my job", "update the kit", "I want the original version of a file back", "uninstall", "remove the control tower", or seems lost.
 argument-hint: "[what you want, in your own words]"
 ---
 
@@ -23,7 +23,7 @@ The one place to look after the control tower once it is installed. The user ans
 
 ## First
 
-Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the control tower kit, `ct_home` the runtime folder. If the file or `repo` is missing, say that this vault was installed by an older version of the kit and that whoever installed it should update the kit, then stop. Then follow the user's request (the argument, or ask "What would you like to do?" with the options "Check my setup", "Automate a report", "Connect a tool", "Change my setup"; "Fix a blocked job", "Update the kit" and "Get a kit file back" are there when asked for).
+Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the control tower kit, `ct_home` the runtime folder. If the file or `repo` is missing, say that this vault was installed by an older version of the kit and that whoever installed it should update the kit, then stop. Then follow the user's request (the argument, or ask "What would you like to do?" with the options "Check my setup", "Automate a report", "Connect a tool", "Change my setup"; "Fix a blocked job", "Update the kit", "Get a kit file back" and "Uninstall" are there when asked for).
 
 ## Check my setup
 
@@ -115,6 +115,19 @@ A report that runs on claude.ai (`runs_on: cloud`) exists there only as a routin
    - Exit 0: say it is done, then continue with "Check my setup".
 3. For each file in `kept`: the user edited it, and the kit's new version is in the newest folder of `.control-tower/updates/` in this vault. Ask "Your version of <file> was kept. Merge the new parts into it?" with a short summary of what the new version adds. On yes, add those parts to the user's file and keep everything they wrote.
 4. If `routines_changed` is not empty, say "Cloud routines are not updated automatically. These changed: <names>." and offer to bring each one up to date as in "Reports that run on claude.ai".
+
+## Uninstall
+
+The command below is `python3 <repo>/installer/uninstall.py --ct-home <ct_home> --vault <this vault>`; without `--yes` it only lists what it would do, one line each (`unload`, `rmtree`, `remove-files`, `keep-files`, `remove-connection`, `keep-connection`, the cloud routines). Notes are never removed: only the kit's files the user never edited.
+
+1. Ask "What do you want to remove?" with "Remove the kit, keep all my notes" (recommended), "Stop the automatic reports only" and "Cancel". On "Cancel", stop.
+2. "Stop the automatic reports only": run the command with `--schedule-only`, say which automatic runs stop, and ask "Stop them now?". On yes, run it again with `--yes`, then say the reports, the setup and the notes stay, that the user can still run any report by typing its command, and that "turn automatic runs on" brings them back. Stop.
+3. "Remove the kit, keep all my notes": run the command with `--remove-vault-files --remove-connections`. Say in plain words what goes (the automatic runs, the runtime folder, the kit's files the user never edited, how many) and what stays (every note, and the kit files they edited, how many).
+4. If it lists `remove-connection` lines, ask separately "Also remove the tool connections I added for you (<their names>)?" with "Keep them" (recommended: they still work when the user talks to Claude) and "Remove them". Name the `keep-connection` ones as changed since they were added: they stay.
+5. Ask "Also delete the kit's own folder (<repo>)?" with "Keep it" (recommended) and "Delete it".
+6. Run the command with `--remove-vault-files`, adding `--remove-connections` if the user chose "Remove them" and `--remove-kit` if they chose "Delete it": it lists everything that would go, the kit's folder last. If it refuses because of the kit's folder (a developer's work in it, or another vault installed from it that runs automatically), say why in plain words, say the folder stays, and run it again without `--remove-kit`.
+7. Ask "Remove now?" with "Remove" and "Cancel". On "Remove", run the same command with `--yes`.
+8. Say what was removed, then relay the warnings in plain words. If it lists cloud routines, say "These reports still run on claude.ai until you delete them there: <names>." Only the user can delete them.
 
 ## Fix a blocked job
 

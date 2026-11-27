@@ -32,12 +32,41 @@ def git(*args):
         raise Stop(f'git could not run: {exc}')
 
 
+def scrub(text):
+    """git's error, short and without the credentials an address may carry."""
+    return re.sub(r'://[^/@\s]+@', '://', text.strip())[:200]
+
+
 def git_lines(*args):
     """The lines git prints; Stop when it fails (a check that cannot run never reads as "nothing found")."""
     r = git(*args)
     if r.returncode:
-        raise Stop(f'git {args[0]} failed: {r.stderr.strip()[:200]}')
+        raise Stop(f'git {args[0]} failed: {scrub(r.stderr)}')
     return [line for line in r.stdout.split('\n') if line]
+
+
+IN_PROGRESS = ('rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD')
+
+
+def build_output(path):
+    return '__pycache__/' in path or path.endswith('.pyc') or os.path.basename(path) == '.DS_Store'
+
+
+def developer_work(strict=False):
+    """A developer's edited files in the kit's folder. With `strict`, also everything deleting the folder would lose that
+    its origin does not hold, after a fetch that drops the branches it no longer has: other files (ignored ones included,
+    build output aside), commits of HEAD or of any branch or tag no remote has, stashes, other worktrees, and a rebase or
+    merge in progress."""
+    out = git_lines('diff', '--name-only', 'HEAD')
+    if strict:
+        git_lines('fetch', '--quiet', '--prune')
+        out += [f for f in git_lines('ls-files', '--others') if not build_output(f)]
+        out += [f'commit {c}' for c in git_lines('log', 'HEAD', '--branches', '--tags', '--not', '--remotes', '--format=%h')]
+        out += [f'stash {s}' for s in git_lines('stash', 'list', '--format=%gd')]
+        out += [f'worktree {w[9:]}' for w in git_lines('worktree', 'list', '--porcelain') if w.startswith('worktree ')][1:]
+        paths = git_lines('rev-parse', *[a for name in IN_PROGRESS for a in ('--git-path', name)])
+        out += [f'{name} in progress' for name, p in zip(IN_PROGRESS, paths) if os.path.exists(os.path.join(install.REPO, p))]
+    return out
 
 
 def kit_state():
@@ -48,12 +77,11 @@ def kit_state():
         raise Stop("the kit's folder is not its own git checkout")
     fetched, counts = git('fetch', '--quiet'), git('rev-list', '--left-right', '--count', 'HEAD...@{u}')
     if fetched.returncode or counts.returncode:
-        why = re.sub(r'://[^/@\s]+@', '://', (fetched.stderr or counts.stderr).strip())[:200]  # never a token from the address
-        raise Stop(f"the kit's folder could not be compared with its origin: {why}")
+        raise Stop(f"the kit's folder could not be compared with its origin: {scrub(fetched.stderr or counts.stderr)}")
     ahead, behind = map(int, counts.stdout.split())
     to = git('rev-parse', '@{u}').stdout.strip()
     return {'behind': behind, 'to': to, 'head': head,
-            'local': git_lines('diff', '--name-only', 'HEAD') + ([f'{ahead} local commits'] if ahead else []),
+            'local': developer_work() + ([f'{ahead} local commits'] if ahead else []),
             'changes': [line[3:203] for line in git_lines('diff', 'HEAD', to, '--', 'CHANGELOG.md') if line.startswith('+- ')][:10]}
 
 

@@ -152,9 +152,14 @@ def scenario(packs):
         open(edited, 'a').write('\nmine\n')
         mine = os.path.join(vault, 'work', 'projects', 'mine.md')
         open(mine, 'w').write('# mine\n')
-        un = [PY, os.path.join(ROOT, 'installer', 'uninstall.py'), '--ct-home', ct, '--vault', vault, '--remove-vault-files',
+        un = [PY, os.path.join(ROOT, 'installer', 'uninstall.py'), '--ct-home', ct, '--vault', vault,
               '--launch-agents-dir', os.path.join(home, 'LA'), '--no-launchctl']
-        run(un + ['--yes'], env)
+        r = run(un + ['--schedule-only', '--yes'], env)
+        step('stopping the automatic runs keeps the runtime and the vault', r.returncode == 0 and os.path.isfile(os.path.join(ct, 'install.json'))
+             and os.path.isfile(os.path.join(vault, 'cockpit.md')), r.stderr[-300:])
+        if os.environ.get('CT_E2E_CONTAINER') == '1' and shutil.which('crontab'):
+            step('stopping the automatic runs removes the crontab block', '# BEGIN control-tower' not in run(['crontab', '-l'], env).stdout)
+        run(un + ['--remove-vault-files', '--yes'], env)
         step('uninstall removes runtime', not os.path.exists(ct))
         if os.environ.get('CT_E2E_CONTAINER') == '1' and shutil.which('crontab'):
             step('uninstall removes the crontab block', '# BEGIN control-tower' not in run(['crontab', '-l'], env).stdout)

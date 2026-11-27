@@ -51,10 +51,9 @@ class DocTests(unittest.TestCase):
         self.assertIn('description:', m.group(1))
         self.assertNotIn('allowed-tools', text)
         for needle in ('doctor.py', 'configure.py show', 'configure.py set', '--dry-run', '--accept-access', '/job-permissions',
-                       'configure.py fresh-copy', 'configure.py update', 'never edit'):
+                       'configure.py fresh-copy', 'configure.py update', 'never edit', 'uninstall.py', '--schedule-only',
+                       '--remove-connections', '--remove-kit'):
             self.assertIn(needle.lower(), text.lower(), f'the hub must mention: {needle}')
-        for route in ('uninstall',):  # only routes that exist are offered
-            self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
 
     def test_the_automate_conversation(self):
         import re
@@ -94,9 +93,11 @@ class DocTests(unittest.TestCase):
                 helps[sub] = r.stdout
                 for flag in sorted(flags):
                     self.assertRegex(r.stdout, rf'{flag}\b', f'configure.py {sub} has no {flag}')
+        helps['uninstall.py'] = subprocess.run([sys.executable, os.path.join(ROOT, 'installer', 'uninstall.py'), '--help'],
+                                               capture_output=True, text=True).stdout  # the hub's other command
         for flag in sorted(alone - {'--help'}):  # a command's own --help, run by the skill
             with self.subTest(flag=flag):
-                self.assertTrue(any(re.search(rf'{flag}\b', h) for h in helps.values()), f'no configure.py command has {flag}')
+                self.assertTrue(any(re.search(rf'{flag}\b', h) for h in helps.values()), f'no configure.py or uninstall.py command has {flag}')
 
     def test_a_command_is_never_recorded_without_its_network_answer(self):
         skills = os.path.join(ROOT, 'core', 'vault', '.claude', 'skills')

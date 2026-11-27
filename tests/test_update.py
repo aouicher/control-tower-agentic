@@ -23,19 +23,24 @@ def git(repo, *args):
     return r.stdout.strip()
 
 
+def kit_repo(dest):
+    """A git repository at `dest` with one commit of the kit's tracked files."""
+    tracked = subprocess.run(['git', '-C', ROOT, 'ls-files'], capture_output=True, text=True).stdout.split('\n')
+    for rel in filter(None, tracked):
+        if os.path.isfile(os.path.join(ROOT, rel)):
+            os.makedirs(os.path.dirname(os.path.join(dest, rel)), exist_ok=True)
+            shutil.copy2(os.path.join(ROOT, rel), os.path.join(dest, rel))
+    git(dest, 'init', '-q', '-b', 'main')
+    git(dest, 'add', '-A')
+    git(dest, 'commit', '-q', '-m', 'kit')
+
+
 class UpdateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._seed_tmp = tempfile.TemporaryDirectory()
         cls.seed = os.path.join(cls._seed_tmp.name, 'seed')
-        tracked = subprocess.run(['git', '-C', ROOT, 'ls-files'], capture_output=True, text=True).stdout.split('\n')
-        for rel in filter(None, tracked):
-            if os.path.isfile(os.path.join(ROOT, rel)):
-                os.makedirs(os.path.dirname(os.path.join(cls.seed, rel)), exist_ok=True)
-                shutil.copy2(os.path.join(ROOT, rel), os.path.join(cls.seed, rel))
-        git(cls.seed, 'init', '-q', '-b', 'main')
-        git(cls.seed, 'add', '-A')
-        git(cls.seed, 'commit', '-q', '-m', 'kit')
+        kit_repo(cls.seed)
 
     @classmethod
     def tearDownClass(cls):

@@ -108,6 +108,10 @@ When the kit gets a new version: `git pull` in the kit folder, then `python3 ins
 
 ## Uninstall
 
+Open Claude Code in your vault and say "uninstall" to `/control-tower`. It asks how much to remove: stop the automatic reports only, or remove the kit and keep all your notes; then, separately, whether to remove the tool connections it added for you, and whether to delete the kit's own folder. Your notes are never removed.
+
+For developers, the same from a terminal (each command is a dry run until `--yes`; `--schedule-only`, `--remove-connections` and `--remove-kit` are the other levels):
+
 ```bash
 python3 installer/uninstall.py --ct-home ~/.control-tower --vault ~/control-tower-vault --remove-vault-files        # dry run
 python3 installer/uninstall.py --ct-home ~/.control-tower --vault ~/control-tower-vault --remove-vault-files --yes  # apply

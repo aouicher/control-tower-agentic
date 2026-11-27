@@ -60,6 +60,11 @@ def kit_commit(repo=REPO):
     return sha
 
 
+def claude_bin(home):
+    """The `claude` the runtime in `home` runs (CT_CLAUDE_BIN first: tests)."""
+    return os.environ.get('CT_CLAUDE_BIN') or jload(os.path.join(home, 'install.json'), {}).get('claude_bin', 'claude')
+
+
 def jload(path, default=_REQUIRED):
     """A JSON file; with `default`, that value when the file does not exist."""
     if default is not _REQUIRED and not os.path.isfile(path):
