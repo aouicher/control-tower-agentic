@@ -411,5 +411,42 @@ class SkillTests(unittest.TestCase):
         self.assertIsNone(__import__('re').search(r'[àâäçéèêëîïôöùûüÿœ]', text, __import__('re').I), 'English only')
 
 
+class SandboxToolsTests(unittest.TestCase):
+    """On Linux, Claude Code's sandbox needs bwrap and socat; a job that runs a command refuses to run without them."""
+
+    def test_doctor_fails_on_linux_without_bwrap_when_a_job_runs_a_command(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            a = {'owner_name': 'Sam', 'owner_handle': 'sam', 'timezone': 'UTC', 'vault_path': os.path.join(tmp, 'v'),
+                 'ct_home': os.path.join(tmp, 'ct'), 'packs': ['developer'], 'tools': {'code': 'github'}, 'scheduler': 'none'}
+            install.install(a, log=lambda *x: None)
+            bin_dir = os.path.join(tmp, 'bin')
+            os.makedirs(bin_dir)
+            for tool in ('socat', 'git', 'python3'):  # bwrap missing
+                with open(os.path.join(bin_dir, tool), 'w') as fh:
+                    fh.write('#!/bin/sh\n')
+                os.chmod(os.path.join(bin_dir, tool), 0o755)
+            with mock.patch.object(doctor.sys, 'platform', 'linux'), mock.patch.dict(os.environ, {'PATH': bin_dir}):
+                items = {i['check']: i for i in doctor.check(a['vault_path'], a['ct_home'], 'python3').items}
+            self.assertEqual(items['sandbox tools']['level'], 'FAIL')
+            self.assertIn('bwrap', items['sandbox tools']['detail'])
+            with mock.patch.object(doctor.sys, 'platform', 'darwin'), mock.patch.dict(os.environ, {'PATH': bin_dir}):
+                names = [i['check'] for i in doctor.check(a['vault_path'], a['ct_home'], 'python3').items]
+            self.assertNotIn('sandbox tools', names, 'macOS needs nothing')
+
+    def test_doctor_fails_for_a_job_that_runs_commands_without_the_sandbox(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = {'owner_name': 'Sam', 'owner_handle': 'sam', 'timezone': 'UTC', 'vault_path': os.path.join(tmp, 'v'),
+                 'ct_home': os.path.join(tmp, 'ct'), 'packs': ['developer'], 'tools': {'code': 'github'}, 'scheduler': 'none'}
+            install.install(a, log=lambda *x: None)
+            sp = os.path.join(a['ct_home'], 'jobs', 'morning-prs', 'settings.json')
+            st = json.load(open(sp))
+            del st['sandbox']  # as written by a version before the sandbox was automatic
+            json.dump(st, open(sp, 'w'))
+            items = {i['check']: i for i in doctor.check(a['vault_path'], a['ct_home'], 'python3').items}
+            self.assertEqual(items['job morning-prs']['level'], 'FAIL')
+            self.assertIn('sandbox', items['job morning-prs']['detail'])
+
+
 if __name__ == '__main__':
     unittest.main()

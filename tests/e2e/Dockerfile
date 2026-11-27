@@ -2,7 +2,7 @@
 # for Claude Code, and the run is unprivileged with HOME inside the container.
 #   docker build -f tests/e2e/Dockerfile -t control-tower-e2e . && docker run --rm --network none control-tower-e2e
 FROM python:3.9-slim
-RUN apt-get update && apt-get install -y --no-install-recommends git cron && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends git cron bubblewrap socat && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home tester
 COPY --chown=tester:tester . /repo
 USER tester

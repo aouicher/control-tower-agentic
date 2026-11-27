@@ -180,7 +180,7 @@ class StrictModeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pd = pack_with_rules(tmp, ['Bash(gh pr list:*)', 'Bash(slackcli conversations:*)'],
                                  network=['slack.com', 'api.github.com'], sandbox_allow_write=['~/Library/Logs/slackcli'])
-            a = answers(tmp, ['acme-private'], [pd], strict=True)
+            a = answers(tmp, ['acme-private'], [pd])
             install.install(a, log=lambda *x: None)
             box = settings(a)['sandbox']
             vault = os.path.abspath(a['vault_path'])
@@ -189,22 +189,54 @@ class StrictModeTests(unittest.TestCase):
             self.assertTrue(box['enableWeakerNetworkIsolation'])
             self.assertIn('~/.ssh', box['filesystem']['denyRead'])
             self.assertIn('~/.claude', box['filesystem']['denyRead'])
-            for p in ('.git', '.claude', '.obsidian', '.control-tower', 'CLAUDE.md', '_system/templates', '_system/dashboards'):
+            for p in ('.git', '.claude', '.obsidian', '.control-tower', 'CLAUDE.md', '_system/templates', '_system/dashboards',
+                      '.mcp.json', 'CLAUDE.local.md', '.github', '.vscode', '.control-tower-backup'):  # the guard's protected list
                 self.assertIn('/' + os.path.join(vault, p), box['filesystem']['denyWrite'])
             self.assertEqual(box['filesystem']['allowWrite'], ['~/Library/Logs/slackcli'])
 
-    def test_default_is_not_strict_and_weaker_isolation_only_for_gh(self):
+    def test_every_job_with_a_command_runs_in_the_sandbox(self):
         with tempfile.TemporaryDirectory() as tmp:
-            pd = pack_with_rules(tmp, ['Bash(twg jira:*)'])
-            a = answers(tmp, ['acme-private'], [pd])
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, ['Bash(twg jira:*)'])])
+            install.install(a, log=lambda *x: None)
+            box = settings(a)['sandbox']
+            self.assertEqual((box['enabled'], box['failIfUnavailable'], box['allowUnsandboxedCommands']), (True, True, False))
+            self.assertNotIn('enableWeakerNetworkIsolation', box, 'only for gh')
+            self.assertNotIn('allowWrite', box['filesystem'])
+
+    def test_a_rule_with_spaces_around_still_gets_the_sandbox(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])], job_permissions={'acme-brief': [' Bash(gh pr list:*) ']})
+            install.install(a, log=lambda *x: None)
+            st = settings(a)
+            self.assertIn('Bash(gh pr list:*)', st['permissions']['allow'])
+            self.assertTrue(st['sandbox']['enabled'])
+
+    def test_a_job_without_a_command_has_no_sandbox(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, ['mcp__acme__get_issues'])])
             install.install(a, log=lambda *x: None)
             self.assertNotIn('sandbox', settings(a))
+
+    def test_public_jobs_github_sandboxed_amplitude_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['developer', 'marketing'], tools={'code': 'github', 'analytics': 'amplitude'})
+            install.install(a, log=lambda *x: None)
+            box = settings(a, 'morning-prs')['sandbox']
+            self.assertEqual((box['failIfUnavailable'], box['allowUnsandboxedCommands']), (True, False))
+            self.assertEqual(box['network']['allowedDomains'], ['api.github.com'])
+            self.assertTrue(box['enableWeakerNetworkIsolation'])
+            self.assertNotIn('sandbox', settings(a, 'weekly-metrics'), 'an Amplitude-only job runs no command')
+
+    def test_the_old_strict_answer_still_installs_and_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, ['mcp__acme__get_issues'])])
+            for value in (True, False, 'yes'):
+                report = install.install(dict(a, strict=value), dry_run=True, log=lambda *x: None)
+                self.assertTrue(any('"strict"' in w for w in report['warnings']), report['warnings'])
             install.install(dict(a, strict=True), log=lambda *x: None)
-            box = settings(a)['sandbox']
-            self.assertNotIn('enableWeakerNetworkIsolation', box)
-            self.assertNotIn('allowWrite', box['filesystem'])
-            with self.assertRaises(install.InstallError):
-                install.install(dict(a, strict='yes'), dry_run=True)
+            self.assertNotIn('sandbox', settings(a), 'strict no longer adds a sandbox to a job that runs no command')
+            saved = json.load(open(os.path.join(a['vault_path'], '.control-tower', 'answers.json')))
+            self.assertNotIn('strict', saved, 'dropped once, so the notice does not come back at every change')
 
 
 class GrantByAnsweringTests(unittest.TestCase):

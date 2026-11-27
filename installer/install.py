@@ -97,8 +97,6 @@ def validate(answers, repo=REPO):
             errors.append(f'answers: job_permissions "{jid}" must be a list of rules')
             continue
         errors += [f'answers: job_permissions "{jid}": "{r}": {p}' for r in rules for p in [permission_problem(r)] if p]
-    if not isinstance(answers.get('strict', False), bool):
-        errors.append('answers: "strict" must be true or false')
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -380,10 +378,11 @@ def job_rules(repo, answers, job):
     return allow, deny, network
 
 
-# Strict mode: Claude Code's sandbox around every shell command. Absolute paths are written `//abs` (Claude Code's absolute form;
+# Claude Code's sandbox around every shell command of a job that may run one (any Bash rule): writes only in the vault minus
+# its protected folders, no read of the secret folders, network only to the declared hosts. A job that runs no command gets none. Absolute paths are written `//abs` (Claude Code's absolute form;
 # a plain `//` is the same folder for the operating system anyway).
 SANDBOX_DENY_READ = ['~/.ssh', '~/.aws', '~/.gnupg', '~/.kube', '~/.docker', '~/.claude']
-SANDBOX_DENY_WRITE = ['.git', '.claude', '.obsidian', '.control-tower', 'CLAUDE.md', '_system/templates', '_system/dashboards']
+SANDBOX_DENY_WRITE = list(PROTECTED_DIRS) + list(PROTECTED_FILES_CASED)  # the guard's list: one source for both
 
 
 def sandbox_settings(vault, meta, allow, network):
@@ -400,8 +399,8 @@ def sandbox_settings(vault, meta, allow, network):
 def job_settings(repo, answers, job):
     vault = expand(answers['vault_path'])
     extra_allow, extra_deny, network = job_rules(repo, answers, job)  # rendered and checked in Ctx.plan_jobs
-    allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')] + extra_allow  # every job writes its report in the vault
-    deny = list(BASE_DENY) + extra_deny
+    allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')] + [str(r).strip() for r in extra_allow]  # every job writes its report in the vault
+    deny = list(BASE_DENY) + [str(r).strip() for r in extra_deny]
     deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
     # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
     deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
@@ -409,7 +408,7 @@ def job_settings(repo, answers, job):
     guard = ' '.join(shlex.quote(x) for x in hook)
     settings = {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
                 'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
-    if answers.get('strict'):
+    if any(r.startswith('Bash(') for r in allow):
         settings['sandbox'] = sandbox_settings(vault, job['meta'], allow, network)
     return settings
 
@@ -549,6 +548,8 @@ class Ctx:
             self.report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
                                            'check they fit your vault, or use jobs from your own private pack')
         self.report['warnings'] += mcp_warnings(self.repo, a)
+        if 'strict' in a:
+            self.report['warnings'].append('"strict" in the answers is ignored: every job that may run a command now runs in the sandbox')
         if self.runtime_only:
             self.report['warnings'] += vault_settings_warnings(self.vault)
         return on, off
@@ -763,7 +764,7 @@ def step_manifest(ctx):
     jdump(ctx.manifest_path, {'version': VERSION, 'installed_at': datetime.datetime.now().isoformat(timespec='seconds'),
                               'packs': ctx.a['packs'], 'tools': ctx.a['tools'], 'ct_home': ctx.ct_home, 'files': files,
                               'vault_mode': ctx.report['vault_mode'], 'repo': ctx.repo, **ctx.policy.to_json()})
-    jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k != 'claude_bin'})
+    jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k not in ('claude_bin', 'strict')})
 
 
 def install(answers, repo=REPO, dry_run=False, apply_schedule=False, launch_agents_dir=None, no_launchctl=False, log=print, update=False):

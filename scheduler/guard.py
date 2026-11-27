@@ -41,6 +41,7 @@ BASH_RULES = [
     (r'\bterraform\s+(apply|destroy|import|state\s+rm)\b', 'infrastructure change'),
     (r'\bdocker\s+(rm|rmi|kill|system\s+prune|volume\s+rm)\b', 'container destruction'),
     (r'\b(mysql|psql|sqlite3)\b.*\b(drop|delete|truncate|update|insert|alter)\b', 'database write'),
+    (r'\s--output(=|\s+)\S*[./]', 'an option that writes a file'),  # git log/diff --output=<path>: the sandbox does not cover nested CLAUDE.md
 ]
 # Areas that an unattended job must never modify. `.claude` and `.control-tower` matter most: the vault's Claude settings are loaded by
 # the job runner, so a job able to edit them could widen its own permissions or hooks for the next run.

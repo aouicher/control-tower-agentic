@@ -39,13 +39,11 @@ Some things are refused for every job, even if you say yes. A job runs without y
 
 A safety guard also checks every action while the job runs and stops the ones above, whatever the job's settings say. When it does, `/job-permissions` tells you what was stopped and why, and does not offer to allow it.
 
-One limit, without strict mode: the guard checks every file read and write, but a command you allowed is checked only against a list of known dangerous patterns. A command with an option that writes a file (for example `sort -o`) could therefore write outside the vault. Strict mode (below) closes this: the sandbox lets commands write only in the vault, never in its settings or git files. So allow commands only from tools you know, or use strict mode.
+## The sandbox
 
-## Strict mode (optional)
+Every job that may run a command runs it inside a sandbox provided by Claude Code. A command there can write only in the vault and in Claude Code's own temporary folder, never in the vault's settings, templates, `.git`, `CLAUDE.md` or `.mcp.json`; it cannot read your keys folders (`~/.ssh`, `~/.aws`, `~/.claude`...), and can reach only the web sites the job declared. It does not matter how the command is written: an option that writes a file, a redirection or a chained command stays inside the same limits. One gap: a `CLAUDE.md` or `.git` folder deeper in the vault (for example `notes/CLAUDE.md`) is protected from Claude's file tools but not from commands; the guard refuses the usual way a command writes a file (`--output <path>`). If the sandbox is not available on the computer, the job refuses to run instead of running unprotected. Jobs that use only connections (MCP tools) run no command and need no sandbox.
 
-For extra protection, ask for **strict mode** when you install (the answers key `"strict": true`). Every command a job runs is then closed in a sandbox provided by Claude Code: it cannot read your keys folders (`~/.ssh`, `~/.aws`...), cannot write to the vault's settings, and can only reach the web sites the job declared. If the sandbox is not available on the computer, the job refuses to run instead of running unprotected.
-
-On Linux, strict mode needs two small programs, `bubblewrap` and `socat` (the health check, `installer/doctor.py`, tells you if they are missing). On macOS nothing needs to be installed.
+On macOS nothing needs to be installed. On Linux the sandbox needs two small programs, `bubblewrap` and `socat`; the health check says when they are missing, and installing them is a one-time task for an administrator.
 
 ## For pack authors
 

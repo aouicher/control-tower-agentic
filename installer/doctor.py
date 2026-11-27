@@ -156,7 +156,7 @@ def check_runtime(r, vault, ct_home):
         return r
     for f in ('install.json', 'bin/run_job.py', 'bin/guard.py'):
         r.add('ok' if os.path.isfile(os.path.join(ct_home, f)) else 'FAIL', f'runtime file {f}')
-    jobs_dir = os.path.join(ct_home, 'jobs')
+    jobs_dir, sandboxed = os.path.join(ct_home, 'jobs'), []
     for j in sorted(os.listdir(jobs_dir)) if os.path.isdir(jobs_dir) else []:
         jd = os.path.join(jobs_dir, j)
         need = [f for f in ('prompt.md', 'job.json', 'settings.json') if not os.path.isfile(os.path.join(jd, f))]
@@ -166,20 +166,23 @@ def check_runtime(r, vault, ct_home):
         try:
             st = json.loads(read(os.path.join(jd, 'settings.json')))
             guard = bool(st.get('hooks', {}).get('PreToolUse'))
+            commands = any(str(a).strip().startswith('Bash(') for a in st['permissions']['allow'])
+            if commands and not (st.get('sandbox') or {}).get('enabled'):
+                r.add('FAIL', f'job {j}', 'runs commands without the sandbox: update the kit to refresh its settings')
+                continue
+            if commands:
+                sandboxed.append(j)
             writes = [a for a in st['permissions']['allow'] if a.startswith(('Write', 'Edit(')) or a in ('Write', 'Edit', 'Bash')]
             ok_scope = bool(writes) and all(a.startswith('Edit(/' + vault + '/') for a in writes)
             r.add('ok' if guard and ok_scope else 'FAIL', f'job {j}', 'guard hook and vault-scoped writes' if guard and ok_scope
                   else 'missing guard hook, or write permission missing or not scoped to the vault (re-run the installer)')
         except (ValueError, KeyError):
             r.add('FAIL', f'job {j}', 'settings.json is not valid')
-    try:
-        strict = json.loads(read(os.path.join(vault, '.control-tower', 'answers.json'))).get('strict') is True
-    except (OSError, ValueError, AttributeError):
-        strict = False
-    if strict and sys.platform.startswith('linux'):  # Claude Code's sandbox needs both on Linux
+    if sandboxed and sys.platform.startswith('linux'):  # Claude Code's sandbox needs both on Linux (nothing on macOS)
         missing = [t for t in ('bwrap', 'socat') if not shutil.which(t)]
-        r.add('warn' if missing else 'ok', 'strict mode sandbox tools',
-              f'install {" and ".join(missing)} (bubblewrap, socat): strict jobs refuse to run without them' if missing else 'bwrap and socat found')
+        r.add('FAIL' if missing else 'ok', 'sandbox tools',
+              f'{" and ".join(missing)} missing: {", ".join(sandboxed)} run commands and refuse to run without the sandbox; '
+              'installing bubblewrap and socat is a one-time task for an administrator' if missing else 'bwrap and socat found')
     for risky in ('.claude/settings.json', '.claude/settings.local.json'):
         p = os.path.join(vault, risky)
         keys = risky_settings(p) if os.path.isfile(p) else []

@@ -25,6 +25,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Sandbox tools (Claude Code's sandbox needs bubblewrap and socat on Linux; the doctor checks them)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap socat
       - name: Unit tests
         run: python -W ignore -m unittest discover -s tests -p "test_*.py" -v
       - name: End-to-end install in a disposable HOME (fake claude, no network calls)

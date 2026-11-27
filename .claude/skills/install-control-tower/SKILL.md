@@ -34,7 +34,6 @@ You are the guided installer. You ask the questions, write an answers file, run 
 4. **Private pack** (only if they mention company jobs, their own templates or another language): ask for the folder of their private pack and add it to `pack_dirs`; never copy a private pack into this repository.
 5. **Tools**: for each capability asked by the chosen packs (calendar, tracker, code, errors, quality, logs, analytics, crm), ask which tool they use, with "none" always available. Explain that a job is installed only when all its tools are chosen, and that nothing connects to a tool during installation.
 6. **Schedule**: do they want scheduled jobs (daily and weekly reports)? Default: generate the schedule files but do not load them yet. Show the job list with its default times (from each `job.json`) and let them change times.
-7. **Strict mode** (only if they ask for extra protection, or handle sensitive data): `"strict": true` runs every job command in Claude Code's sandbox. On Linux it needs `bubblewrap` and `socat`. Default: off.
 
 Build `answers.json` (see `installer/install.py`, function `default_answers`, for the keys) in a temporary folder.
 
