@@ -387,7 +387,7 @@ class ProbeAndChoicesTests(unittest.TestCase):
         c = self.choices('--kind', 'connections')
         self.assertEqual(c['items'], ['my notes', 'code: github'])
         c = self.choices('--kind', 'reports')
-        self.assertEqual((c['items'], c['first']['options']), (['a new report'], ['a new report', 'None']))
+        self.assertEqual((c['items'], c['first']['options']), (['a new report'], ['a new report', 'None']), 'pack jobs are never offered')
         r = self.cli('choices', '--items', 'a', 'b', 'c', 'd', 'e', 'f')
         c = json.loads(r.stdout)
         self.assertEqual(c['first']['options'], ['All 6 (recommended)', 'Let me choose', 'None'])

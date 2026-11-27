@@ -484,6 +484,7 @@ def cmd_choices(args):
             items = ['my notes'] + [f'{cap}: {tool}' for cap, tool in sorted((data.get('tools') or {}).items()) if tool != 'none']
             label, recommended = ' connections', every(items)
         else:
+            # the user's scheduled skills: pack jobs are not offered, their prompts do not know custom connections
             items, label, recommended = sorted(data.get('my_jobs') or {}) + ['a new report'], ' reports', []
     first, split = pages(items, label, recommended)
     print(json.dumps({'items': items, 'recommended': recommended, 'never': never, 'first': first, 'pages': split}, indent=2))
