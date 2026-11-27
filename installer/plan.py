@@ -372,8 +372,12 @@ UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYT
 ACTION_WORDS = {'send', 'post', 'create', 'update', 'delete', 'remove', 'write', 'edit', 'merge', 'close', 'publish', 'upload',
                 'comment', 'reply', 'react', 'transition', 'assign', 'invite', 'share', 'trigger', 'deploy',
                 'add', 'set', 'manage', 'move', 'archive', 'respond', 'approve', 'submit', 'call', 'invoke', 'insert', 'upsert',
-                'put', 'patch', 'save', 'cancel', 'drop', 'navigate', 'click', 'fill', 'draft', 'destructive', 'sql'}
-# not 'execute' or 'run': read queries use them (execute_log_insights_query); a tool named run_query is an accepted risk
+                'put', 'patch', 'save', 'cancel', 'drop', 'navigate', 'click', 'fill', 'draft', 'destructive', 'sql', 'evaluate', 'type',
+                'press', 'kill', 'terminate', 'stop', 'start', 'restart', 'push', 'commit', 'import', 'apply', 'grant', 'revoke',
+                'reset', 'purge', 'enable', 'disable', 'rename', 'replace'}
+# not 'execute' or 'run': read queries use them (execute_log_insights_query); a tool named run_query is an accepted risk.
+# A list of action words is never complete: only a tool whose name starts with one of these is offered as recommended.
+READ_VERBS = {'get', 'list', 'search', 'describe', 'read', 'fetch', 'query', 'find', 'view', 'show', 'lookup', 'count', 'analyze'}
 
 
 def name_words(name):

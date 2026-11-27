@@ -37,7 +37,9 @@ class PolicyTests(unittest.TestCase):
              'Bash(git log {{ct.team}}:*)', 'Agent', 'Task', 'Bash(cat:*)', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)',
              'WebFetch(domain:10.0.0.1)', 'WebFetch(domain:192.168.1.1)', 'Skill', 'Skill(weekly-digest)',
              'mcp__db__execute_sql', 'mcp__db__executeDestructive', 'mcp__db__insert_rows', 'mcp__ha__call_service',
-             'mcp__pw__browser_click', 'mcp__pw__browser_navigate', 'mcp__gmail__draft_email', 'mcp__shop__cancel_order']
+             'mcp__pw__browser_click', 'mcp__pw__browser_navigate', 'mcp__gmail__draft_email', 'mcp__shop__cancel_order',
+             'mcp__pw__browser_evaluate', 'mcp__pw__browser_type', 'mcp__k8s__restart_pod', 'mcp__gh__push_files', 'mcp__iam__grant_role',
+             'mcp__db__purge_table', 'mcp__ff__enable_flag', 'mcp__vm__terminate_instance']
 
     def test_acceptable_rules(self):
         for rule in self.ACCEPTABLE:

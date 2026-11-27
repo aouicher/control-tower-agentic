@@ -31,7 +31,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
-from plan import (MCP_TOOL, bash_parts, command_needs, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
+from plan import (MCP_TOOL, READ_VERBS, bash_parts, command_needs, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
                   permission_problem)
 
 SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
@@ -467,8 +467,11 @@ def cmd_choices(args):
                 print('error: --kind read-tools needs --server', file=sys.stderr)
                 return 2
             seen = jload(os.path.join(ct_home(data), 'probe.json'), {})
-            if args.server not in {s.get('name') for s in seen.get('servers', [])}:
-                print(f'error: the probe has not seen {args.server}: run configure.py probe --server {args.server} first', file=sys.stderr)
+            status = {s.get('name'): s.get('status') for s in seen.get('servers', [])}.get(args.server)
+            if status != 'connected':
+                print(f'error: the probe saw {args.server} as {status}: run configure.py probe --server {args.server} once it works'
+                      if status else f'error: the probe has not seen {args.server}: run configure.py probe --server {args.server} first',
+                      file=sys.stderr)
                 return 2
             tools = [t for t in seen.get('tools', []) if MCP_TOOL.match(t) and MCP_TOOL.match(t).group(1) == args.server]
             never = [t for t in tools if permission_problem(t)]  # the same check as a grant: an action tool is never offered
@@ -479,6 +482,8 @@ def cmd_choices(args):
         else:
             items, label = sorted(data.get('my_jobs') or {}) + ['a new report'], ' reports'
     recommended = [] if args.kind == 'reports' or args.recommended == 'none' else list(items)
+    if args.kind == 'read-tools':  # a plain read verb first: an odd name is offered, never ticked by default
+        recommended = [t for t in items if (name_words(MCP_TOOL.match(t).group(2)) or [''])[0] in READ_VERBS]
     first, split = pages(items, label, recommended)
     print(json.dumps({'items': items, 'recommended': recommended, 'never': never, 'first': first, 'pages': split}, indent=2))
     return 0

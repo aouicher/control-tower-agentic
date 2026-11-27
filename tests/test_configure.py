@@ -311,9 +311,9 @@ class ProbeAndChoicesTests(unittest.TestCase):
     def cli(self, *args, env=None):
         return subprocess.run([sys.executable, CONFIGURE] + list(args), capture_output=True, text=True, env=env)
 
-    def probe_file(self, tools):
+    def probe_file(self, tools, status='connected'):
         with open(os.path.join(self.ct, 'probe.json'), 'w') as fh:
-            json.dump({'servers': [{'name': 'acme', 'status': 'connected'}], 'tools': tools, 'connectors': 0}, fh)
+            json.dump({'servers': [{'name': 'acme', 'status': status}], 'tools': tools, 'connectors': 0}, fh)
 
     def choices(self, *args):
         r = self.cli('choices', '--vault', self.vault, *args)
@@ -396,6 +396,17 @@ class ProbeAndChoicesTests(unittest.TestCase):
         r = self.cli('choices', '--vault', self.vault, '--kind', 'read-tools', '--server', 'unprobed')
         self.assertEqual(r.returncode, 2, 'a server the probe did not start is not a server without read tools')
         self.assertIn('configure.py probe --server unprobed', r.stderr)
+        self.probe_file([], status='failed')
+        r = self.cli('choices', '--vault', self.vault, '--kind', 'read-tools', '--server', 'acme')
+        self.assertEqual(r.returncode, 2, 'a server that did not start is not a server without read tools')
+        self.assertIn('failed', r.stderr)
+
+    def test_only_tools_that_start_with_a_read_verb_are_recommended(self):
+        self.probe_file(['mcp__acme__get_issue', 'mcp__acme__list_projects', 'mcp__acme__execute_log_insights_query',
+                         'mcp__acme__search_issues', 'mcp__acme__summarize_week'])
+        c = self.choices('--kind', 'read-tools', '--server', 'acme')
+        self.assertEqual(c['recommended'], ['mcp__acme__get_issue', 'mcp__acme__list_projects', 'mcp__acme__search_issues'])
+        self.assertEqual(c['first']['options'][0], 'All 5 read tools', 'not recommended when some are not plain reads')
         c = json.loads(self.cli('choices', '--items', 'a', 'b', 'c', 'd', 'e', '--recommended', 'none').stdout)
         self.assertEqual((c['first']['options'][0], c['recommended']), ('All 5', []))
 
