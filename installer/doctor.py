@@ -20,7 +20,7 @@ from plan import REPO, CorePolicy, core_files, risky_settings  # noqa: E402
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
           '_system/tools', '_system/archive', '_system/attachments', '.claude/skills']
-CORE_SKILLS = ['today', 'weekly-review', 'meeting', 'research', 'time-review', 'inbox']
+CORE_SKILLS = ['today', 'weekly-review', 'meeting', 'research', 'time-review', 'inbox', 'job-permissions']
 
 
 class Report:
@@ -172,6 +172,14 @@ def check_runtime(r, vault, ct_home):
                   else 'missing guard hook, or write permission missing or not scoped to the vault (re-run the installer)')
         except (ValueError, KeyError):
             r.add('FAIL', f'job {j}', 'settings.json is not valid')
+    try:
+        strict = json.loads(read(os.path.join(vault, '.control-tower', 'answers.json'))).get('strict') is True
+    except (OSError, ValueError, AttributeError):
+        strict = False
+    if strict and sys.platform.startswith('linux'):  # Claude Code's sandbox needs both on Linux
+        missing = [t for t in ('bwrap', 'socat') if not shutil.which(t)]
+        r.add('warn' if missing else 'ok', 'strict mode sandbox tools',
+              f'install {" and ".join(missing)} (bubblewrap, socat): strict jobs refuse to run without them' if missing else 'bwrap and socat found')
     for risky in ('.claude/settings.json', '.claude/settings.local.json'):
         p = os.path.join(vault, risky)
         keys = risky_settings(p) if os.path.isfile(p) else []
