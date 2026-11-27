@@ -519,7 +519,7 @@ def main(argv=None):
     which.add_argument('--kind', choices=('read-tools', 'connections', 'reports'))
     which.add_argument('--items', nargs='+', help='any other list, item by item')
     p.add_argument('--server', help='with --kind read-tools: the MCP server, as probe saw it')
-    p.add_argument('--recommended', choices=('all', 'none'), default='all', help='whether every item is the recommended answer')
+    p.add_argument('--recommended', choices=('all', 'none'), default='all', help='with --items or --kind connections: whether every item is the recommended answer')
     p = sub.add_parser('denials', help='refusals of the latest run of every job, explained, with a proposed rule')
     p.add_argument('--ct-home', default='~/.control-tower')
     p.add_argument('--vault')
