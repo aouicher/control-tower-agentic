@@ -34,18 +34,17 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError,  # noqa: E402
+from plan import (ID_RE, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError,  # noqa: E402
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
-                  guard_rules, job_adapters, job_capabilities, jload, list_packs, mcp_file_findings, mcp_server, on_server, permission_problem,
-                  resolve_packs, server_answer_problems, unreachable_servers, vault_files)
+                  eligible_jobs, guard_rules, job_adapters, job_capabilities, jload, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs,
+                  on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers,
+                  vault_files)
 
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
-DAYS = {'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0}
 BASE_ALLOW = ['Read', 'Grep', 'Glob']  # no command: dates come in the prompt's Run context, files are found with Glob
 BASE_DENY = ['Agent', 'Skill']  # no sub-agent, and no skill that could bring its own tools: jobs read skill files with Read
 PROTECTED_DIRS, PROTECTED_FILES_CASED = guard_rules.PROTECTED, guard_rules.PROTECTED_FILES_CASED  # one source: scheduler/guard.py
-DAY_ALIASES = {'weekdays': 'mon-fri', 'weekends': 'sat-sun', 'daily': 'mon-sun', 'every day': 'mon-sun', '*': 'mon-sun'}
 GUARD_MATCHER = 'Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob'
 
 
@@ -99,7 +98,7 @@ def validate(answers, repo=REPO):
             errors.append(f'answers: job_permissions "{jid}" must be a list of rules')
             continue
         errors += [f'answers: job_permissions "{jid}": "{r}": {p}' for r in rules for p in [permission_problem(r)] if p]
-    errors += [f'answers: {p}' for p in server_answer_problems(answers, CAPABILITIES)]
+    errors += [f'answers: {p}' for p in server_answer_problems(answers, CAPABILITIES) + my_job_problems(answers, CAPABILITIES)]
     commands = answers.get('commands') or {}
     if not isinstance(commands, dict):
         errors.append('answers: "commands" must be an object, for example {"twg": {"network": ["acme.atlassian.net"]}}')
@@ -198,20 +197,6 @@ def static_collisions(repo, ids, packs, policy):
         if os.path.isdir(v):
             walk(v, 'pack ' + p)
     return clash
-
-
-def eligible_jobs(ids, packs, tools):
-    """Jobs whose capabilities all have a chosen tool."""
-    jobs = []
-    for p in ids:
-        for j in packs[p].manifest.get('jobs', []):
-            meta = jload(os.path.join(packs[p].dir, 'jobs', j, 'job.json'))  # ids checked by plan.check_pack
-            req, opt = job_capabilities(meta)
-            missing = [c for c in req if tools.get(c, 'none') == 'none']
-            if not missing and not req and opt and not meta.get('vault_only') and all(tools.get(c, 'none') == 'none' for c in opt):
-                missing = ['one of ' + ' / '.join(opt)]
-            jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing, 'dir': os.path.join(packs[p].dir, 'jobs', j)})
-    return jobs
 
 
 def read_routine(path):
@@ -428,28 +413,6 @@ def python_bin(answers):
     return answers.get('python_bin') or sys.executable or 'python3'
 
 
-def parse_days(spec):
-    """'mon-fri', 'mon,wed', 'weekdays', 'daily' -> cron weekday numbers (0 = Sunday). Raises ValueError with a readable message."""
-    spec = DAY_ALIASES.get(spec.lower().strip(), spec.lower().strip())
-    out = []
-    def day(x):
-        x = x.strip()[:3]
-        if x not in DAYS:
-            raise ValueError(f'unknown day "{x}" in "{spec}" (use mon, tue, wed, thu, fri, sat, sun, ranges like mon-fri, or weekdays)')
-        return DAYS[x]
-    for part in spec.split(','):
-        part = part.strip()
-        if '-' in part:
-            a, b = part.split('-', 1)
-            i, j = day(a), day(b)
-            order = [1, 2, 3, 4, 5, 6, 0]
-            ia, ib = order.index(i), order.index(j)
-            out += order[ia:ib + 1] if ia <= ib else order[ia:] + order[:ib + 1]
-        else:
-            out.append(day(part))
-    return sorted(set(out), key=lambda d: (d + 6) % 7)
-
-
 def local_time(hhmm, timezone, machine_tz=None):
     """Convert a time in the user's timezone to machine time.
 
@@ -529,8 +492,7 @@ class Ctx:
                        'permissions_summary': []}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.seen = set()  # every kit file of the vault this run produces, written or not
-        # the servers jobs may start: the known tools', as approved; a connection's goes only to the reports that use it
-        self.approved = approved_servers(self.vault, a, set((a.get('servers') or {}).values()))
+        self.approved = approved_servers(self.vault, a, recorded_servers(a))  # the servers jobs may start, as approved
         self.mcp_blocked = set()  # (capability, tool) of an MCP server no job may call yet: not connected, or no read tool allowed
         self.jobs_on, self.jobs_off = self.plan_jobs()
 
@@ -539,7 +501,15 @@ class Ctx:
         a, on, off = self.a, [], []
         for cap, rules in (a.get('permissions') or {}).items():
             check_permissions(f'answers permissions "{cap}"', rules)
-        for j in eligible_jobs(a['packs'], self.packs, a['tools']):
+        pack_jobs, mine = eligible_jobs(a['packs'], self.packs, a['tools']), my_jobs(a)
+        clash = sorted({j['id'] for j in mine} & {j['id'] for j in pack_jobs})
+        if clash:
+            raise InstallError(f'your report {", ".join(clash)} has the id of a pack job: choose another id')
+        taken = sorted(j['id'] for j in pack_jobs if any(str(o).startswith(MY_REPORTS) for o in j['meta'].get('outputs', [])))
+        if taken:  # a pack job may not declare an output under journal/reports/my-..., kept for the user's reports
+            raise InstallError(f'pack job {", ".join(taken)} declares an output under {MY_REPORTS}..., kept for your own reports')
+        known = set((a.get('servers') or {}).values())
+        for j in pack_jobs + mine:
             cfg = (a.get('jobs') or {}).get(j['id'], {})
             if j['missing'] or cfg.get('enabled') is False:
                 off.append(j)
@@ -549,17 +519,19 @@ class Ctx:
             meta['schedule'] = {**meta['schedule'], **{k: v for k, v in cfg.items() if k in ('time', 'days')}}
             j['rendered'] = json.loads(render.render_text(json.dumps(meta), self.table, j['id'], []))
             # checked on the FINAL strings: a pack's vocabulary could otherwise inject text into a rule after the check
-            check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []))
+            check_permissions(f'job "{j["id"]}"', j['rendered']['permissions'].get('allow', []))
             allow, _, network = job_rules(self.repo, a, {'id': j['id'], 'meta': j['rendered']})
             check_permissions(f'job "{j["id"]}"', allow)  # adapters and the user's grants: the same limits
-            self.mcp_blocked |= unreachable_servers(job_adapters(self.repo, a, j['rendered']), a, allow, self.approved)
+            # its servers: the known tools', and the connections it uses (a connection's server goes only to its reports)
+            j['approved'] = {s: e for s, e in self.approved.items() if s in known | j['servers']}
+            self.mcp_blocked |= unreachable_servers(job_adapters(self.repo, a, j['rendered']), a, allow, j['approved'])
             uses = describe_rules(allow, network)
             if any(uses.values()):  # what the user consents to, in plain words (the guided installer asks about it)
                 self.report['permissions_summary'].append({'job': j['id'], 'name': j['rendered'].get('name', j['id']), **uses})
             sched = j['rendered']['schedule']
             self.report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
             on.append(j)
-        if self.runtime_only and any(not self.packs[j['pack']].private for j in on):
+        if self.runtime_only and any(j['pack'] and not self.packs[j['pack']].private for j in on):
             self.report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
                                            'check they fit your vault, or use jobs from your own private pack')
         self.report['warnings'] += [f'{cap}/{tool}: jobs cannot call this MCP server until it is connected with read tools allowed: {allow_hint(a)}'
@@ -672,7 +644,7 @@ def step_runtime(ctx):
         os.makedirs(jdir, exist_ok=True)
         with open(os.path.join(j['dir'], 'prompt.md.tmpl'), encoding='utf-8') as fh:
             errs = []
-            prompt = render.render_text(fh.read(), ctx.table, j['id'], errs)
+            prompt = render.render_text(fh.read(), {**ctx.table, **j['tokens']}, j['id'], errs)
         if errs:
             raise InstallError('; '.join(errs))
         with open(os.path.join(jdir, 'prompt.md'), 'w', encoding='utf-8') as fh:  # only the prompt: nothing else from the pack
@@ -681,7 +653,7 @@ def step_runtime(ctx):
         settings = job_settings(ctx.repo, ctx.a, {'id': j['id'], 'meta': j['rendered']})
         jdump(os.path.join(jdir, 'settings.json'), settings)
         calls = {mcp_server(r) for r in settings['permissions']['allow']}  # the runner passes only this file (--strict-mcp-config)
-        jdump(os.path.join(jdir, 'mcp.json'), {'mcpServers': {s: e for s, e in ctx.approved.items() if s in calls}})
+        jdump(os.path.join(jdir, 'mcp.json'), {'mcpServers': {s: e for s, e in j['approved'].items() if s in calls}})
 
 
 def step_schedule(ctx):

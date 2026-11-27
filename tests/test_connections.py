@@ -174,6 +174,7 @@ class ConnectionTests(unittest.TestCase):
                     {'x': {'server': 's', 'command': 'c', 'read_tools': ['mcp__s__get']}},
                     {'x': {'command': 'c', 'read_tools': ['Bash(d list:*)']}},
                     {'x': {'server': 's', 'read_tools': []}},
+                    {'code': {'server': 's', 'read_tools': ['mcp__s__get']}},
                     {'x': ['mcp__s__get']}):
             with self.subTest(bad=bad):
                 with self.assertRaises(install.InstallError):

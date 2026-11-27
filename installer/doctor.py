@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
-from plan import REPO, CorePolicy, core_files, mcp_file_findings, risky_settings  # noqa: E402
+from plan import REPO, CorePolicy, core_files, mcp_file_findings, risky_settings, skill_problem  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -192,6 +192,11 @@ def check_runtime(r, vault, ct_home):
     answers = install.jload(os.path.join(vault, '.control-tower', 'answers.json'), {})
     for level, text in mcp_file_findings(vault, answers):
         r.add(level, 'vault file .mcp.json', text)
+    mine = answers.get('my_jobs') if isinstance(answers.get('my_jobs'), dict) else {}  # the doctor also runs on hand-broken answers
+    for jid, cfg in sorted(mine.items()):
+        why = skill_problem(vault, cfg.get('skill')) if isinstance(cfg, dict) else 'not a report record'
+        if why:
+            r.add('warn', f'job {jid}', f'its skill cannot run unattended: {why}; fix the skill or stop the report in /control-tower')
     outside = []
     for root, dirs, files in os.walk(vault):
         dirs[:] = [d for d in dirs if d not in ('.obsidian', '.git')]

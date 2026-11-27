@@ -186,6 +186,32 @@ def command_needs(repo, answers, allow):
     return sorted(set(hosts)), sorted(set(writable)), weaker
 
 
+DAYS = {'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0}
+DAY_ALIASES = {'weekdays': 'mon-fri', 'weekends': 'sat-sun', 'daily': 'mon-sun', 'every day': 'mon-sun', '*': 'mon-sun'}
+
+
+def parse_days(spec):
+    """'mon-fri', 'mon,wed', 'weekdays', 'daily' -> cron weekday numbers (0 = Sunday). Raises ValueError with a readable message."""
+    spec = DAY_ALIASES.get(spec.lower().strip(), spec.lower().strip())
+    out = []
+    def day(x):
+        x = x.strip()[:3]
+        if x not in DAYS:
+            raise ValueError(f'unknown day "{x}" in "{spec}" (use mon, tue, wed, thu, fri, sat, sun, ranges like mon-fri, or weekdays)')
+        return DAYS[x]
+    for part in spec.split(','):
+        part = part.strip()
+        if '-' in part:
+            a, b = part.split('-', 1)
+            i, j = day(a), day(b)
+            order = [1, 2, 3, 4, 5, 6, 0]
+            ia, ib = order.index(i), order.index(j)
+            out += order[ia:ib + 1] if ia <= ib else order[ia:] + order[:ib + 1]
+        else:
+            out.append(day(part))
+    return sorted(set(out), key=lambda d: (d + 6) % 7)
+
+
 def needs_host(answers, command, table):
     """True when nothing says which web addresses a command reaches: no host in the table, and no `network` answer ("it
     needs no web address" is recorded as an empty list)."""
@@ -567,6 +593,7 @@ def server_answer_problems(answers, capabilities):
         out.append('"connections_added" is a list of MCP server names')
     if not isinstance(conns, dict):
         return out + ['"connections" maps an id to {"server" or "command", "read_tools"}']
+    out += [f'"connections": "{c}" is the name of a capability: choose another id' for c in conns if c in capabilities]
     owned = list(servers.values() if isinstance(servers, dict) else [])
     owned += [c['server'] for c in conns.values() if isinstance(c, dict) and 'server' in c]
     out += [f'"{s}" is connected twice: one MCP server serves one tool or connection' for s in sorted({s for s in owned if owned.count(s) > 1})]
@@ -586,6 +613,80 @@ def mcp_file_findings(vault, answers):
                             'connect it again in /control-tower, which shows what it now runs'))
     if unused:
         out.append(('warn', f'servers no report is connected to: {", ".join(unused)}; jobs do not start them, review what they run'))
+    return out
+
+
+DATE_COMMAND = re.compile(r'`date( [^`]*)?`')
+MY_JOB_KEYS = {'skill', 'uses', 'model'}  # when it runs is in `jobs`, as for every job
+MY_REPORTS = 'journal/reports/my-'  # where the user's reports write: core/jobs/skill-job/prompt.md.tmpl
+
+
+def skill_problem(vault, skill):
+    """Why a skill of the vault cannot run as a scheduled report, or None: the same closed frontmatter as pack skills, no
+    allowed-tools, and a `date` command only after saying to use the Run context."""
+    if not ID_RE.match(str(skill)):
+        return f'"{skill}" is not a skill name (lowercase letters, digits and -)'
+    rel = f'.claude/skills/{skill}/SKILL.md'
+    path = os.path.join(expand(vault), rel)
+    if not os.path.isfile(path):
+        return f'no skill {skill} in this vault ({rel})'
+    with open(path, encoding='utf-8', errors='replace') as fh:
+        text = fh.read()
+    m = DATE_COMMAND.search(text)
+    if m and 'run context' not in text[:m.start()].lower():
+        return 'it runs `date`: it must first say "if there is a Run context, use it"'
+    return rendered_text_problem(rel, text)
+
+
+def my_job_problems(answers, capabilities):
+    """What is wrong with the user's scheduled skills: {id: {"skill", "uses": [known tools' capabilities or connections]}}."""
+    mine, conns = answers.get('my_jobs') or {}, answers.get('connections') or {}
+    if not isinstance(mine, dict):
+        return ['"my_jobs" maps a report id to {"skill", "uses"}']
+    out = []
+    for jid, cfg in mine.items():
+        if not ID_RE.match(str(jid)) or not isinstance(cfg, dict):
+            out.append(f'"my_jobs": "{jid}" is not a report id with its {{"skill", "uses"}}')
+            continue
+        uses = cfg.get('uses', [])
+        out += [f'"my_jobs" "{jid}": {m}' for bad, m in (
+            (bool(set(cfg) - MY_JOB_KEYS), f'only {sorted(MY_JOB_KEYS)}'),
+            (not ID_RE.match(str(cfg.get('skill'))), f'"{cfg.get("skill")}" is not a skill name'),
+            (cfg.get('model', 'sonnet') not in ('haiku', 'sonnet', 'opus'), 'model is haiku, sonnet or opus'),
+            (not isinstance(uses, list) or not all(isinstance(u, str) and (u in capabilities or u in conns) for u in uses),
+             '"uses" lists known tools\' capabilities and connection ids')) if bad]
+    return out
+
+
+def eligible_jobs(ids, packs, tools):
+    """Jobs whose capabilities all have a chosen tool."""
+    jobs = []
+    for p in ids:
+        for j in packs[p].manifest.get('jobs', []):
+            meta = jload(os.path.join(packs[p].dir, 'jobs', j, 'job.json'))  # ids checked by plan.check_pack
+            req, opt = job_capabilities(meta)
+            missing = [c for c in req if tools.get(c, 'none') == 'none']
+            if not missing and not req and opt and not meta.get('vault_only') and all(tools.get(c, 'none') == 'none' for c in opt):
+                missing = ['one of ' + ' / '.join(opt)]
+            jobs.append({'pack': p, 'id': j, 'meta': meta, 'missing': missing, 'dir': os.path.join(packs[p].dir, 'jobs', j),
+                         'tokens': {}, 'servers': set()})
+    return jobs
+
+
+def my_jobs(answers):
+    """The user's scheduled skills as job entries like a pack job's: the generic skill-job prompt, the adapters of the known
+    tools it uses (no tool chosen: the job is off) and the read tools and servers of the connections it uses."""
+    conns, tools, out = answers.get('connections') or {}, answers.get('tools') or {}, []
+    for jid, cfg in sorted((answers.get('my_jobs') or {}).items()):
+        uses = cfg.get('uses', [])
+        caps = [u for u in uses if u not in conns]
+        meta = {'id': jid, 'name': f'Your report {jid}', 'description': f'Runs the skill {cfg["skill"]}.',
+                'schedule': {'days': 'mon-fri', 'time': '08:00'}, 'model': cfg.get('model', 'sonnet'),
+                'capabilities': {'required': caps, 'optional': []}, 'outputs': [f'{MY_REPORTS}{jid}-YYYY-MM-DD.md'],
+                'permissions': {'allow': [r for u in uses if u in conns for r in conns[u]['read_tools']], 'deny': []}}
+        out.append({'pack': None, 'id': jid, 'meta': meta, 'dir': os.path.join(REPO, 'core', 'jobs', 'skill-job'),
+                    'missing': [c for c in caps if tools.get(c, 'none') == 'none'], 'tokens': {'job_id': jid, 'job_skill': cfg['skill']},
+                    'servers': {conns[u]['server'] for u in uses if 'server' in conns.get(u, {})}})
     return out
 
 
