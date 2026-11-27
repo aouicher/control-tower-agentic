@@ -343,7 +343,7 @@ class CorePolicy:
 # Secure by default: a job may use only what its rules allow (`dontAsk` refuses the rest), and the person installing consents to
 # those rules by answering a question (never by editing a file). Some rules can never be granted, whoever asks: they would let
 # an unattended job run any code, write anywhere, or act on the user's behalf. scheduler/guard.py adds the run-time limits.
-SAFE_TOOLS = {'Read', 'Grep', 'Glob', 'TodoWrite', 'Skill'}
+SAFE_TOOLS = {'Read', 'Grep', 'Glob', 'TodoWrite'}
 SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r"\']')
 COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,31}$')
 MAX_RULE = 120  # with at most two variables, a rule stays one short line: it cannot carry a message to the person reading it
@@ -398,6 +398,8 @@ def permission_problem(rule):
         return 'unrendered template token in a permission'
     if rule in SAFE_TOOLS or re.fullmatch(r'Read\([^()]+\)', rule):
         return None
+    if re.match(r'Skill\b', rule):
+        return 'a skill can bring its own tools; a job reads the skill file with Read and follows it'
     if re.match(r'(Edit|Write|MultiEdit|NotebookEdit)\b', rule):
         return 'jobs write only inside the vault, and the installer grants that itself'
     if rule.startswith('WebSearch'):

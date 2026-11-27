@@ -20,7 +20,7 @@ PERMISSIONS = os.path.join(ROOT, 'installer', 'permissions.py')
 
 class PolicyTests(unittest.TestCase):
     """One table, the same for packs and for the user: there is no trust list to fill in."""
-    ACCEPTABLE = ['Read', 'Grep', 'Glob', 'TodoWrite', 'Skill', 'Read(notes/**)', 'mcp__acme__get_issues', 'mcp__acme__searchIssues',
+    ACCEPTABLE = ['Read', 'Grep', 'Glob', 'TodoWrite', 'Read(notes/**)', 'mcp__acme__get_issues', 'mcp__acme__searchIssues',
                   'mcp__claude_ai_acme-assistant__sonarqube_get_issues', 'mcp__rollbar__list-projects', 'WebFetch(domain:status.acme.test)',
                   'Bash(gh pr list:*)', 'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(sort:*)',
                   'Bash(jq .items)', 'Bash(twg jira workitem query *)', 'Bash(twg jira:*)', 'Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query *)',
@@ -35,7 +35,7 @@ class PolicyTests(unittest.TestCase):
              'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(echo $(id))', 'Bash(PAGER=sh git log:*)',
              'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(HTTPS_PROXY=x twg x)', 'Bash(GH_HOST=x gh pr list)', 'Bash(LD_PRELOAD=x ls)',
              'Bash(git log {{ct.team}}:*)', 'Agent', 'Task', 'Bash(cat:*)', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)',
-             'WebFetch(domain:10.0.0.1)', 'WebFetch(domain:192.168.1.1)']
+             'WebFetch(domain:10.0.0.1)', 'WebFetch(domain:192.168.1.1)', 'Skill', 'Skill(weekly-digest)']
 
     def test_acceptable_rules(self):
         for rule in self.ACCEPTABLE:
@@ -59,6 +59,15 @@ class PolicyTests(unittest.TestCase):
                 self.assertIsNotNone(why)
                 self.assertIn('Read, Grep and Glob', why)
         self.assertIn('Run context', plan.permission_problem('Bash(date +%F)'))
+
+    def test_a_job_never_uses_the_skill_tool(self):
+        # a skill may carry its own tools (allowed-tools); a job reads the skill file with Read instead
+        self.assertIn('Read', plan.permission_problem('Skill'))
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])])
+            install.install(a, log=lambda *x: None)
+            self.assertIn('Skill', settings(a)['permissions']['deny'])
+            self.assertNotIn('Skill', settings(a)['permissions']['allow'])
 
     def test_no_job_gets_a_command_rule_by_default(self):
         self.assertFalse([r for r in install.BASE_ALLOW if r.startswith('Bash')])
@@ -415,6 +424,18 @@ class GrantByAnsweringTests(unittest.TestCase):
             item = json.loads(self.cli('list', '--ct-home', ct).stdout)['denials'][0]
             self.assertEqual((item['rule'], item['verdict']), ('Bash(date:*)', 'never'))
             self.assertIn('Run context', item['explain'])
+
+    def test_a_refused_skill_call_can_never_be_allowed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])])
+            install.install(a, log=lambda *x: None)
+            write(os.path.join(a['ct_home'], 'logs', 'acme-brief.denials.json'), json.dumps([
+                {'tool': 'Skill', 'input': '{"skill": "weekly-digest"}', 'reason': 'not allowed for this job', 'source': 'permissions', 'at': 'T'}]))
+            item = json.loads(self.cli('list', '--ct-home', a['ct_home']).stdout)['denials'][0]
+            self.assertEqual((item['rule'], item['verdict']), ('Skill', 'never'))
+            r = self.cli('grant', '--vault', a['vault_path'], '--job', 'acme-brief', '--rule', 'Skill')
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('never', r.stderr)
 
     def test_narrowest_rule(self):
         sys.path.insert(0, os.path.join(ROOT, 'installer'))
