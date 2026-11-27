@@ -810,7 +810,7 @@ def cron_header(sched_dir):
 
 
 def own_cron_block(block, sched_dir):
-    """Whether a crontab block is this install's: its header names the runtime folder, or has no path (an older block)."""
+    """Whether a crontab block is this install's: its header names the runtime folder, or names none."""
     return block.startswith((cron_header(sched_dir), CRON_BEGIN + '\n'))
 
 

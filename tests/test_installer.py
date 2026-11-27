@@ -461,7 +461,7 @@ class SandboxToolsTests(unittest.TestCase):
             install.install(a, log=lambda *x: None)
             sp = os.path.join(a['ct_home'], 'jobs', 'morning-prs', 'settings.json')
             st = json.load(open(sp))
-            del st['sandbox']  # as written by a version before the sandbox was automatic
+            del st['sandbox']  # a job settings file that runs commands without the sandbox
             json.dump(st, open(sp, 'w'))
             items = {i['check']: i for i in doctor.check(a['vault_path'], a['ct_home'], 'python3').items}
             self.assertEqual(items['job morning-prs']['level'], 'FAIL')
