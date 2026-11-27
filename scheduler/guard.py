@@ -8,6 +8,9 @@ Reads the hook event as JSON on stdin and exits with code 2 (block) when the cal
    (.obsidian/, _system/templates/, CLAUDE.md).
 Exit code 0 lets the call through. Standard library only.
 
+Which commands and tools a job may use at all is decided by its permission rules (settings.json, `dontAsk` mode: anything
+not allowed is refused). The guard is the second line: it refuses what no rule should ever let through.
+
 Usage in a hook:  python3 guard.py --vault /path/to/vault
 """
 import argparse
@@ -92,183 +95,10 @@ def date_reason(cmd):
 
 WRITE_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
 
-# ----------------------------------------------------------------------------- job commands (one table, two uses)
-# The installer only lets a pack grant these commands (installer/plan.py reads this table), and the guard below checks the
-# ACTUAL arguments of every Bash call at run time: a permission such as `Bash(sort:*)` is a prefix, so the installer cannot see
-# `sort -o ~/.zshrc` coming. For every command: path arguments must stay inside the vault, output redirection only to /dev/null.
-#   subcommands: the first word(s) allowed after the command (installer check)
-#   long / short: options refused at run time (`--output` also refuses `--output=x`; short ones also inside clusters like `-uo`)
-#   no_global_options: no option between the command and its subcommand (`git -c core.pager=sh log`)
-#   max_operands / value_options: commands whose extra operand is an OUTPUT file (`uniq in out`)
-JOB_COMMANDS = {
-    'date': {},  # checked by date_reason
-    'ls': {},
-    'wc': {'long': ('--files0-from',)},
-    'sort': {'long': ('--output', '--compress-program', '--temporary-directory', '--files0-from'), 'short': 'oT'},
-    'uniq': {'max_operands': 1, 'value_options': ('-f', '-s', '-w')},
-    'cut': {},
-    'tr': {},
-    'column': {},
-    'jq': {'long': ('--rawfile', '--slurpfile', '--from-file', '--args', '--jsonargs'), 'short': 'fL',
-           'refuse_words': ('env', 'input_filename', 'getpath', '$__loc__')},  # env exposes the job's tokens
-    'git': {'subcommands': {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files'},
-            'no_global_options': True,
-            'long': ('--output', '--ext-diff', '--no-index', '--exec', '--exec-path', '--upload-pack', '--receive-pack', '--textconv')},
-    'gh': {'subcommands': {'pr list', 'pr view', 'pr checks', 'pr diff', 'issue list', 'issue view', 'release list', 'release view',
-                           'run list', 'run view', 'repo view', 'api'},
-           'long': ('--method', '--field', '--raw-field', '--input', '--hostname'), 'short': 'XfF', 'no_operand': ('graphql',)},
-}
-UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
-                        r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
-SEPARATORS = {';', '&&', '||', '|', '&', ';;', '|&'}
-REDIRECT = re.compile(r'^[0-9]*[<>&|]+$')  # any token made of redirection characters that is not a separator
-
-
-BRACE_EXPANSION = re.compile(r'\{[^{}]*(,|\.\.)[^{}]*\}')
-
-
-def path_like(arg):
-    return arg.startswith(('/', '~')) or '..' in arg.replace('\\', '/').split('/')
-
-
-def outside_vault(arg, vault):
-    """An argument that resolves outside the vault, symlinks included (relative arguments are relative to the vault)."""
-    return not inside(os.path.join(vault, os.path.expanduser(arg)), vault)
-
-
-GH_REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
-
-
-def gh_repo_value(args, i):
-    """The repository a gh option at args[i] names, in any spelling (-R x, -Rx, -R=x, --repo x, --repo=x), or None."""
-    a = args[i]
-    for flag in ('--repo', '-R'):
-        if a == flag:
-            return args[i + 1] if i + 1 < len(args) else ''
-        if a.startswith(flag + '='):
-            return a[len(flag) + 1:]
-        if flag == '-R' and a.startswith('-R'):
-            return a[2:]
-    return None
-
-
-def remote(arg):
-    """A URL or a host-qualified target: gh would talk to that host instead of GitHub's API."""
-    return '://' in arg or arg.startswith('//')
-
-
+# Jobs may not create git, Claude, editor or Obsidian files anywhere in the vault (a nested .git/config runs code at the next
+# git command; a nested CLAUDE.md becomes instructions for later jobs).
 NESTED_PROTECTED = {'.git', '.claude', '.obsidian', '.vscode', '.github', '.control-tower', '.control-tower-backup'}
 NESTED_PROTECTED_FILES = {'claude.md', 'claude.local.md', '.mcp.json'}
-NO_PATH_CHECK = {'gh', 'tr', 'date'}  # their operands are API paths, character sets or formats, never files
-MAX_COMMAND = 8000
-
-
-def segment_reason(seg, vault, extra_commands=()):
-    """One simple command (no separators): its environment prefix, command name, options and operands."""
-    while seg and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', seg[0]):
-        if UNSAFE_ENV.match(seg[0].split('=', 1)[0]):
-            return f'environment variable {seg[0].split("=", 1)[0]} can change what a command runs'
-        seg = seg[1:]
-    if not seg:
-        return None
-    cmd, args = seg[0], seg[1:]
-    if '/' in cmd:
-        return f'commands are called by name, not by path: {cmd}'
-    if cmd not in JOB_COMMANDS and cmd not in extra_commands:
-        return f'"{cmd}" is not a command jobs may run'  # the allow rules should already refuse it: defence in depth
-    rule = JOB_COMMANDS.get(cmd, {})
-    if rule.get('no_global_options') and args and args[0].startswith('-'):
-        return f'{cmd}: no option before the subcommand ({args[0]})'
-    def value_problem(value):
-        if cmd == 'gh':
-            return remote(value) and f'gh: only GitHub API paths, not hosts or URLs ({value})'
-        if cmd in NO_PATH_CHECK:
-            return None
-        if re.search(r'[*?\[\]]', value):  # the guard cannot expand a pattern exactly like the shell: list files with the Glob tool
-            return f'{cmd}: file patterns are not allowed in job commands ({value}); use the Glob tool'
-        return outside_vault(value, vault) and f'{cmd}: path outside the vault: {value}'
-    operands, i = [], 0
-    while i < len(args):
-        a = args[i]
-        if REDIRECT.match(a):
-            target = args[i + 1] if i + 1 < len(args) else ''
-            if a in ('<', '0<'):
-                if outside_vault(target, vault):
-                    return f'reads outside the vault: {target}'
-            elif a.rstrip('0123456789') in ('>', '>>') and target == '/dev/null':
-                pass
-            elif a in ('>&', '2>&', '1>&') and target in ('1', '2'):
-                pass  # 2>&1 style: duplicates a stream, opens no file
-            else:
-                return f'redirection {a} {target}: jobs write files with the Edit tool, inside the vault'
-            i += 2
-            continue
-        if BRACE_EXPANSION.search(a):
-            return f'{cmd}: brace expansion is not allowed in jobs ({a})'  # the shell would turn it into other words
-        if cmd == 'gh' and a.startswith('-') and not a.startswith(('--', '-R')) and 'R' in a:
-            return f'gh {a}: give -R on its own (owner/name), not inside a group of options'
-        repo = gh_repo_value(args, i) if cmd == 'gh' else None
-        if repo is not None and not GH_REPO.match(repo):
-            return f'gh: only owner/name repositories on GitHub ({repo or "missing"})'
-        if a.startswith('--'):
-            name, eq, value = a.partition('=')
-            if any(name == o or name.startswith(o) for o in rule.get('long', ())):
-                return f'{cmd} {name}: writes a file, runs code or sends data'
-            if eq and value and (path_like(value) or cmd == 'gh'):
-                problem = value_problem(value)  # `--contents=/etc/hosts`, `--repo=https://host/...`
-                if problem:
-                    return problem
-        elif a.startswith('-') and len(a) > 1 and not a[1:].isdigit():
-            short = rule.get('short', '')
-            # any refused letter anywhere in the token (`-o`, `-ofile`, `-uo`, `-k1o`, `-XPOST`): conservative on purpose
-            if set(a[1:]) & set(short):
-                return f'{cmd} {a}: writes a file, runs code or sends data'
-            if a in rule.get('value_options', ()):
-                i += 2
-                continue
-        else:
-            if any(re.search(r'(^|[^A-Za-z_])' + re.escape(w) + r'($|[^A-Za-z_])', a) for w in rule.get('refuse_words', ())):
-                return f'{cmd}: "{a}" can expose the environment or files'
-            if a in rule.get('no_operand', ()):
-                return f'{cmd} {a} is not allowed in jobs'
-            if not (cmd == 'jq' and not operands):  # jq's first operand is its filter, not a file
-                problem = value_problem(a)
-                if problem:
-                    return problem
-            operands.append(a)
-        i += 1
-    if 'max_operands' in rule and len(operands) > rule['max_operands']:
-        return f'{cmd}: an extra operand is an output file'
-    return None
-
-
-def command_reason(cmd, vault, extra_commands=()):
-    """Run-time check of every simple command in a Bash call. Fails closed on what it cannot parse."""
-    if len(cmd) > MAX_COMMAND:
-        return 'command too long to check'
-    if re.search(r'[`$\n\r]', cmd):  # $VAR, $(...), backticks: the path the shell will use is not the text the guard reads
-        return 'variables, command substitution or several lines'
-    if re.search(r'[{}]', cmd) and not re.fullmatch(r'\s*jq\s.*', cmd, re.S):
-        return 'braces are only allowed in a single jq command'  # raw text: brace expansion in any quoting or nesting
-    try:
-        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
-        lex.whitespace_split = True
-        lex.commenters = ''
-        tokens = list(lex)
-    except ValueError:
-        return 'cannot parse this command'
-    seg = []
-    for tok in tokens + [';']:
-        if re.fullmatch(r'[;&|<>()]+', tok) and tok not in SEPARATORS and not REDIRECT.match(tok):
-            return f'shell syntax "{tok}" is not allowed in jobs'  # subshells, process substitution <( >(, anything unknown
-        if tok in SEPARATORS:
-            reason = segment_reason(seg, vault, extra_commands)
-            if reason:
-                return reason
-            seg = []
-        else:
-            seg.append(tok)
-    return None
 
 
 def real(path):
@@ -388,7 +218,7 @@ def own_tool_result(path, event):
     return inside(path, folder) and not os.path.islink(path)
 
 
-def check(event, vault, extra_commands=()):
+def check(event, vault):
     """Return a human-readable reason when the call must be blocked, else None. One rule per tool family."""
     tool = event.get('tool_name', '')
     inp = event.get('tool_input') or {}
@@ -397,7 +227,7 @@ def check(event, vault, extra_commands=()):
         for rx, reason in BASH_RULES:
             if re.search(rx, cmd, re.I):
                 return f'{reason}: {cmd[:120]}'
-        reason = date_reason(cmd) or command_reason(cmd, vault, extra_commands)
+        reason = date_reason(cmd)
         return f'{reason}: {cmd[:120]}' if reason else None
     if tool in ('Glob', 'Grep'):
         if tool == 'Grep' and inp.get('path') and not inp.get('glob') and \
@@ -419,12 +249,10 @@ def check(event, vault, extra_commands=()):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--vault', required=True)
-    ap.add_argument('--commands', default='', help='commands the user trusts, comma-separated (from the answers)')
     args = ap.parse_args()
-    extra = tuple(c for c in args.commands.split(',') if re.fullmatch(r'[a-z0-9][a-z0-9._-]*', c))
     try:
         event = json.load(sys.stdin)
-        reason = check(event, args.vault, extra)
+        reason = check(event, args.vault)
     except Exception as exc:  # fail closed: an event the guard cannot read is refused (exit 1 would let it through)
         print(f'BLOCKED by control-tower guard: cannot check this call ({type(exc).__name__})', file=sys.stderr)
         sys.exit(2)
