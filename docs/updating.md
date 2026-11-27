@@ -58,7 +58,7 @@ Delete the `.control-tower/updates/<date>/` folder once you are done. Until a fi
 
 ## Adding a pack or a tool later
 
-Edit `.control-tower/answers.json` (add the pack to `packs`, or set a tool under `tools`), then run the update. New files are added; nothing you wrote is touched. Removing a pack does not delete its files: archive them yourself if you no longer need them.
+In Claude, in your vault, type `/control-tower` and say what you want in your own words: "add the product profile", "I moved from Jira to Linear", "move the triage to 9:00", "stop the debt review". Claude shows what changes (reports added or removed, what they may use) and applies it after your yes. New files are added; nothing you wrote is touched. Removing a profile does not delete its notes.
 
 ## With the guided installer
 

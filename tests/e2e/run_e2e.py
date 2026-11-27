@@ -91,6 +91,17 @@ def scenario(packs):
             item = next((i for i in json.loads(r.stdout)['denials'] if i['job'] == 'weekly-digest'), {}) if r.returncode == 0 else {}
             step('a job that still runs date is refused, and date can never be allowed',
                  item.get('rule') == 'Bash(date:*)' and item.get('verdict') == 'never', str(item)[-300:])
+        if 'weekly-metrics' in jobs:  # a change of time through the one door reaches the schedule file
+            r = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'set', '--vault', vault, '--job', 'weekly-metrics',
+                     '--time', '09:00'], env)
+            sys.path.insert(0, os.path.join(ROOT, 'installer'))
+            import install
+            hhmm, _, _ = install.local_time('09:00', 'UTC')
+            h, m = map(int, hhmm.split(':'))
+            sched = os.path.join(ct, 'schedule')
+            text = ''.join(open(os.path.join(d, f)).read() for d, _, fs in os.walk(sched) for f in fs if 'weekly-metrics' in f or f == 'crontab.txt')
+            step('configure.py set --job weekly-metrics --time 09:00 reaches the schedule file', r.returncode == 0 and (
+                f'<integer>{h}</integer>' in text and f'<integer>{m}</integer>' in text or f'{m} {h} * * ' in text), (r.stderr or text)[-300:])
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
         idx = os.path.join(ct, 'routines', 'routines.json')

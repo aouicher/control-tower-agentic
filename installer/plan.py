@@ -447,6 +447,38 @@ def check_permissions(where, rules):
         raise InstallError('\n'.join(problems))
 
 
+def job_capabilities(meta):
+    """(required, optional) capabilities of a job. A plain list means every capability is required."""
+    caps = meta.get('capabilities', [])
+    if isinstance(caps, dict):
+        return list(caps.get('required', [])), list(caps.get('optional', []))
+    return list(caps), []
+
+
+def job_adapters(repo, answers, meta):
+    """{capability: (tool, manifest)} for the job's capabilities whose tool is chosen."""
+    return {c: (answers['tools'][c], jload(os.path.join(repo, 'adapters', c, answers['tools'][c] + '.json')))
+            for c in sum(job_capabilities(meta), []) if answers['tools'].get(c, 'none') != 'none'}
+
+
+def adapter_allow(answers, cap, manifest):
+    """The rules one capability gives a job: its adapter's, plus the answers' `permissions` for it."""
+    return manifest.get('permissions_allow', []) + list((answers.get('permissions') or {}).get(cap, []))
+
+
+def unreachable_servers(adapters, answers, allow):
+    """(capability, tool) of the job's MCP adapters with no read tool allowed: none from the capability itself, and no MCP
+    rule of the job on a server other than the ones its other adapters use."""
+    rules = {c: adapter_allow(answers, c, man) for c, (_, man) in adapters.items()}
+    server = lambda r: MCP_TOOL.match(r).group(1) if MCP_TOOL.match(r) else None
+    out = set()
+    for cap, (tool, man) in adapters.items():
+        others = {server(r) for c in adapters if c != cap for r in rules[c]} - {None}
+        if man.get('access') == 'mcp' and not rules[cap] and not any(server(r) and server(r) not in others for r in allow):
+            out.add((cap, tool))
+    return out
+
+
 def describe_rules(rules, network=()):
     """Plain-language summary of what rules let a job use: {'commands': [...], 'mcp_tools': [...], 'web': [...]}."""
     out = {'commands': [], 'mcp_tools': [], 'web': []}
