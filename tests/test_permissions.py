@@ -273,7 +273,8 @@ class CommandHostsTests(unittest.TestCase):
                         {'twg': {'network': ['app.localhost']}}, {'twg': {'network': ['metadata.google.internal']}},
                         {'twg': {'network': ['a' * 64 + '.com']}}, {'twg': {'network': ['example.com.']}},
                         {'twg': {'allow_write': ['~/.cache/']}}, {'twg': {'allow_write': ['~/.cache/*']}},
-                        {'twg': {'allow_write': ['~/.cache/twg/../../.ssh']}}, {'twg': {'allow_write': ['~/Library/Logs']}}):
+                        {'twg': {'allow_write': ['~/.cache/twg/../../.ssh']}}, {'twg': {'allow_write': ['~/Library/Logs']}},
+                        {'twg': {'allow_write': ['~/.cache/zsh']}}, {'twg': {'allow_write': ['~/.cache/twg/plugins']}}):
                 with self.subTest(commands=bad), self.assertRaises(install.InstallError):
                     install.install(dict(a, commands=bad), dry_run=True)
 

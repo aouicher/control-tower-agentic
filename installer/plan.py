@@ -157,6 +157,10 @@ def command_problem(name, entry):
     why = permission_problem(f'Bash({name}:*)')
     if why:
         return f'"{name}" can never be allowed: {why}'
+    own = [w for w in entry.get('allow_write', []) if not (isinstance(w, str) and w.rstrip('/').rsplit('/', 1)[-1] == name
+                                                           and w.rstrip('/').rsplit('/', 1)[0] + '/' in SANDBOX_WRITABLE)]
+    if own:  # a command writes only in its own folder: ~/.cache/<name>, never another tool's (a code cache) or a deeper one
+        return f'"commands" "{name}" may write only in its own folder, for example ~/.cache/{name}'
     return job_meta_problem({'network': entry.get('network', []), 'sandbox_allow_write': entry.get('allow_write', [])})
 
 
