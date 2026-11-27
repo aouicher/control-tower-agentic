@@ -471,7 +471,7 @@ def cmd_choices(args):
             seen = jload(os.path.join(ct_home(data), 'probe.json'), {})
             status = {s.get('name'): s.get('status') for s in seen.get('servers', [])}.get(args.server)
             if status != 'connected':
-                again = f'python3 {os.path.abspath(__file__)} probe --vault {args.vault} --server {args.server}'
+                again = shlex.join(['python3', os.path.abspath(__file__), 'probe', '--vault', args.vault, '--server', args.server])
                 print(f'error: the probe saw {args.server} as {status}: run {again} once it works' if status
                       else f'error: the probe has not seen {args.server}: run {again} first', file=sys.stderr)
                 return 2
