@@ -6,7 +6,7 @@ Claude Code behaviours the kit relies on, checked with the real CLI rather than 
 CT_REAL_CLAUDE=1 python3 tests/e2e/smoke_real_claude.py --facts --save-init tests/e2e/fixtures/init_message.json
 ```
 
-Each check runs in a temporary folder with Haiku, `claude -p --permission-mode dontAsk --setting-sources project`, the mode the job runner uses. It adds no server and changes no setting (Claude Code keeps its usual session transcripts). The last run made 14 calls for $0.08. `tests/e2e/facts_mcp_server.py` is a local test MCP server with one read tool and one action tool.
+Each check runs in a temporary folder with Haiku, `claude -p --permission-mode dontAsk --setting-sources project`, the mode the job runner uses. It adds no server and changes no setting (Claude Code keeps its usual session transcripts). The last run made 16 calls for $0.07. `tests/e2e/facts_mcp_server.py` is a local test MCP server with one read tool and one action tool.
 
 Last run: Claude Code 2.1.332, macOS, 2026-11-27.
 
@@ -21,6 +21,9 @@ Last run: Claude Code 2.1.332, macOS, 2026-11-27.
 | F5. With `dontAsk`, a prefix rule covers a redirection. | Pass (answer: no) | `Bash(echo f5:*)` refuses `echo f5 > f5.txt`; the file is not written. |
 | F6. A skill's `allowed-tools` grants tools to a job. | Pass (answer: no) | A skill with `allowed-tools: Bash(echo f6:*)`, run through `Skill`, is refused the command. |
 | F7. The first `system`/`init` message of `--output-format stream-json --verbose` lists the MCP servers and tools a job sees. | Pass, with a limit | Servers from `.mcp.json` are listed. claude.ai connectors load asynchronously and are often missing from `init` (present in only a few runs); with F2 failing, jobs cannot use them anyway. |
+| F8b. The result of a command the sandbox stopped is marked `is_error` and ends with its `<sandbox_violations>` block. | Pass | The runner reads blocked hosts only from such results. |
+| F9. A `${NAME}` in the `env` of a server given with `--mcp-config` is filled from the environment of the run. | Pass | The test server answers the value of a variable set only in the environment of `claude`. The adapters that need a key rely on it. |
+| F10. Under `--output-format stream-json`, a refusal of the guard hook reaches the runner. | Pass, not on stderr | The call is a permission denial, and its tool result is an error that starts with `PreToolUse:<tool> hook error: [<hook command>]: BLOCKED by control-tower guard: <reason>`; stderr holds nothing. The runner labels the denial of that id as the guard's, with its reason. |
 | F8. When the sandbox blocks a command's network access, the blocked host is visible. | Pass | The command's tool result, in the tool results of `--output-format stream-json` (which the runner reads), starts with `Exit code 1` and ends with `<sandbox_violations> deny network-outbound api.github.com:443 (user denied) </sandbox_violations>`. |
 
 Hosts the known command-line tools tried first, each run in the sandbox with no host allowed: the host is the one named in the sandbox's refusal (`deny network-outbound <host>:443`).
@@ -36,8 +39,7 @@ Only the first blocked host shows: once it is allowed, a command may need more. 
 ## Not checked by the script
 
 - F2 when the job is started by launchd, outside a login shell.
-- In stream-json, a Bash result the sandbox stopped is marked `is_error` and ends with its `<sandbox_violations>` block: the runner reads blocked hosts only from such results, so if either is not so, no host is reported (the diagnosis says less, nothing is allowed).
-- `${NAME}` references in a `--mcp-config` file are filled from the environment, as Claude Code documents for `.mcp.json` (the adapters that need a key rely on it).
+- How an MCP server that needs a sign-in shows in the init message (`needs-auth` is assumed; without it, the diagnosis falls back to the error text).
 - A6: on a Mac without developer tools, the first `git` or `python3` call opens the dialog that installs them, Python 3.9 or newer included.
 - A7: the Claude desktop app lists the vault folder in its recent folders after a session on it.
 
@@ -47,4 +49,4 @@ Only the first blocked host shows: once it is allowed, a command may need more. 
 - claude.ai connectors, Gmail included, cannot be used by local jobs (F2). Scheduled use of a connector needs a cloud routine on claude.ai.
 - Interactive approvals (F4) and skills (F6) cannot widen a job.
 - A prefix rule does not cover a redirection (F5); the sandbox stays the boundary for what an allowed command does.
-- To show a blocked host to the user, the runner must read the tool results of `stream-json` (F8).
+- To show a blocked host to the user, or the guard's refusals, the runner reads the tool results of `stream-json` (F8, F8b, F10).

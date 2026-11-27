@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -26,7 +27,7 @@ sys.path.insert(0, os.path.join(ROOT, 'installer'))
 sys.path.insert(0, os.path.join(ROOT, 'scheduler'))
 import install  # noqa: E402
 import plan  # noqa: E402
-from run_job import blocked_hosts, init_of, messages, result_of, tool_output, tool_results  # noqa: E402  the runner's own stream parser
+from run_job import blocked_hosts, init_of, messages, result_of, tool_output, tool_results, denials as run_job_denials  # noqa: E402  the runner's own stream parser
 
 PROBE = """You are a test probe. Never ask questions. Do exactly these steps, then stop:
 0. Read the file .claude/adapters/code.md with the Read tool and note its first heading.
@@ -127,7 +128,8 @@ def sanitize_init(init, keep=('facts', 'claude.ai Gmail')):
             'tools': list(dict.fromkeys(t for t in init.get('tools') or [] if not t.startswith('mcp__') or t.startswith(prefixes)))}
 
 
-def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None):
+def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None, env=None):
+    """One run in job mode, as stream-json messages; its stderr is kept in claude.stderr."""
     cmd = ['claude', '-p', prompt, '--model', 'haiku', '--max-turns', str(turns), '--permission-mode', 'dontAsk',
            '--setting-sources', sources, '--output-format', 'stream-json', '--verbose']
     if mcp is not None:  # what the job runner passes: only these servers start
@@ -137,7 +139,9 @@ def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None):
         with open(path, 'w') as fh:
             json.dump(settings, fh)
         cmd += ['--settings', path]
-    r = subprocess.run(cmd, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
+    r = subprocess.run(cmd, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300,
+                       env=dict(os.environ, **(env or {})))
+    claude.stderr = r.stderr
     msgs = messages(r.stdout)
     COST.append(float(result_of(msgs).get('total_cost_usd') or 0))
     return msgs
@@ -213,9 +217,30 @@ def facts(save_init=None):
             out.append((fact, False if ran else True if refused else None,
                         ('YES: ' if ran else 'no: ' if refused else 'not attempted: ') + what + ' under dontAsk'))
 
-        r8 = '\n'.join(tool_results(claude(vault, run_prompt('gh api /zen'), job(['Bash(gh api:*)'], sandbox=box(enableWeakerNetworkIsolation=True))))[-1:])
+        m8 = claude(vault, run_prompt('gh api /zen'), job(['Bash(gh api:*)'], sandbox=box(enableWeakerNetworkIsolation=True)))
+        r8 = '\n'.join(tool_results(m8, 'Bash')[-1:])
         out.append(('F8', 'api.github.com' in blocked_hosts(r8) or (None if not r8 else False),
                     'blocked host in the sandboxed command output: ' + (r8.strip().replace('\n', ' ')[:200] or 'no output')))
+        failed = [h for r in tool_results(m8, 'Bash', failed=True) for h in blocked_hosts(r)]  # what the runner reads
+        out.append(('F8b', 'api.github.com' in failed or (None if not r8 else False),
+                    'the stopped command\'s result is marked is_error and ends with the block' if failed else
+                    'the blocked host is NOT in a failed command\'s closing block: the runner would report none'))
+
+        marker = 'filled-from-env-' + str(os.getpid())
+        r9 = claude(empty, call, {'permissions': {'allow': ['mcp__facts__get_fact']}}, env={'CT_FACT_VALUE': marker},
+                    mcp={'facts': {'command': sys.executable, 'args': [FACTS_SERVER], 'env': {'FACT_FROM_ENV': '${CT_FACT_VALUE}'}}})
+        out.append(('F9', marker in tool_output(r9) or (False if tool_output(r9) else None),
+                    'a ${NAME} in a --mcp-config server env is ' + ('filled from the environment' if marker in tool_output(r9)
+                                                                    else 'NOT filled: ' + tool_output(r9)[:80])))
+
+        guard = [sys.executable, os.path.join(ROOT, 'scheduler', 'guard.py'), '--vault', vault]
+        hooks = {'PreToolUse': [{'matcher': 'Read', 'hooks': [{'type': 'command', 'command': ' '.join(shlex.quote(x) for x in guard)}]}]}
+        r10 = claude(vault, 'Use the Read tool once on /etc/hosts, then reply DONE.', job(['Read'], hooks=hooks))
+        where = [w for w, text in (('stderr', claude.stderr), ('tool results', tool_output(r10))) if 'BLOCKED by control-tower guard' in text]
+        labeled = [d for d in run_job_denials(result_of(r10), r10, 'now', hooks['PreToolUse'][0]['hooks'][0]['command']) if d['source'] == 'guard']
+        out.append(('F10', bool(labeled) or (False if where else None),
+                    'the guard\'s refusal reaches ' + (' and '.join(where) or 'neither stderr nor the tool results')
+                    + (', and the runner labels it: ' + labeled[0]['reason'][:60] if labeled else ', and the runner does NOT label it')))
         out.append(('hosts:gh', bool(blocked_hosts(r8)) or None, ', '.join(blocked_hosts(r8)) or 'none blocked'))
         tries = {'twg': ('TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql "created >= -1d"',
                          ['Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query:*)', 'Bash(twg jira workitem query:*)'], {}),

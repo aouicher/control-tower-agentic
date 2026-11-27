@@ -80,11 +80,35 @@ def redact(text, tail=False):
     return clean[-300:] if tail else clean[:300]
 
 
-def denials(data, errtxt, at):
-    """What was refused during the run: Claude Code's permission denials (rule missing) and the guard's blocks."""
-    out = []
+def guard_reasons(msgs, hook):
+    """{tool_use_id: reason} for the calls the guard hook (its exact command, from the job's settings) stopped: Claude Code
+    reports each as an error tool result that starts with the hook's message, and as a permission denial of the same id
+    (runtime fact F10)."""
+    stopped = re.compile(r'PreToolUse:[^\s:]+ hook error: \[' + re.escape(hook) + r'\]: ' + re.escape(BLOCKED) + r'(.*)', re.S)
+    out = {}
+    for m in msgs:
+        for b in ((m.get('message') or {}).get('content') or []) if m.get('type') == 'user' else []:
+            match = stopped.match(b.get('content')) if isinstance(b, dict) and b.get('is_error') and isinstance(b.get('content'), str) else None
+            if match:
+                out[b.get('tool_use_id')] = match.group(1).strip()
+    return out
+
+
+def guard_command(settings):
+    """The guard hook's command in a job's settings (the installer writes one), or '' when there is none."""
+    hooks = [h for e in (settings.get('hooks') or {}).get('PreToolUse') or [] for h in e.get('hooks') or []]
+    return next((str(h.get('command')) for h in hooks if 'guard.py' in str(h.get('command'))), '')
+
+
+def denials(data, msgs, at, hook=''):
+    """What was refused during the run: Claude Code's permission denials (a rule missing), and among them the guard's blocks,
+    which no rule can allow. A guard message only labels a call Claude Code reports as refused, so text cannot add one."""
+    out, guarded = [], guard_reasons(msgs, hook) if hook else {}
     for d in data.get('permission_denials') or []:
         if not isinstance(d, dict):
+            continue
+        if d.get('tool_use_id') in guarded:
+            out.append({'tool': 'guard', 'input': '', 'reason': redact(guarded[d['tool_use_id']]), 'source': 'guard', 'at': at})
             continue
         tool, inp = str(d.get('tool_name') or '?'), d.get('tool_input')
         if tool == 'Bash' and isinstance(inp, dict):
@@ -94,9 +118,6 @@ def denials(data, errtxt, at):
         else:
             text = inp or ''
         out.append({'tool': tool, 'input': redact(text), 'reason': 'not allowed for this job', 'source': 'permissions', 'at': at})
-    for line in (errtxt or '').splitlines():
-        if BLOCKED in line:
-            out.append({'tool': 'guard', 'input': '', 'reason': redact(line.split(BLOCKED, 1)[1]), 'source': 'guard', 'at': at})
     return out
 
 
@@ -314,7 +335,7 @@ def main():
         summary += '\n'.join(str(data.get('result', '')).split('\n')[:60])
     else:
         summary = out[:2000]
-    refused = denials(data, errtxt, started)
+    refused = denials(data, msgs, started, guard_command(load(settings)))
     servers = [{'name': str(s.get('name')), 'status': str(s.get('status'))} for s in init_of(msgs).get('mcp_servers') or []
                if isinstance(s, dict) and s.get('status') != 'connected']
     # the sandbox's own refusals: a command it stopped fails; a command that only printed such a block (a ticket) did not

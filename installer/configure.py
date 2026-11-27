@@ -169,6 +169,7 @@ def cmd_denials(args):
         seen, mine = set(), declared(home, answers, job)
         for d in recorded if isinstance(recorded, list) else []:
             for explain, rule in proposals(job, d, allow):
+                rule = None if rule in install.BASE_ALLOW else rule  # every job has these: only the guard refuses them
                 if (rule, explain) not in seen:
                     seen.add((rule, explain))
                     items.append(denial(job, d, explain, rule, answers, table, mine))

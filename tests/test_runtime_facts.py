@@ -32,6 +32,13 @@ class FactsServerTests(unittest.TestCase):
         self.assertEqual(resp[3]['result']['content'][0]['text'], smoke.FACT_VALUE)
         self.assertIn('error', resp[4])
 
+    def test_get_fact_answers_its_variable_when_it_has_one(self):
+        # F9: a `${NAME}` in the server's env reaches it only if Claude Code fills it in
+        req = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'get_fact'}}) + '\n'
+        r = subprocess.run([sys.executable, smoke.FACTS_SERVER], input=req, capture_output=True, text=True, timeout=20,
+                           env=dict(os.environ, FACT_FROM_ENV='filled-in'))
+        self.assertEqual(json.loads(r.stdout)['result']['content'][0]['text'], 'filled-in')
+
 
 class StreamParsingTests(unittest.TestCase):
     def test_init_result_denials_and_tool_output(self):

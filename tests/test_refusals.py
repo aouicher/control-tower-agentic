@@ -60,6 +60,8 @@ class RefusalTests(unittest.TestCase):
         self.assertEqual((items['mcp__Amplitude__get_events']['connection'], items['mcp__Amplitude__get_events']['expected']),
                          ('Amplitude', True), 'the adapter of a tool the job uses is a declared connection')
         self.assertEqual((items['WebFetch']['connection'], items['WebFetch']['expected']), (None, False), 'a page with no address')
+        self.record('weekly-metrics', 'Read')  # a refusal of a rule the job already has can only be the guard's: never offered
+        self.assertEqual(self.by_tool('weekly-metrics')['Read']['verdict'], 'never')
 
     def test_a_command_is_expected_only_in_the_group_it_declares(self):
         def refused_command(cmd):

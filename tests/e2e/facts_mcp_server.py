@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """A tiny stdio MCP server for the runtime-facts checks (tests/e2e/smoke_real_claude.py --facts). It touches nothing.
 
-Two tools: `get_fact` (a read) answers FACT_VALUE, so a check can tell whether the call really ran; `create_fact` (an action)
-answers CREATED. Newline-delimited JSON-RPC on stdin/stdout, standard library only.
+Two tools: `get_fact` (a read) answers FACT_VALUE, or the variable FACT_FROM_ENV when the server was started with one, so a
+check can tell whether the call really ran and what its environment held; `create_fact` (an action) answers CREATED. Newline-delimited JSON-RPC on stdin/stdout, standard library only.
 """
 import json
+import os
 import sys
 
 FACT_VALUE = 'fact-value-7f3a'
@@ -26,7 +27,7 @@ def answer(req):
         result = {'tools': TOOLS}
     elif method == 'tools/call':
         name = (req.get('params') or {}).get('name')
-        text = {'get_fact': FACT_VALUE, 'create_fact': 'CREATED'}.get(name)
+        text = {'get_fact': os.environ.get('FACT_FROM_ENV') or FACT_VALUE, 'create_fact': 'CREATED'}.get(name)
         if text is None:
             return {'jsonrpc': '2.0', 'id': rid, 'error': {'code': -32602, 'message': f'unknown tool {name}'}}
         result = {'content': [{'type': 'text', 'text': text}]}

@@ -205,11 +205,15 @@ if mode == "authfail":
     sys.stderr.write("x" * 3000 + " MCP server Amplitude: authentication required (401)")
     sys.exit(1)
 out = {"type": "result", "result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
-if mode == "denied":
+if mode == "denied":  # as Claude Code 2.1.332 reports a guard refusal: an is_error tool result and a permission denial
+    blocked = "PreToolUse:Bash hook error: [python3 guard.py --vault '/notes [work]']: BLOCKED by control-tower guard: git write operation: git push"
+    print(json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": "t3", "is_error": True, "content": blocked},
+        {"type": "tool_result", "tool_use_id": "t4", "is_error": True, "content": blocked}]}}))  # t4 was not refused: printed text
     out["permission_denials"] = [
         {"tool_name": "Bash", "tool_use_id": "t1", "tool_input": {"command": "GH_TOKEN=s3cr3t twg jira workitem query " + "x" * 400}},
-        {"tool_name": "mcp__slack__search", "tool_use_id": "t2", "tool_input": {"query": "launch", "api_token": "s3cr3t"}}]
-    sys.stderr.write("BLOCKED by control-tower guard: git write operation: git push\\n")
+        {"tool_name": "mcp__slack__search", "tool_use_id": "t2", "tool_input": {"query": "launch", "api_token": "s3cr3t"}},
+        {"tool_name": "Bash", "tool_use_id": "t3", "tool_input": {"command": "git push"}}]
 print(json.dumps(out))
 '''
 
@@ -231,7 +235,8 @@ class RunJobTests(unittest.TestCase):
         json.dump({'vault': self.vault, 'claude_bin': 'claude-does-not-exist', 'timezone': 'UTC'}, open(os.path.join(self.home, 'install.json'), 'w'))
         json.dump({'id': 'demo', 'model': 'sonnet', 'timeout': 30}, open(os.path.join(jd, 'job.json'), 'w'))
         open(os.path.join(jd, 'prompt.md'), 'w').write('Unattended job. Never ask.')
-        json.dump({'permissions': {'allow': [], 'deny': []}}, open(os.path.join(jd, 'settings.json'), 'w'))
+        hooks = {'PreToolUse': [{'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': "python3 guard.py --vault '/notes [work]'"}]}]}
+        json.dump({'permissions': {'allow': [], 'deny': []}, 'hooks': hooks}, open(os.path.join(jd, 'settings.json'), 'w'))
 
     def tearDown(self):
         self.tmp.cleanup()
