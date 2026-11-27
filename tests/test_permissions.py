@@ -24,7 +24,7 @@ class PolicyTests(unittest.TestCase):
                   'mcp__claude_ai_acme-assistant__sonarqube_get_issues', 'mcp__rollbar__list-projects', 'WebFetch(domain:status.acme.test)',
                   'Bash(gh pr list:*)', 'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(sort:*)',
                   'Bash(jq .items)', 'Bash(twg jira workitem query *)', 'Bash(twg jira:*)', 'Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query *)',
-                  'Bash(slackcli conversations unread *)', 'Bash(slackcli conversations:*)', 'Bash(acme-cli status:*)', 'Bash(cat:*)']
+                  'Bash(slackcli conversations unread *)', 'Bash(slackcli conversations:*)', 'Bash(acme-cli status:*)']
     NEVER = ['Bash', 'Bash(*)', 'Bash()', 'Bash(:*)', 'Write', 'Edit', 'Edit(//etc/**)', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch',
              'WebFetch(domain:*)', 'WebFetch(domain:a b)', 'mcp__*', 'mcp__acme', 'mcp__acme__*', 'mcp__acme__x__get',
              'mcp__acme__create_issue', 'mcp__acme__createIssue', 'mcp__acme__issues.update', 'mcp__slack__chat-postMessage',
@@ -34,7 +34,7 @@ class PolicyTests(unittest.TestCase):
              'Bash(/bin/sh -c x)', 'Bash(git push:*)', 'Bash(git commit:*)', 'Bash(git:*)', 'Bash(git -c core.pager=sh log)',
              'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(echo $(id))', 'Bash(PAGER=sh git log:*)',
              'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(HTTPS_PROXY=x twg x)', 'Bash(GH_HOST=x gh pr list)', 'Bash(LD_PRELOAD=x ls)',
-             'Bash(git log {{ct.team}}:*)', 'Agent', 'Task']
+             'Bash(git log {{ct.team}}:*)', 'Agent', 'Task', 'Bash(cat:*)', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)']
 
     def test_acceptable_rules(self):
         for rule in self.ACCEPTABLE:
@@ -45,6 +45,27 @@ class PolicyTests(unittest.TestCase):
         for rule in self.NEVER:
             with self.subTest(rule=rule):
                 self.assertIsNotNone(plan.permission_problem(rule))
+
+    def test_generic_file_readers_are_never_granted(self):
+        # jobs read with Read, Grep and Glob, which the guard keeps in the vault; GNU `date -f FILE` reads any file
+        for rule in ('Bash(date:*)', 'Bash(date -f x)', 'Bash(date)', 'Bash(cat:*)', 'Bash(ls:*)', 'Bash(ls -la)', 'Bash(head -n 5 x)',
+                     'Bash(tail:*)', 'Bash(less:*)', 'Bash(more:*)', 'Bash(grep -r x)', 'Bash(rg:*)', 'Bash(strings:*)', 'Bash(od:*)',
+                     'Bash(xxd:*)', 'Bash(base64:*)', 'Bash(tar:*)', 'Bash(zip:*)', 'Bash(unzip:*)', 'Bash(open:*)', 'Bash(A=1 cat x)',
+                     'Bash(gdate -f x)', 'Bash(gls:*)', 'Bash(gcat:*)', 'Bash(ggrep:*)', 'Bash(egrep:*)', 'Bash(fgrep:*)', 'Bash(zcat:*)',
+                     'Bash(zgrep:*)', 'Bash(bat:*)', 'Bash(nl:*)', 'Bash(tac:*)'):
+            with self.subTest(rule=rule):
+                why = plan.permission_problem(rule)
+                self.assertIsNotNone(why)
+                self.assertIn('Read, Grep and Glob', why)
+        self.assertIn('Run context', plan.permission_problem('Bash(date +%F)'))
+
+    def test_no_job_gets_a_command_rule_by_default(self):
+        self.assertFalse([r for r in install.BASE_ALLOW if r.startswith('Bash')])
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, ['mcp__acme__get_issues'])])
+            install.install(a, log=lambda *x: None)
+            self.assertEqual([r for r in settings(a)['permissions']['allow'] if r.startswith('Bash')], [],
+                             'a job whose pack and adapters declare no command gets no Bash rule')
 
     def test_every_public_rule_passes(self):
         import glob
@@ -243,6 +264,23 @@ class GrantByAnsweringTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn(rule, settings(a)['permissions']['allow'])
             self.assertNotIn('acme-brief', json.load(open(os.path.join(v, '.control-tower', 'answers.json'))).get('job_permissions', {}))
+
+    def test_date_is_refused_whoever_asks_and_the_answers_stay_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])])
+            install.install(a, log=lambda *x: None)
+            v, ct = a['vault_path'], a['ct_home']
+            path = os.path.join(v, '.control-tower', 'answers.json')
+            before = open(path, 'rb').read()
+            r = self.cli('grant', '--vault', v, '--job', 'acme-brief', '--rule', 'Bash(date:*)')
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('Run context', r.stderr)
+            self.assertEqual(open(path, 'rb').read(), before, 'answers.json is byte-identical')
+            write(os.path.join(ct, 'logs', 'acme-brief.denials.json'), json.dumps([
+                {'tool': 'Bash', 'input': 'date +%F', 'reason': 'not allowed for this job', 'source': 'permissions', 'at': 'T'}]))
+            item = json.loads(self.cli('list', '--ct-home', ct).stdout)['denials'][0]
+            self.assertEqual((item['rule'], item['verdict']), ('Bash(date:*)', 'never'))
+            self.assertIn('Run context', item['explain'])
 
     def test_narrowest_rule(self):
         sys.path.insert(0, os.path.join(ROOT, 'installer'))

@@ -31,6 +31,7 @@ Some things are refused for every job, even if you say yes. A job runs without y
 |---|---|
 | Writing files outside the vault, or changing the vault's rules, templates and settings | A job could break your setup or change what the next job does. |
 | Running any program it likes: shells, Python, Node, scripts, `curl`, `ssh`, copying or deleting files with shell commands | That would be the same as giving it your whole computer. |
+| Reading files with a command (`cat`, `ls`, `grep`, `head`, `date`...) | Jobs read your notes with Claude's own file tools, which cannot leave the vault, and get the date from the kit. |
 | Sending, posting, creating, updating or deleting anything through a connection (send a message, create a ticket, comment, merge, deploy...) | Jobs only read. Writing on your behalf is for you, in a normal Claude session. |
 | A whole connection or "everything" at once, searching the whole web | Access is given one command, one tool or one web site at a time, so you know exactly what you said yes to. |
 | Git commands that change history (commit, push, reset...) | Jobs read history only. |

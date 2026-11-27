@@ -40,7 +40,7 @@ from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, I
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
 DAYS = {'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0}
-BASE_ALLOW = ['Read', 'Grep', 'Glob', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)']
+BASE_ALLOW = ['Read', 'Grep', 'Glob']  # no command: dates come in the prompt's Run context, files are found with Glob
 BASE_DENY = ['Agent']
 PROTECTED_DIRS, PROTECTED_FILES_CASED = guard_rules.PROTECTED, guard_rules.PROTECTED_FILES_CASED  # one source: scheduler/guard.py
 DAY_ALIASES = {'weekdays': 'mon-fri', 'weekends': 'sat-sun', 'daily': 'mon-sun', 'every day': 'mon-sun', '*': 'mon-sun'}

@@ -390,22 +390,16 @@ class ScheduleTests(unittest.TestCase):
         data = plistlib.loads(install.launchd_plist('com.control-tower.x', args, [1], '08:00', '/tmp/a&b.log').encode())
         self.assertEqual(data['ProgramArguments'][1], args[1])
 
-    def test_guard_blocks_git_internals_and_date_file_reads(self):
+    def test_guard_blocks_git_internals_and_credential_reads(self):
         g = GuardTests('test_hook_protocol_exit_codes')
         g.setUp()
         try:
             for rel in ('.git/hooks/post-commit', '.git/config', '.github/workflows/x.yml'):
                 self.assertIsNotNone(g.tool('Write', os.path.join(g.vault, rel)), rel)
-            for cmd in ('date -f ~/.config/gh/hosts.yml', 'date --file=/etc/passwd', 'date -uf /etc/hosts', 'date -f/etc/hosts',
-                        'date -r /etc/hosts', 'date --reference=/etc/hosts', 'echo x; date -f /etc/hosts', 'cat ~/.claude/.credentials.json',
-                        'echo x\ndate -f /etc/hosts', '/bin/date -f /etc/hosts', 'env date -f /etc/hosts', "sh -c 'date -f /etc/hosts'",
-                        'date -d ; cat /etc/hosts', 'x=`date -f /etc/hosts`', 'date -d "$(cat ~/.ssh/id_rsa)"',
-                        "date '-f' /etc/hosts", 'date "-r" /etc/hosts', 'date +%F # x\ncat /etc/hosts', 'date -f</etc/hosts', 'echo $(date +%F)',
-                        'cat ~/.kube/config'):
+            # date and ls are no longer allowed to any job (the allow-list refuses them): the guard has no date parser left
+            for cmd in ('cat ~/.claude/.credentials.json', 'cat ~/.kube/config', 'date -d "$(cat ~/.ssh/id_rsa)"'):
                 self.assertIsNotNone(g.bash(cmd), cmd)
-            for cmd in ('date', 'date +%F', 'date -u +%Y-%m-%dT%H:%M', 'date "+%d/%m/%Y at %H:%M"', 'date +%G-W%V',
-                        "date -d 'last monday' +%F", 'date -v-7d +%F', 'date -j -v-mon +%F', 'date -I', 'date +%G-W%V && ls'):
-                self.assertIsNone(g.bash(cmd), cmd)
+            self.assertFalse(hasattr(guard, 'date_reason'))
         finally:
             g.tearDown()
 

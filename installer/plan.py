@@ -308,6 +308,11 @@ HOST = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-
 NEVER_COMMANDS = {'sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'python', 'node', 'perl', 'ruby', 'php', 'osascript', 'curl', 'wget',
                   'nc', 'ncat', 'ssh', 'scp', 'sftp', 'rsync', 'cp', 'mv', 'rm', 'dd', 'tee', 'chmod', 'chown', 'sudo', 'su', 'env',
                   'xargs', 'eval', 'exec', 'command', 'source', 'timeout', 'nohup', 'nice', 'find', 'awk', 'sed', 'npx'}
+# generic file readers: a job reads files with Read, Grep and Glob, which the guard keeps inside the vault; any of these could read
+# a file anywhere (GNU `date -f FILE` too). Dates come in the prompt's Run context.
+FILE_READERS = {'date', 'ls', 'cat', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'strings', 'od', 'xxd', 'base64', 'tar', 'zip',
+                'unzip', 'open', 'egrep', 'fgrep', 'zcat', 'zgrep', 'zless', 'zmore', 'bat', 'nl', 'tac',
+                'gdate', 'gls', 'gcat', 'ghead', 'gtail', 'ggrep', 'gtar'}  # GNU coreutils as Homebrew names them
 GIT_READ = {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files', 'describe'}
 UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
                         r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
@@ -373,6 +378,8 @@ def permission_problem(rule):
             return f'the variable {name} can change which program runs'
     if not COMMAND_NAME.match(cmd):
         return 'a command rule must start with a plain command name (no path, no wildcard)'
+    if cmd in FILE_READERS:
+        return 'jobs read files with Read, Grep and Glob, which stay in the vault; dates are in the Run context'
     if cmd in NEVER_COMMANDS or re.sub(r'[0-9.]+$', '', cmd) in NEVER_COMMANDS:
         return f'"{cmd}" can run any code, copy files or reach the network by itself'
     if cmd == 'git' and (not rest or rest[0] not in GIT_READ):
