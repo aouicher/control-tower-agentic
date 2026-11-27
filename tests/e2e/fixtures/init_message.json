@@ -1,0 +1,46 @@
+{
+ "type": "system",
+ "subtype": "init",
+ "claude_code_version": "2.1.332",
+ "permissionMode": "dontAsk",
+ "mcp_servers": [
+  {
+   "name": "facts",
+   "status": "connected",
+   "source": "project"
+  }
+ ],
+ "tools": [
+  "Task",
+  "Artifact",
+  "ArtifactComments",
+  "ArtifactData",
+  "Bash",
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  "DesignSync",
+  "Edit",
+  "EnterWorktree",
+  "ExitWorktree",
+  "ListAgents",
+  "McpTaskCheck",
+  "Monitor",
+  "NotebookEdit",
+  "PublishPlugin",
+  "PushNotification",
+  "Read",
+  "RemoteTrigger",
+  "ReportFindings",
+  "ScheduleWakeup",
+  "SendMessage",
+  "ShareOnboardingGuide",
+  "Skill",
+  "TaskStop",
+  "ToolSearch",
+  "WebSearch",
+  "Write",
+  "mcp__facts__create_fact",
+  "mcp__facts__get_fact"
+ ]
+}
