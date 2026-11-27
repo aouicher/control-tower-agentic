@@ -185,15 +185,17 @@ def tool_output(msgs, tool=None):
     return '\n'.join(tool_results(msgs, tool))
 
 
-def tool_results(msgs, tool=None):
-    """The tool results the model saw (stream-json `user` messages), one text each: every one, or only those of `tool` calls."""
+def tool_results(msgs, tool=None, failed=False):
+    """The tool results the model saw (stream-json `user` messages), one text each: every one, or only those of `tool` calls,
+    and with `failed` only the ones Claude Code marked as errors."""
     calls = {b.get('id') for m in msgs if tool and m.get('type') == 'assistant' for b in ((m.get('message') or {}).get('content') or [])
              if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('name') == tool}
     parts = []
     for m in msgs:
         content = (m.get('message') or {}).get('content') if m.get('type') == 'user' else None
         for block in content if isinstance(content, list) else []:
-            if isinstance(block, dict) and block.get('type') == 'tool_result' and (tool is None or block.get('tool_use_id') in calls):
+            if (isinstance(block, dict) and block.get('type') == 'tool_result' and (tool is None or block.get('tool_use_id') in calls)
+                    and (block.get('is_error') or not failed)):
                 inner = block.get('content')
                 parts.append(inner if isinstance(inner, str) else '\n'.join(str(b.get('text', '')) for b in inner or [] if isinstance(b, dict)))
     return parts
@@ -315,7 +317,8 @@ def main():
     refused = denials(data, errtxt, started)
     servers = [{'name': str(s.get('name')), 'status': str(s.get('status'))} for s in init_of(msgs).get('mcp_servers') or []
                if isinstance(s, dict) and s.get('status') != 'connected']
-    hosts = sorted({h for r in tool_results(msgs, 'Bash') for h in blocked_hosts(r)})  # the sandbox's own refusals only
+    # the sandbox's own refusals: a command it stopped fails; a command that only printed such a block (a ticket) did not
+    hosts = sorted({h for r in tool_results(msgs, 'Bash', failed=True) for h in blocked_hosts(r)})
     why = str(data.get('result', '')) if data.get('is_error') else errtxt or ('' if data else 'no result from Claude Code')
     error = redact(why, tail=True) if failed else ''  # its end says why
     with open(os.path.join(logs, f'{args.job}.run.json'), 'w', encoding='utf-8') as fh:  # the latest run, for the diagnosis

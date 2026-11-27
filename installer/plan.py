@@ -762,10 +762,21 @@ def unreachable_servers(adapters, answers, allow, approved):
 
 
 def connection_of(rule):
-    """What a rule reaches: the MCP server of a tool, the command of a Bash rule, or the site of a WebFetch rule (else None)."""
-    parts = bash_parts(rule)
-    m = re.fullmatch(r'WebFetch\(domain:([^()]+)\)', str(rule))
-    return mcp_server(rule) or (parts[1] if parts else None) or (m.group(1).lower() if m else None)
+    """What a rule reaches, as shown to the user: the MCP server of a tool, the command of a Bash rule, or the site of a
+    WebFetch rule (else None)."""
+    key = connection_key(rule)
+    return key[1].split(' ')[0] if key else None
+
+
+def connection_key(rule):
+    """What a rule reaches, as compared: ('mcp', server), ('cmd', command and its first subcommand word: `gh pr`, never all of
+    `gh`) or ('web', host); None for any other rule. Kinds never match each other."""
+    parts, m = bash_parts(rule), re.fullmatch(r'WebFetch\(domain:([^()]+)\)', str(rule))
+    if mcp_server(rule):
+        return ('mcp', mcp_server(rule))
+    if parts and parts[1]:
+        return ('cmd', ' '.join([parts[1]] + parts[2][:1]))
+    return ('web', m.group(1).lower()) if m else None
 
 
 def describe_rules(rules, network=()):

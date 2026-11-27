@@ -36,6 +36,7 @@ Only the first blocked host shows: once it is allowed, a command may need more. 
 ## Not checked by the script
 
 - F2 when the job is started by launchd, outside a login shell.
+- In stream-json, a Bash result the sandbox stopped is marked `is_error` and ends with its `<sandbox_violations>` block: the runner reads blocked hosts only from such results, so if either is not so, no host is reported (the diagnosis says less, nothing is allowed).
 - `${NAME}` references in a `--mcp-config` file are filled from the environment, as Claude Code documents for `.mcp.json` (the adapters that need a key rely on it).
 - A6: on a Mac without developer tools, the first `git` or `python3` call opens the dialog that installs them, Python 3.9 or newer included.
 - A7: the Claude desktop app lists the vault folder in its recent folders after a session on it.
