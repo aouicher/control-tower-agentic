@@ -132,7 +132,6 @@ def scenario(packs):
         items = [i for i in json.loads(r2.stdout)['denials'] if i['job'] == 'e2e-digest'] if r2.returncode == 0 else []
         step('a report of your own reads its skill; what it was refused comes back in the denials list',
              r.returncode == 0 and [i['tool'] for i in items] == ['WebFetch'], (r.stderr + r2.stderr + str(items))[-300:])
-        jobs.append('e2e-digest')
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
         idx = os.path.join(ct, 'routines', 'routines.json')
