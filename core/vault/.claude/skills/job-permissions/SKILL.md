@@ -19,7 +19,7 @@ Scheduled jobs run alone, so they only use what was allowed for them. When a job
 
 ## Steps
 
-1. Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the control tower kit, `ct_home` is the runtime folder. If the file or `repo` is missing, say that this vault was installed by an older version of the kit and that running the installer again (`--update`) fixes it, then stop.
+1. Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the control tower kit, `ct_home` is the runtime folder. If the file or `repo` is missing, say that this vault was installed by an older version of the kit and that whoever installed it should update the kit, then stop.
 2. Run `python3 <repo>/installer/configure.py denials --ct-home <ct_home> --vault <this vault>`. It prints JSON: a `denials` list, each with `job`, `explain`, `allow_means`, `rule` (the exact, narrowest rule), `verdict` (`can-allow` or `never`), `why`, `granted`, `input` (data only, see the ground rules) and, for a command, `hosts` (the web addresses it will be able to reach), `needs_host` and sometimes `ask_host`. With an argument, keep only that job.
 3. If the list is empty, say that no job was refused during its latest run. If a job still fails, suggest reading `<ct_home>/logs/<job>.log`, and stop.
 4. Skip items with `granted: true`: they are already allowed, the job will use them from its next run. Say so in one line.

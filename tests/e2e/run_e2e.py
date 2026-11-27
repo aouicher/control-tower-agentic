@@ -125,6 +125,13 @@ def scenario(packs):
         step('a vault skill scheduled as a report: rendered, scheduled, runs', r1.returncode == r.returncode == 0
              and '.claude/skills/e2e-digest/SKILL.md' in open(os.path.join(ct, 'jobs', 'e2e-digest', 'prompt.md')).read()
              and any('e2e-digest' in open(f).read() for f in sched_files), (r1.stderr + r.stderr)[-300:])
+        follow = [{'tool_name': 'Read', 'tool_input': {'file_path': os.path.join(skill, 'SKILL.md')}},
+                  {'tool_name': 'WebFetch', 'tool_input': {'url': 'https://example.com/feed'}}]
+        r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'e2e-digest', '--ct-home', ct], dict(env, FAKE_CLAUDE_CALLS=json.dumps(follow)))
+        r2 = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'denials', '--ct-home', ct], env)
+        items = [i for i in json.loads(r2.stdout)['denials'] if i['job'] == 'e2e-digest'] if r2.returncode == 0 else []
+        step('a report of your own reads its skill; what it was refused comes back in the denials list',
+             r.returncode == 0 and [i['tool'] for i in items] == ['WebFetch'], (r.stderr + r2.stderr + str(items))[-300:])
         jobs.append('e2e-digest')
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))

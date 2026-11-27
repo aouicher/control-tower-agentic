@@ -119,6 +119,10 @@ Nothing moves until you confirm, nothing is deleted (old material goes to `_syst
 
 A report always says when data was missing ("not verified", "at least N (truncated)"). Silence never means "all green".
 
+### A report of your own
+
+In Claude, in your vault, say what you want done on its own, for example "every morning, sum up my open tickets", or type `/control-tower` and choose "Automate a report". Claude asks what it should do and where the data comes from (your notes, your connected tools), writes it as a skill of your vault, lets you try it, then asks when it should run. Each run writes `journal/reports/my-<name>-<date>.md`. A report that reads a claude.ai connector (Gmail) runs on claude.ai as a cloud routine, which you create when Claude offers it. To move, stop or remove a report later, ask `/control-tower` to change your setup.
+
 ## A week by profile
 
 ### Marketing lead
