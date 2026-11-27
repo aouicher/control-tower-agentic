@@ -407,6 +407,7 @@ class ProbeAndChoicesTests(unittest.TestCase):
         c = self.choices('--kind', 'read-tools', '--server', 'acme')
         self.assertEqual(c['recommended'], ['mcp__acme__get_issue', 'mcp__acme__list_projects', 'mcp__acme__search_issues'])
         self.assertEqual(c['first']['options'], ['Only the 3 recommended read tools (recommended)', 'All 5 read tools', 'Let me choose', 'None'])
+        self.assertEqual(self.cli('choices', '--vault', self.vault, '--items', 'a', 'b', '--kind', 'read-tools').returncode, 2)
         c = json.loads(self.cli('choices', '--items', 'a', 'b', 'c', 'd', 'e', '--recommended', 'none').stdout)
         self.assertEqual((c['first']['options'][0], c['recommended']), ('All 5', []))
 

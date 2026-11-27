@@ -453,9 +453,10 @@ def pages(items, label, recommended):
 
 def cmd_choices(args):
     """The items of a list the user picks from, split into questions the question tool can show."""
-    never = []
+    never, every = [], lambda items: [] if args.recommended == 'none' else list(items)
     if args.items:
         items, label = list(args.items), ''
+        recommended = every(items)
     else:
         if not args.vault or not args.kind:
             print('error: give --items, or --vault with --kind', file=sys.stderr)
@@ -477,14 +478,13 @@ def cmd_choices(args):
             tools = [t for t in seen.get('tools', []) if MCP_TOOL.match(t) and MCP_TOOL.match(t).group(1) == args.server]
             never = [t for t in tools if permission_problem(t)]  # the same check as a grant: an action tool is never offered
             items, label = [t for t in tools if t not in never], ' read tools'
+            # a plain read verb first: an odd name is offered, never ticked by default
+            recommended = [t for t in items if (name_words(MCP_TOOL.match(t).group(2)) or [''])[0] in READ_VERBS]
         elif args.kind == 'connections':
             items = ['my notes'] + [f'{cap}: {tool}' for cap, tool in sorted((data.get('tools') or {}).items()) if tool != 'none']
-            label = ' connections'
+            label, recommended = ' connections', every(items)
         else:
-            items, label = sorted(data.get('my_jobs') or {}) + ['a new report'], ' reports'
-    recommended = [] if args.kind == 'reports' or args.recommended == 'none' else list(items)
-    if args.kind == 'read-tools':  # a plain read verb first: an odd name is offered, never ticked by default
-        recommended = [t for t in items if (name_words(MCP_TOOL.match(t).group(2)) or [''])[0] in READ_VERBS]
+            items, label, recommended = sorted(data.get('my_jobs') or {}) + ['a new report'], ' reports', []
     first, split = pages(items, label, recommended)
     print(json.dumps({'items': items, 'recommended': recommended, 'never': never, 'first': first, 'pages': split}, indent=2))
     return 0
@@ -515,9 +515,10 @@ def main(argv=None):
     p.add_argument('--server', action='append', help="a server of the vault's .mcp.json to start for the probe (repeatable)")
     p = sub.add_parser('choices', help='a list as questions of at most 4 options (all / let me choose / none, then pages of 4)')
     p.add_argument('--vault')
-    p.add_argument('--kind', choices=('read-tools', 'connections', 'reports'))
+    which = p.add_mutually_exclusive_group()
+    which.add_argument('--kind', choices=('read-tools', 'connections', 'reports'))
+    which.add_argument('--items', nargs='+', help='any other list, item by item')
     p.add_argument('--server', help='with --kind read-tools: the MCP server, as probe saw it')
-    p.add_argument('--items', nargs='+', help='any other list, item by item')
     p.add_argument('--recommended', choices=('all', 'none'), default='all', help='whether every item is the recommended answer')
     p = sub.add_parser('denials', help='refusals of the latest run of every job, explained, with a proposed rule')
     p.add_argument('--ct-home', default='~/.control-tower')
