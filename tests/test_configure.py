@@ -395,7 +395,7 @@ class ProbeAndChoicesTests(unittest.TestCase):
         self.assertNotEqual(self.cli('choices', '--vault', self.vault, '--kind', 'read-tools').returncode, 0, 'read tools need --server')
         r = self.cli('choices', '--vault', self.vault, '--kind', 'read-tools', '--server', 'unprobed')
         self.assertEqual(r.returncode, 2, 'a server the probe did not start is not a server without read tools')
-        self.assertIn('configure.py probe --server unprobed', r.stderr)
+        self.assertIn(f'configure.py probe --vault {self.vault} --server unprobed', r.stderr)
         self.probe_file([], status='failed')
         r = self.cli('choices', '--vault', self.vault, '--kind', 'read-tools', '--server', 'acme')
         self.assertEqual(r.returncode, 2, 'a server that did not start is not a server without read tools')

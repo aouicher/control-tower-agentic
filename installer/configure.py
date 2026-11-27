@@ -471,9 +471,9 @@ def cmd_choices(args):
             seen = jload(os.path.join(ct_home(data), 'probe.json'), {})
             status = {s.get('name'): s.get('status') for s in seen.get('servers', [])}.get(args.server)
             if status != 'connected':
-                print(f'error: the probe saw {args.server} as {status}: run configure.py probe --server {args.server} once it works'
-                      if status else f'error: the probe has not seen {args.server}: run configure.py probe --server {args.server} first',
-                      file=sys.stderr)
+                again = f'configure.py probe --vault {args.vault} --server {args.server}'
+                print(f'error: the probe saw {args.server} as {status}: run {again} once it works' if status
+                      else f'error: the probe has not seen {args.server}: run {again} first', file=sys.stderr)
                 return 2
             tools = [t for t in seen.get('tools', []) if MCP_TOOL.match(t) and MCP_TOOL.match(t).group(1) == args.server]
             never = [t for t in tools if permission_problem(t)]  # the same check as a grant: an action tool is never offered
