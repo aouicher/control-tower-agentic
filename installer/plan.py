@@ -376,9 +376,9 @@ ACTION_WORDS = {'send', 'post', 'create', 'update', 'delete', 'remove', 'write',
                 'press', 'kill', 'terminate', 'stop', 'start', 'restart', 'push', 'commit', 'import', 'apply', 'grant', 'revoke',
                 'reset', 'purge', 'enable', 'disable', 'rename', 'replace'}
 # not 'execute' or 'run': read queries use them (execute_log_insights_query); a tool named run_query is an accepted risk.
-# These are also nouns (get_commit, list_sql_warehouses): they count only as the first word of a tool name. Not 'type':
-# browser_type types into a page, so a read such as getJiraIssueTypeMetaWithFields is refused too.
-FIRST_WORD_ACTIONS = {'commit', 'start', 'draft', 'sql'}
+# These are also nouns: after a read verb they name what is read (get_commit, list_sql_warehouses, getJiraIssueType...),
+# anywhere else they act (execute_sql, git_commit, pod_start, browser_type).
+NOUN_ACTIONS = {'commit', 'start', 'draft', 'sql', 'type'}
 # A list of action words is never complete: only a tool whose name starts with one of these is offered as recommended.
 READ_VERBS = {'get', 'list', 'search', 'describe', 'read', 'fetch', 'query', 'find', 'view', 'show', 'lookup', 'count', 'analyze'}
 
@@ -427,7 +427,7 @@ def permission_problem(rule):
         if not m or '__' in rule.split('__', 2)[2]:
             return 'MCP access is granted one tool at a time (mcp__<server>__<tool>), never a whole server or a wildcard'
         words = name_words(m.group(2))
-        acts = sorted((set(words) & ACTION_WORDS - FIRST_WORD_ACTIONS) | (set(words[:1]) & FIRST_WORD_ACTIONS))
+        acts = sorted(set(words) & ACTION_WORDS - (NOUN_ACTIONS if words[:1] and words[0] in READ_VERBS else set()))
         return f'this tool acts on your behalf ({", ".join(acts)}): jobs only read' if acts else None
     if rule in ('Bash', 'Bash()') or not rule.startswith('Bash('):
         return 'not a job permission (jobs may use Read, Grep, Glob, one command, one MCP tool or one web site)'
