@@ -105,7 +105,7 @@ python3 installer/install.py --answers my-answers.json --runtime-only
 | `doctor.py` | checks the vault and the runtime | checks the runtime only |
 | `uninstall.py` | removes the runtime and the kit files you did not edit | removes the runtime only |
 
-Jobs run inside your vault and load its project settings (`<vault>/.claude/settings.json`). If that file allows commands or defines hooks for your own sessions, every unattended job inherits them: the installer warns about it in runtime-only mode, and `doctor.py` flags the file. Keep it empty and put your own rules in your user settings.
+Jobs run inside your vault and load its project settings (`<vault>/.claude/settings.json`). If that file allows commands or defines hooks for your own sessions, every unattended job would inherit them: the runner refuses to start any job while it does, the installer warns about it in runtime-only mode, and `doctor.py` fails. Keep it empty and put your own rules in your user settings.
 
 Public-pack jobs expect the kit's folders (`journal/reports/`, `work/`...). In runtime-only mode the installer warns when you install them: use them only if your vault has the same layout, or write your own jobs in a private pack.
 

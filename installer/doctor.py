@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
-from plan import REPO, CorePolicy, core_files, mcp_file_findings, risky_settings, skill_problem  # noqa: E402
+from plan import REPO, CorePolicy, core_files, mcp_file_findings, skill_problem, vault_settings_findings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -184,11 +184,8 @@ def check_runtime(r, vault, ct_home):
         r.add('FAIL' if missing else 'ok', 'sandbox tools',
               f'{" and ".join(missing)} missing: {", ".join(sandboxed)} run commands and refuse to run without the sandbox; '
               'installing bubblewrap and socat is a one-time task for an administrator' if missing else 'bwrap and socat found')
-    for risky in ('.claude/settings.json', '.claude/settings.local.json'):
-        p = os.path.join(vault, risky)
-        keys = risky_settings(p) if os.path.isfile(p) else []
-        if keys:
-            r.add('warn', f'vault file {risky}', f'sets {", ".join(keys)}: unattended jobs load it too, so it can widen what they do')
+    for rel, level, text in vault_settings_findings(vault):
+        r.add(level, f'vault file {rel}', text)
     answers = install.jload(os.path.join(vault, '.control-tower', 'answers.json'), {})
     for level, text in mcp_file_findings(vault, answers):
         r.add(level, 'vault file .mcp.json', text)

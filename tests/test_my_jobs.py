@@ -18,7 +18,9 @@ CONFIGURE = os.path.join(ROOT, 'installer', 'configure.py')
 SKILL = '---\nname: {name}\ndescription: A digest of my notes.\n---\n\n# Digest\n\nSummarise the notes of the week.\n'
 
 
-class MyJobTests(unittest.TestCase):
+class VaultCase(unittest.TestCase):
+    """An installed developer vault, scheduled for launchd in a temporary folder, with a skill `digest`."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.la = os.path.join(self._tmp.name, 'LaunchAgents')
@@ -59,6 +61,8 @@ class MyJobTests(unittest.TestCase):
                      '--accept-access')
         self.assertEqual(r.returncode, 0, r.stderr)
 
+
+class MyJobTests(VaultCase):
     def test_a_scheduled_skill_is_a_job_like_any_other(self):
         self.mail_connection()
         r = self.cli('add-job', '--skill', 'digest', '--uses', 'mail', '--days', 'mon', '--time', '07:30', '--accept-access')
@@ -169,6 +173,80 @@ class MyJobTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 with self.assertRaises(install.InstallError):
                     install.install(dict(self.a, my_jobs=bad), dry_run=True, log=lambda *x: None)
+
+
+class CloudReportTests(VaultCase):
+    """A report that runs on claude.ai as a cloud routine: rendered from the same prompt, listed for the routine flow, never
+    scheduled on this computer. claude.ai connectors (which jobs on this computer cannot use) are its sources."""
+
+    def routines(self):
+        return {r['key']: r for r in json.load(open(os.path.join(self.ct, 'routines', 'routines.json')))}
+
+    def test_a_cloud_report_is_a_routine_with_its_connectors(self):
+        self.assertEqual(self.cli('add-connection', '--id', 'gmail', '--connector', 'Gmail', '--accept-access').returncode, 0)
+        r = self.cli('add-job', '--skill', 'digest', '--runs-on', 'cloud', '--uses', 'gmail', 'code', '--days', 'mon', '--time', '07:00',
+                     '--accept-access')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.saved()['my_jobs']['digest'], {'skill': 'digest', 'uses': ['code', 'gmail'], 'runs_on': 'cloud'})
+        entry = self.routines()['my--digest']
+        self.assertEqual(entry['connectors_required'], {'code': 'github', 'gmail': 'Gmail'})
+        self.assertEqual((entry['days'], entry['time'], entry['vault']), ('mon', '07:00', 'write'))
+        prompt = open(entry['prompt_file'], encoding='utf-8').read()
+        self.assertIn('.claude/skills/digest/SKILL.md', prompt)
+        self.assertIn('journal/reports/my-digest-YYYY-MM-DD.md', prompt)
+        self.assertIn('git add -- ', prompt, 'a routine on a vault repository commits its note only, then pushes it')
+        self.assertNotIn('Run context', prompt, 'no runner on claude.ai writes one')
+        self.assertNotIn('{{', prompt)
+        self.assertFalse(os.path.exists(os.path.join(self.ct, 'jobs', 'digest')), 'nothing runs it on this computer')
+        self.assertFalse(os.path.exists(os.path.join(self.ct, 'schedule', 'launchd', 'com.control-tower.digest.plist')))
+        r = subprocess.run([sys.executable, os.path.join(ROOT, 'installer', 'uninstall.py'), '--ct-home', self.ct, '--vault', self.vault,
+                            '--launch-agents-dir', self.la, '--no-launchctl'], capture_output=True, text=True)
+        self.assertIn('delete on claude.ai', r.stdout)
+        self.assertIn('Your report digest', r.stdout)
+
+    def test_a_computer_report_is_unchanged_and_sources_match_where_it_runs(self):
+        self.assertEqual(self.cli('add-connection', '--id', 'gmail', '--connector', 'Gmail', '--accept-access').returncode, 0)
+        r = self.cli('add-job', '--skill', 'digest', '--uses', 'gmail', '--accept-access')
+        self.assertEqual(r.returncode, 2, 'a claude.ai connector cannot be used by a report on this computer')
+        self.assertIn('gmail', r.stderr)
+        self.assertEqual(self.cli('add-job', '--skill', 'digest', '--accept-access').returncode, 0)
+        self.assertNotIn('my--digest', self.routines() if os.path.exists(os.path.join(self.ct, 'routines', 'routines.json')) else {})
+        self.assertTrue(os.path.isfile(os.path.join(self.ct, 'jobs', 'digest', 'prompt.md')))
+        self.mail_connection()
+        r = self.cli('add-job', '--skill', 'digest', '--id', 'cloudy', '--runs-on', 'cloud', '--uses', 'mail', '--accept-access')
+        self.assertEqual(r.returncode, 2, "a routine on claude.ai cannot reach this computer's MCP servers")
+
+    def test_a_stopped_or_removed_cloud_report_leaves_no_routine(self):
+        self.assertEqual(self.cli('add-job', '--skill', 'digest', '--runs-on', 'cloud', '--accept-access').returncode, 0)
+        self.assertIn('my--digest', self.routines())
+        r = self.cli('set', '--job', 'digest', '--enabled', 'false')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('still runs on claude.ai', r.stdout, 'the routine is the user\'s: they pause it there')
+        self.assertNotIn('my--digest', self.routines(), 'a report turned off is not offered as a routine')
+        self.assertEqual(self.cli('set', '--job', 'digest', '--enabled', 'true', '--accept-access').returncode, 0)
+        r = self.cli('remove-job', '--id', 'digest')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('still runs on claude.ai', r.stdout)
+        self.assertNotIn('my--digest', self.routines())
+        self.assertFalse(os.path.exists(os.path.join(self.ct, 'routines', 'my--digest.prompt.md')))
+
+    def test_refused_records(self):
+        r = self.cli('add-connection', '--id', 'g', '--connector', 'Gmail', '--read-tools', 'mcp__g__get', '--accept-access')
+        self.assertEqual(r.returncode, 2, "a connector's tools are chosen on claude.ai")
+        for bad in ({'g': {'connector': 'Gmail', 'read_tools': ['x']}}, {'g': {'connector': 'Gm<ail>'}}, {'g': {'connector': ''}},
+                    {'g': {'connector': 'Gmail', 'server': 's'}}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(install.InstallError):
+                    install.install(dict(self.a, connections=bad), dry_run=True, log=lambda *x: None)
+        for bad in ({'skill': 'digest', 'runs_on': 'moon'}, {'skill': 'digest', 'runs_on': 'cloud', 'model': 'opus'}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(install.InstallError):
+                    install.install(dict(self.a, my_jobs={'digest': bad}), dry_run=True, log=lambda *x: None)
+        from test_private_packs import private_pack
+        pd = private_pack(os.path.join(self._tmp.name, 'outside'), pid='my')
+        with self.assertRaises(install.InstallError):
+            install.install(answers(self._tmp.name, ['my'], [pd], vault_path=os.path.join(self._tmp.name, 'v2')), dry_run=True,
+                            log=lambda *x: None)
 
 
 if __name__ == '__main__':

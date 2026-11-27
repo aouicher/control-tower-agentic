@@ -77,6 +77,12 @@ def main():
 
     for kind, what in plan:
         print(f'{"would " if not args.yes else ""}{kind}: {what}')
+    try:  # they run on claude.ai: nothing here removes them, and a damaged index never blocks the uninstall
+        routines = [str(r['name']) for r in install.jload(os.path.join(ct, 'routines', 'routines.json'), [])]
+    except (ValueError, TypeError, KeyError):
+        routines = []
+    if routines:
+        print('cloud routines are not removed from here: delete on claude.ai the ones you created: ' + ', '.join(routines))
     if not plan:
         print('nothing to do')
     if not args.yes:

@@ -33,6 +33,8 @@ import sys
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import guard  # installed next to this file: the script's folder is on the path
+
 DEFAULT_TIMEOUT = 1800
 EXTRA_PATH = ['~/.local/bin', '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
 BLOCKED = 'BLOCKED by control-tower guard: '
@@ -191,6 +193,13 @@ def main():
     os.makedirs(logs, exist_ok=True)
     log, err = os.path.join(logs, f'{args.job}.log'), os.path.join(logs, f'{args.job}.stderr.log')
     now = lambda: datetime.datetime.now().astimezone().isoformat(timespec='seconds')
+    risky = guard.risky_settings(os.path.join(vault, '.claude', 'settings.json'))
+    if risky:  # project settings load into every job: a rule or a hook there would run with it
+        with open(log, 'a', encoding='utf-8') as fh:
+            fh.write(f'{now()} {args.job} refused: the vault\'s .claude/settings.json sets {", ".join(risky)}, which would widen '
+                     'every job; keep it empty for jobs (Check my setup in /control-tower says what to do)\n')
+        notify('Control tower', f'Job {args.job} did not run: the vault settings would widen it. Open Claude in the vault and say: check my setup.')
+        return 3
     lock = os.path.join(home, 'locks', args.job + '.lock')
     if not acquire_lock(lock):
         with open(log, 'a', encoding='utf-8') as fh:

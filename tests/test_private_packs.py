@@ -368,7 +368,7 @@ class RuntimeOnlyTests(unittest.TestCase):
             write(os.path.join(v, '.claude', 'skills', 'mine', 'SKILL.md'), '---\nname: mine\nallowed-tools: Bash\n---\n')
             pd = private_pack(os.path.join(tmp, 'p'))
             report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), dry_run=True, log=lambda *x: None)
-            self.assertTrue(any('can widen what they do' in w for w in report['warnings']))
+            self.assertTrue(any('none runs until it is empty' in w for w in report['warnings']))
             self.assertTrue(any('declares allowed-tools' in w for w in report['warnings']))
             write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps({'enabledMcpjsonServers': []}))
             os.remove(os.path.join(v, '.claude', 'settings.json'))
@@ -381,6 +381,9 @@ class RuntimeOnlyTests(unittest.TestCase):
                     write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps(risky))
                     levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
                     self.assertEqual(levels.get('vault file .claude/settings.local.json'), 'warn')
+            write(os.path.join(v, '.claude', 'settings.json'), json.dumps({'hooks': {}}))
+            levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
+            self.assertEqual(levels.get('vault file .claude/settings.json'), 'FAIL', 'jobs load it: the runner refuses to start them')
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:
