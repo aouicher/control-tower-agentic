@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from plan import REPO, CorePolicy, core_files  # noqa: E402
+from plan import REPO, CorePolicy, core_files, risky_settings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -174,14 +174,9 @@ def check_runtime(r, vault, ct_home):
             r.add('FAIL', f'job {j}', 'settings.json is not valid')
     for risky in ('.claude/settings.json', '.claude/settings.local.json'):
         p = os.path.join(vault, risky)
-        if not os.path.isfile(p):
-            continue
-        try:
-            data = json.loads(read(p))
-        except ValueError:
-            data = {'unreadable': True}
-        if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
-            r.add('warn', f'vault file {risky}', 'has allow rules or hooks: unattended jobs load it too, so it widens what they can do')
+        keys = risky_settings(p) if os.path.isfile(p) else []
+        if keys:
+            r.add('warn', f'vault file {risky}', f'sets {", ".join(keys)}: unattended jobs load it too, so it can widen what they do')
     if os.path.isfile(os.path.join(vault, '.mcp.json')):
         r.add('warn', 'vault file .mcp.json', 'MCP servers declared in the vault are available to unattended jobs too, review it')
     outside = []

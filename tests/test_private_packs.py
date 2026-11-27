@@ -179,6 +179,16 @@ class PermissionPolicyTests(unittest.TestCase):
                 with self.subTest(allowed=cmd):
                     self.assertIsNone(run(cmd))
 
+    def test_relative_paths_are_relative_to_the_job_not_the_hook(self):
+        guard = plan.guard_rules
+        with tempfile.TemporaryDirectory() as v:
+            os.makedirs(os.path.join(v, 'work'))
+            ev = lambda tool, inp: guard.check({'tool_name': tool, 'tool_input': inp, 'cwd': v}, v)
+            self.assertIsNone(ev('Grep', {'pattern': '#to-triage', 'path': 'work'}))
+            self.assertIsNone(ev('Read', {'file_path': 'work/x.md'}))
+            self.assertIsNotNone(ev('Read', {'file_path': '../outside.md'}))
+            self.assertIsNotNone(ev('Grep', {'pattern': 'x', 'path': '../..'}))
+
     def test_no_git_or_claude_files_anywhere_in_the_vault(self):
         guard = plan.guard_rules
         with tempfile.TemporaryDirectory() as v:
@@ -447,13 +457,19 @@ class RuntimeOnlyTests(unittest.TestCase):
             write(os.path.join(v, '.claude', 'skills', 'mine', 'SKILL.md'), '---\nname: mine\nallowed-tools: Bash\n---\n')
             pd = private_pack(os.path.join(tmp, 'p'))
             report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), dry_run=True, log=lambda *x: None)
-            self.assertTrue(any('widens what they can do' in w for w in report['warnings']))
+            self.assertTrue(any('can widen what they do' in w for w in report['warnings']))
             self.assertTrue(any('declares allowed-tools' in w for w in report['warnings']))
             write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps({'enabledMcpjsonServers': []}))
             os.remove(os.path.join(v, '.claude', 'settings.json'))
             install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), log=lambda *x: None)
             levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
-            self.assertNotIn('vault file .claude/settings.local.json', levels, 'settings without rules or hooks are not flagged')
+            self.assertNotIn('vault file .claude/settings.local.json', levels, 'harmless settings are not flagged')
+            for risky in ({'env': {'X': '1'}}, {'permissions': {'additionalDirectories': ['/']}}, {'apiKeyHelper': 'x'},
+                          {'enabledMcpjsonServers': ['evil']}, {'enableAllProjectMcpServers': True}):
+                with self.subTest(risky=risky):
+                    write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps(risky))
+                    levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
+                    self.assertEqual(levels.get('vault file .claude/settings.local.json'), 'warn')
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:

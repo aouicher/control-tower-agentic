@@ -34,7 +34,7 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
+from plan import (REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
                   list_packs, resolve_packs, vault_files)
 
 VERSION = '0.1.0'
@@ -528,13 +528,12 @@ def vault_settings_warnings(vault):
     out = []
     for name in ('settings.json', 'settings.local.json'):
         p = os.path.join(vault, '.claude', name)
-        try:
-            data = jload(p) if os.path.isfile(p) else {}
-        except ValueError:
-            data = {'unreadable': True}
-        if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
-            out.append(f'{p} has allow rules or hooks: unattended jobs load it too, so it widens what they can do. '
-                       'Keep it empty for jobs, or move those rules to your user settings')
+        risky = risky_settings(p) if os.path.isfile(p) else []
+        if risky:
+            out.append(f'{p} sets {", ".join(risky)}: unattended jobs load it too, so it can widen what they do. '
+                       'Keep it empty for jobs, or move those settings to your user settings')
+    if os.path.isfile(os.path.join(vault, '.mcp.json')):
+        out.append(f'{os.path.join(vault, ".mcp.json")}: MCP servers declared in the vault are available to unattended jobs too')
     skills = os.path.join(vault, '.claude', 'skills')
     for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
         p = os.path.join(skills, name, 'SKILL.md')

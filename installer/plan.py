@@ -227,6 +227,23 @@ def resolve_packs(repo, answers=None):
     return packs
 
 
+# ----------------------------------------------------------------------------- vault settings
+# Unattended jobs run in the vault and load its project settings. Only these keys, with these values, cannot widen what a job
+# does; anything else (allow rules, hooks, env, additionalDirectories, apiKeyHelper, enabled MCP servers...) is reported.
+HARMLESS_SETTINGS = {'enabledMcpjsonServers': [], 'enableAllProjectMcpServers': False, '$schema': None}
+
+
+def risky_settings(path):
+    """Keys of a vault settings file that could widen unattended jobs ([] when harmless). Unreadable counts as risky."""
+    try:
+        data = jload(path)
+    except (OSError, ValueError):
+        return ['(unreadable)']
+    if not isinstance(data, dict):
+        return ['(not an object)']
+    return sorted(k for k, v in data.items() if k not in HARMLESS_SETTINGS or (HARMLESS_SETTINGS[k] is not None and v != HARMLESS_SETTINGS[k]))
+
+
 # ----------------------------------------------------------------------------- core policy
 class CorePolicy:
     """Core files a private pack replaces (it ships its own) or excludes (not installed at all)."""

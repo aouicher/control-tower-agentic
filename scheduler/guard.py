@@ -346,6 +346,8 @@ def search_reason(tool, inp, event, vault):
     """Glob and Grep. The search root (path, else the hook's cwd) and the static prefix of the glob are real paths: they get the
     read rule. The wildcard tail is only names: each segment gets the secret check. Fails closed when no root is known."""
     base = inp.get('path') or event.get('cwd')
+    if base and not os.path.isabs(os.path.expanduser(base)):  # relative to the job's directory, not the hook's
+        base = os.path.join(event.get('cwd') or vault, base)
     if not base:
         return 'search root unknown: refusing to search'
     reason = read_reason(base, vault)
@@ -389,6 +391,8 @@ def check(event, vault, extra_commands=()):
     if tool in ('Glob', 'Grep'):
         return search_reason(tool, inp, event, vault)
     path = inp.get('file_path') or inp.get('notebook_path') or inp.get('path')
+    if path and not os.path.isabs(os.path.expanduser(path)):  # relative to the job's directory, not the hook's
+        path = os.path.join(event.get('cwd') or vault, path)
     if not path:
         return None
     if tool in WRITE_TOOLS:
