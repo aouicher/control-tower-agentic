@@ -446,8 +446,9 @@ def pages(items, label, recommended):
     if len(items) <= 4:
         return {'multi_select': True, 'options': items, 'recommended': recommended}, []
     every = f'All {len(items)}{label}' + (' (recommended)' if recommended == items else '')
+    some = [f'Only the {len(recommended)} recommended{label} (recommended)'] if 0 < len(recommended) < len(items) else []
     k = -(-len(items) // 4)  # fewest pages; even sizes, so none has a single option
-    return {'multi_select': False, 'options': [every, 'Let me choose', 'None']}, [items[len(items) * i // k:len(items) * (i + 1) // k] for i in range(k)]
+    return {'multi_select': False, 'options': some + [every, 'Let me choose', 'None']}, [items[len(items) * i // k:len(items) * (i + 1) // k] for i in range(k)]
 
 
 def cmd_choices(args):
