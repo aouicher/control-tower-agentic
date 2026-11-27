@@ -10,6 +10,7 @@ One place for:
     plain-language summary the user consents to (describe_rules).
 """
 import fnmatch
+import hashlib
 import json
 import os
 import importlib.util
@@ -354,7 +355,9 @@ SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r"\']')
 COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,31}$')
 MAX_RULE = 120  # with at most two variables, a rule stays one short line: it cannot carry a message to the person reading it
 ENV_PREFIX = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(\S*)$')
-MCP_TOOL = re.compile(r'^mcp__([A-Za-z0-9_.-]+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
+SERVER_CHARS = '[A-Za-z0-9_.-]'  # an MCP server name, as in mcp__<server>__<tool>
+SERVER_NAME = re.compile(f'^{SERVER_CHARS}{{1,64}}$')
+MCP_TOOL = re.compile(f'^mcp__({SERVER_CHARS}+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
 HOST = re.compile(r'^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]([A-Za-z0-9-]*[A-Za-z0-9])?$')  # a name, never an IP address
 # shells, interpreters, wrappers that run another command, and tools that copy files or talk to the network by themselves
 NEVER_COMMANDS = {'sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'python', 'node', 'perl', 'ruby', 'php', 'osascript', 'curl', 'wget',
@@ -471,20 +474,83 @@ def job_adapters(repo, answers, meta):
             for c in sum(job_capabilities(meta), []) if answers['tools'].get(c, 'none') != 'none'}
 
 
+def mcp_server(rule):
+    """The server of an mcp__<server>__<tool> rule, or None for any other rule."""
+    m = MCP_TOOL.match(str(rule))
+    return m.group(1) if m else None
+
+
+def on_server(rules, server):
+    """MCP rules moved to the server name a job sees (recorded by configure.py connect); other rules unchanged."""
+    return [f'mcp__{server}__{MCP_TOOL.match(r).group(2)}' if server and mcp_server(r) else r for r in rules]
+
+
+def vault_servers(vault):
+    """{name: entry} of the vault's .mcp.json; ValueError when the file is not valid JSON."""
+    servers = jload(os.path.join(expand(vault), '.mcp.json'), {}).get('mcpServers') or {}
+    if not isinstance(servers, dict):
+        raise ValueError('"mcpServers" is not an object')
+    return servers
+
+
+def fingerprint(entry):
+    """A hash of what a server entry runs."""
+    return hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()
+
+
+def approved_servers(vault, answers):
+    """{name: entry} of the servers connected with configure.py whose .mcp.json entry is unchanged since: the only ones jobs
+    start."""
+    recorded, prints = set((answers.get('servers') or {}).values()), answers.get('fingerprints') or {}
+    try:
+        declared = vault_servers(vault) if recorded else {}
+    except ValueError:
+        return {}  # nothing starts from a file that cannot be read; the doctor says why
+    return {s: declared[s] for s in sorted(recorded) if s in declared and prints.get(s) == fingerprint(declared[s])}
+
+
+def server_answer_problems(answers, capabilities):
+    """What is wrong with the answers' record of connected MCP servers (configure.py connect writes it)."""
+    servers, prints, added = answers.get('servers') or {}, answers.get('fingerprints') or {}, answers.get('connections_added') or []
+    return [m for bad, m in (
+        (not isinstance(servers, dict) or not all(c in capabilities and SERVER_NAME.match(str(s)) for c, s in servers.items()),
+         '"servers" maps a capability to the MCP server name jobs see, for example {"tracker": "atlassian"}'),
+        (not isinstance(prints, dict) or not all(SERVER_NAME.match(str(s)) and re.fullmatch(r'[0-9a-f]{64}', str(h)) for s, h in prints.items()),
+         '"fingerprints" maps a connected MCP server to the hash of its .mcp.json entry'),
+        (not isinstance(added, list) or not all(SERVER_NAME.match(str(s)) for s in added), '"connections_added" is a list of MCP server names'))
+        if bad]
+
+
+def mcp_file_findings(vault, answers):
+    """(level, text) about the vault's .mcp.json: unreadable, connected servers changed since, servers nobody connected."""
+    recorded = set((answers.get('servers') or {}).values())
+    try:
+        declared = vault_servers(vault)
+    except ValueError as exc:
+        return [('FAIL' if recorded else 'warn', f'cannot be read ({exc}): reports start none of its servers')]
+    out, changed, unused = [], sorted(recorded - set(approved_servers(vault, answers))), sorted(set(declared) - recorded)
+    if changed:
+        out.append(('FAIL', f'{", ".join(changed)} changed since connected (or is gone): reports do not use the new version; '
+                            'connect it again in /control-tower, which shows what it now runs'))
+    if unused:
+        out.append(('warn', f'servers no report is connected to: {", ".join(unused)}; jobs do not start them, review what they run'))
+    return out
+
+
 def adapter_allow(answers, cap, manifest):
-    """The rules one capability gives a job: its adapter's, plus the answers' `permissions` for it."""
-    return manifest.get('permissions_allow', []) + list((answers.get('permissions') or {}).get(cap, []))
+    """The rules one capability gives a job: its adapter's, on the recorded server, plus the answers' `permissions` for it."""
+    return on_server(manifest.get('permissions_allow', []), (answers.get('servers') or {}).get(cap)) + list((answers.get('permissions') or {}).get(cap, []))
 
 
-def unreachable_servers(adapters, answers, allow):
-    """(capability, tool) of the job's MCP adapters with no read tool allowed: none from the capability itself, and no MCP
-    rule of the job on a server other than the ones its other adapters use."""
+def unreachable_servers(adapters, answers, allow, approved):
+    """(capability, tool) of the job's MCP adapters it cannot call: no read tool allowed on an approved server, counting the
+    capability's own rules and the job's MCP rules on a server no other adapter of the job uses."""
     rules = {c: adapter_allow(answers, c, man) for c, (_, man) in adapters.items()}
-    server = lambda r: MCP_TOOL.match(r).group(1) if MCP_TOOL.match(r) else None
     out = set()
     for cap, (tool, man) in adapters.items():
-        others = {server(r) for c in adapters if c != cap for r in rules[c]} - {None}
-        if man.get('access') == 'mcp' and not rules[cap] and not any(server(r) and server(r) not in others for r in allow):
+        others = {mcp_server(r) for c in adapters if c != cap for r in rules[c]}
+        own = {mcp_server(r) for r in rules[cap]} | ({mcp_server(r) for r in allow} - others)
+        if man.get('access') == 'mcp' and not own & set(approved):
             out.add((cap, tool))
     return out
 
@@ -500,7 +566,7 @@ def describe_rules(rules, network=()):
         if parts:
             env, cmd, rest = parts
             add('commands', ' '.join([cmd] + [w for w in rest if w != '*']))
-        elif str(r).startswith('mcp__') and MCP_TOOL.match(r):
+        elif mcp_server(r):
             server, tool = MCP_TOOL.match(r).groups()
             add('mcp_tools', f'{" ".join(name_words(tool))} ({server})')
         elif re.fullmatch(r'WebFetch\(domain:[^()]+\)', str(r)):

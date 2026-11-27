@@ -2,6 +2,7 @@
   "tool": "github",
   "capability": "code",
   "access": "cli",
+  "connect": "developer",
   "setup_url": "https://cli.github.com/manual/gh_pr_list",
   "install": [
     "gh auth login"

@@ -2,9 +2,10 @@
   "tool": "cloudwatch",
   "capability": "logs",
   "access": "mcp",
+  "connect": "developer",
   "setup_url": "https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server",
   "install": [
-    "claude mcp add --scope user cloudwatch --env AWS_PROFILE=<read-only-profile> --env FASTMCP_LOG_LEVEL=ERROR -- uvx awslabs.cloudwatch-mcp-server@latest"
+    "claude mcp add --scope project cloudwatch --env AWS_PROFILE=<read-only-profile> --env FASTMCP_LOG_LEVEL=ERROR -- uvx awslabs.cloudwatch-mcp-server@latest"
   ],
   "env": [
     "AWS_PROFILE",

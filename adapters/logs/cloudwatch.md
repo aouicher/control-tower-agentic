@@ -7,7 +7,7 @@ Official documentation: https://awslabs.github.io/mcp/servers/cloudwatch-mcp-ser
 The documented configuration runs the server locally with `uvx` (prerequisites: install `uv`, then `uv python install 3.10`): command `uvx`, args `awslabs.cloudwatch-mcp-server@latest`, env `AWS_PROFILE` and `FASTMCP_LOG_LEVEL=ERROR`, transport `stdio`. In Claude Code:
 
 ```
-claude mcp add --scope user cloudwatch --env AWS_PROFILE=<read-only-profile> --env FASTMCP_LOG_LEVEL=ERROR -- uvx awslabs.cloudwatch-mcp-server@latest
+claude mcp add --scope project cloudwatch --env AWS_PROFILE=<read-only-profile> --env FASTMCP_LOG_LEVEL=ERROR -- uvx awslabs.cloudwatch-mcp-server@latest
 ```
 
 The server name `cloudwatch` is a local choice. The documentation also gives a Docker variant and a Windows variant (which sets `AWS_REGION`). The page states the server can only run locally, on the same host as the client. The older `awslabs.cloudwatch-logs-mcp-server` is deprecated in favour of this one.

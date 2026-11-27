@@ -162,9 +162,11 @@ def sanitize_init(init, keep=('facts', 'claude.ai Gmail')):
             'tools': list(dict.fromkeys(t for t in init.get('tools') or [] if not t.startswith('mcp__') or t.startswith(prefixes)))}
 
 
-def claude(cwd, prompt, settings=None, sources='project', turns=6):
+def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None):
     cmd = ['claude', '-p', prompt, '--model', 'haiku', '--max-turns', str(turns), '--permission-mode', 'dontAsk',
            '--setting-sources', sources, '--output-format', 'stream-json', '--verbose']
+    if mcp is not None:  # what the job runner passes: only these servers start
+        cmd += ['--mcp-config', json.dumps({'mcpServers': mcp}), '--strict-mcp-config']
     if settings is not None:
         path = os.path.join(os.path.dirname(cwd), f'settings-{len(os.listdir(os.path.dirname(cwd)))}.json')
         with open(path, 'w') as fh:
@@ -214,6 +216,13 @@ def facts(save_init=None):
         out.append(('F1b', True if FACT_VALUE in tool_output(r1b) else False if denied(r1b) else None,
                     "an allowed tool of a server in the vault's .mcp.json, enabled by the job settings, "
                     + ('runs in the job' if FACT_VALUE in tool_output(r1b) else 'did not run')))
+        call = 'Call the tool mcp__facts__get_fact, then reply with exactly what it returned.'
+        r1c = claude(empty, call, {'permissions': {'allow': ['mcp__facts__get_fact']}},
+                     mcp={'facts': {'command': sys.executable, 'args': [FACTS_SERVER]}})
+        hidden = 'facts' not in server_names(init_of(claude(vault, SAY_OK, job([]), turns=1, mcp={})))
+        out.append(('F1c', (FACT_VALUE in tool_output(r1c)) and hidden,
+                    'a server given with --mcp-config --strict-mcp-config ' + ('runs' if FACT_VALUE in tool_output(r1c) else 'does NOT run')
+                    + "; with an empty one, the vault's enabled .mcp.json server " + ('is not started' if hidden else 'STILL starts')))
         init1b = init_of(r1b)
         listed = 'facts' in server_names(init1b) and 'mcp__facts__create_fact' in (init1b.get('tools') or [])
         out.append(('F7', listed, 'the init message ' + ('lists' if listed else 'does NOT list') + " the .mcp.json server and its tools "

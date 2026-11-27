@@ -2,11 +2,12 @@
   "tool": "hubspot",
   "capability": "crm",
   "access": "mcp",
+  "connect": "developer",
   "setup_url": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
   "install": [],
   "setup_steps": [
     "In HubSpot, open Development > MCP Connectors and create an MCP connector; copy its client id and client secret.",
-    "Add the remote server https://mcp.hubspot.com to Claude Code with your connector credentials, at user scope (--scope user), following the official guide: https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
+    "Add the remote server https://mcp.hubspot.com to Claude Code with your connector credentials, from the vault folder at project scope (--scope project, so scheduled reports can start it), following the official guide: https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
     "Complete the OAuth flow with a view-only HubSpot user (run /mcp in Claude Code)."
   ],
   "env": [],

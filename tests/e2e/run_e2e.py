@@ -102,6 +102,19 @@ def scenario(packs):
             text = ''.join(open(os.path.join(d, f)).read() for d, _, fs in os.walk(sched) for f in fs if 'weekly-metrics' in f or f == 'crontab.txt')
             step('configure.py set --job weekly-metrics --time 09:00 reaches the schedule file', r.returncode == 0 and (
                 f'<integer>{h}</integer>' in text and f'<integer>{m}</integer>' in text or f'{m} {h} * * ' in text), (r.stderr or text)[-300:])
+        if 'morning-prs' in jobs:  # Jira has no read tool in its adapter: connected and chosen, a job calls it with nothing refused
+            cfg = [PY, os.path.join(ROOT, 'installer', 'configure.py')]
+            for path, data in ((os.path.join(ct, 'probe.json'), {'servers': [{'name': 'atlassian', 'status': 'connected'}],
+                                                                  'tools': ['mcp__atlassian__search'], 'connectors': 0}),
+                               (os.path.join(vault, '.mcp.json'), {'mcpServers': {'atlassian': {'type': 'http', 'url': 'https://mcp.atlassian.com/v1/sse'}}})):
+                with open(path, 'w') as fh:
+                    json.dump(data, fh)
+            r1 = run(cfg + ['connect', '--vault', vault, '--capability', 'tracker', '--tool', 'jira', '--server', 'atlassian', '--accept-access'], env)
+            r2 = run(cfg + ['set-permissions', '--vault', vault, '--capability', 'tracker', '--tools', 'mcp__atlassian__search', '--accept-access'], env)
+            r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'morning-prs', '--ct-home', ct],
+                    dict(env, FAKE_CLAUDE_CALLS=json.dumps([{'tool_name': 'mcp__atlassian__search', 'tool_input': {'jql': 'x'}}])))
+            step('a connected Jira with chosen read tools: the job calls it, nothing refused', r1.returncode == r2.returncode == r.returncode == 0
+                 and json.load(open(os.path.join(ct, 'logs', 'morning-prs.denials.json'))) == [], (r1.stderr + r2.stderr + r.stderr)[-300:])
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
         idx = os.path.join(ct, 'routines', 'routines.json')

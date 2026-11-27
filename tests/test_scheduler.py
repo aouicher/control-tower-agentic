@@ -66,6 +66,13 @@ class GuardTests(unittest.TestCase):
         self.assertIsNotNone(self.tool('Edit', '/etc/hosts'))
         self.assertIsNotNone(self.tool('Write', os.path.join(self.vault, '..', 'escape.md')))
 
+    def test_jobs_write_only_markdown_notes(self):
+        # a file a job plants could be what an MCP server or the user's own tools run next (pipx runs ./analytics-mcp first)
+        for rel in ('analytics-mcp', 'node_modules/.bin/x', 'pyproject.toml', '_system/tools/duplicate-tasks.py', 'notes/run.sh', 'a.md.py'):
+            with self.subTest(rel=rel):
+                self.assertIsNotNone(self.tool('Write', os.path.join(self.vault, rel)), f'must block: {rel}')
+        self.assertIsNone(self.tool('Write', os.path.join(self.vault, 'journal/reports/Weekly.MD')))
+
     def test_protected_vault_areas(self):
         for rel in ('.obsidian/app.json', '_system/templates/daily.md', 'CLAUDE.md'):
             self.assertIsNotNone(self.tool('Edit', os.path.join(self.vault, rel)), rel)
@@ -246,6 +253,8 @@ class RunJobTests(unittest.TestCase):
         for flag, value in (('--permission-mode', 'dontAsk'), ('--setting-sources', 'project'), ('--output-format', 'json'), ('--model', 'sonnet')):
             self.assertEqual(argv[argv.index(flag) + 1], value)
         self.assertTrue(argv[argv.index('--settings') + 1].endswith('settings.json'))
+        self.assertIn('--strict-mcp-config', argv, 'a job starts only the MCP servers the installer copied for it')
+        self.assertEqual(argv[argv.index('--mcp-config') + 1], '{"mcpServers": {}}', 'no copy: no server')
         log = open(os.path.join(self.home, 'logs', 'demo.log')).read()
         self.assertIn('rc=0', log)
         self.assertIn('cost=$0.12', log)
@@ -397,6 +406,7 @@ class ScheduleTests(unittest.TestCase):
             for rel in ('.git/hooks/post-commit', '.git/config', '.github/workflows/x.yml'):
                 self.assertIsNotNone(g.tool('Write', os.path.join(g.vault, rel)), rel)
             # date and ls are refused by every job's allow-list: the guard has no date parser
+            self.assertIsNotNone(g.tool('Read', os.path.join(g.vault, '.mcp.json')), 'server commands and keys stay out of reach')
             for cmd in ('cat ~/.claude/.credentials.json', 'cat ~/.kube/config', 'date -d "$(cat ~/.ssh/id_rsa)"',
                         'git log -1 --format=x --output=journal/CLAUDE.md', 'git diff --output journal/x.md',
                         'git log --outp=notes/CLAUDE.md', 'git log --o=a/b', 'git log "--output"=notes/x.md', "git log '--output' 'a/b.md'"):

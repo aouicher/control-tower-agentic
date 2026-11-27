@@ -265,6 +265,36 @@ class AdapterTests(unittest.TestCase):
                     if man.get('status') == 'verified':
                         self.fail('status "verified" requires a real test: not allowed in the repository tests')
 
+    def test_install_commands_add_the_server_to_the_vault_without_its_keys(self):
+        """Scheduled reports start only servers of the vault's .mcp.json; a key stays a ${NAME} reference, never its value."""
+        for cap, names in adapter_tools().items():
+            for tool in names:
+                man = json.load(open(os.path.join(ADAPTERS_DIR, cap, tool + '.json'), encoding='utf-8'))
+                text = open(os.path.join(ADAPTERS_DIR, cap, tool + '.md'), encoding='utf-8').read()
+                for cmd in man.get('install', []) + [line for line in text.splitlines() if 'claude mcp add' in line or line.lstrip().startswith('--env')]:
+                    with self.subTest(adapter=f'{cap}/{tool}', command=cmd):
+                        self.assertNotRegex(cmd, r'--scope (user|local)')
+                        self.assertNotRegex(cmd, r'pipx run (?!--spec)', 'pipx runs a file of that name in the vault folder first')
+                        if cmd.startswith('claude mcp add'):
+                            self.assertIn('--scope project', cmd)
+                        self.assertNotRegex(cmd, r"=\$(?!\{)|--env [A-Z_]+=\$", 'a key is passed as --env \'NAME=${NAME}\', quoted, so its value is never written')
+                for step in man.get('setup_steps', []):
+                    self.assertNotIn('--scope user', step)
+
+    def test_only_a_server_with_nothing_to_fill_in_is_connected_by_signing_in(self):
+        """`connect: sign-in`: the user connects it alone from the vault. Anything with a key, a secret or a placeholder needs a developer."""
+        for cap, names in adapter_tools().items():
+            for tool in names:
+                with self.subTest(adapter=f'{cap}/{tool}'):
+                    man = json.load(open(os.path.join(ADAPTERS_DIR, cap, tool + '.json'), encoding='utf-8'))
+                    self.assertIn(man.get('connect'), ('sign-in', 'developer'))
+                    command = ' '.join(man.get('install', []))
+                    if man['connect'] == 'sign-in':
+                        self.assertEqual(man['access'], 'mcp')
+                        self.assertTrue(command, 'an install command Claude runs for the user')
+                        self.assertFalse(man.get('env') or man.get('setup_steps'))
+                        self.assertNotRegex(command, r'YOUR_|<[A-Za-z]|\{|--client-secret|\$')
+
     def test_no_wildcard_permissions(self):
         """MCP tools must be listed one by one. A Bash rule may end with ":*" only after a command and a subcommand."""
         bash_ok = re.compile(r'^Bash\([a-z0-9._-]+( [a-z0-9._-]+)+(:\*)?\)$')

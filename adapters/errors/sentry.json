@@ -2,9 +2,10 @@
   "tool": "sentry",
   "capability": "errors",
   "access": "mcp",
+  "connect": "developer",
   "setup_url": "https://mcp.sentry.dev/",
   "install": [
-    "claude mcp add --scope user --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}"
+    "claude mcp add --scope project --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}"
   ],
   "env": [],
   "permissions_allow": [],

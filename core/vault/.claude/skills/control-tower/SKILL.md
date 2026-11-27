@@ -1,6 +1,6 @@
 ---
 name: control-tower
-description: The control tower's front desk in the vault. Checks the setup, changes it (profiles, tools, report times, which reports run, automatic runs on or off), fixes a blocked job and restores a kit file, all by answering questions. Use when the user says /control-tower, "check my setup", "is everything working", "add the product profile", "move the triage to 9:00", "stop the debt review", "fix my job", "I want the original version of a file back", or seems lost.
+description: The control tower's front desk in the vault. Checks the setup, connects a tool, changes the setup (profiles, tools, report times, which reports run, automatic runs on or off), fixes a blocked job and restores a kit file, all by answering questions. Use when the user says /control-tower, "check my setup", "is everything working", "add the product profile", "move the triage to 9:00", "stop the debt review", "connect Amplitude", "fix my job", "I want the original version of a file back", or seems lost.
 argument-hint: "[what you want, in your own words]"
 ---
 
@@ -18,7 +18,7 @@ The one place to look after the control tower once it is installed. The user ans
 
 ## First
 
-Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the control tower kit, `ct_home` the runtime folder. If the file or `repo` is missing, say that this vault was installed by an older version of the kit and that whoever installed it should update the kit, then stop. Then follow the user's request (the argument, or ask "What would you like to do?" with the options "Check my setup", "Change my setup", "Fix a blocked job", "Get a kit file back").
+Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the control tower kit, `ct_home` the runtime folder. If the file or `repo` is missing, say that this vault was installed by an older version of the kit and that whoever installed it should update the kit, then stop. Then follow the user's request (the argument, or ask "What would you like to do?" with the options "Check my setup", "Change my setup", "Connect a tool", "Fix a blocked job"; "Get a kit file back" is there when asked for).
 
 ## Check my setup
 
@@ -42,6 +42,24 @@ Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the c
    - exit 1: the installer refused, the previous setup is back; give the reason;
    - exit 3: the change is saved but automatic runs could not be loaded or unloaded; give the reason and say the reports will not run on their own until it is fixed.
 5. Offer to check the setup again.
+
+## Connect a tool
+
+For a tool the kit knows (`adapters/<capability>/<tool>.json` in the kit; `show` lists the chosen ones). The adapter's `access` says how it connects. Its server name is the one in its `install` command, or in its rules (`mcp__<name>__...`) when it has none.
+
+What a server runs, wherever you show it below: its `url`, or its `command` and `args`, and the names of its `env` and `headers` entries (never their values).
+
+1. Look for the server in this vault's `.mcp.json`. If it is there, show what it runs and ask "This vault already has a <tool> connection that runs <that>. Use it?"; on no, stop. Then go to step 3.
+2. If it is not there:
+   - An adapter with `connect: developer` is set up once by someone comfortable with the terminal (a command-line tool, a key, a client secret or an address to fill in). Say so; for a key, say "This tool needs a secret key that I must never see". Write down, for whoever sets it up, the adapter's `install` command (or its `setup_steps`) as written, to run from this vault's folder: it adds the server to the vault and keeps each key as a `${NAME}` reference, never its value. Say "Once it is added, tell me 'connect <tool>' again and I will finish", and stop. Never ask for, accept or write a key.
+   - An adapter with `connect: sign-in`: ask "I will add the <tool> connection to this vault. You will then sign in in your browser. Go ahead?". On yes, run the adapter's `install` command as written from the vault folder (it adds the server to this vault's `.mcp.json`, the only servers scheduled reports can use) and remember that you added it.
+3. Say "Type /mcp, choose <tool>, and sign in. Tell me when it is done."
+4. Run `python3 <repo>/installer/configure.py probe --vault <this vault> --server <name>`. If the server is not `connected` in its output, say "<tool> works when you talk to me, but scheduled reports cannot see it yet" with the status, and stop.
+5. Run `python3 <repo>/installer/configure.py connect --vault <this vault> --capability <capability> --tool <tool> --server <name> --dry-run` (add `--added` if you added the server in step 2). Show what the server runs and `new_access` in plain words, and ask "Connect it?"; on yes run it without `--dry-run`, with `--accept-access` if `new_access` was not empty. Reports start only servers connected this way, as they were when connected; if the vault's entry changes afterwards, the next change of setup stops using it and the setup check says to connect it again, which shows what it now runs.
+6. If the adapter lists no read tools (`permissions_allow` is empty, for example Jira or Linear), ask "Reports may read with these tools:" from `python3 <repo>/installer/configure.py choices --vault <this vault> --kind read-tools --server <name>` (see Lists), then save the answer with `python3 <repo>/installer/configure.py set-permissions --vault <this vault> --capability <capability> --tools <the tools> --accept-access`; the question was the consent.
+7. Offer to run a report that uses the tool now (`python3 <ct_home>/bin/run_job.py --job <id> --ct-home <ct_home>`); if anything is refused, continue with `/job-permissions`.
+
+A claude.ai connector (Gmail, for example) works when the user talks to Claude, but scheduled reports on this computer cannot use it (docs/design/runtime-facts.md): say so.
 
 ## Fix a blocked job
 

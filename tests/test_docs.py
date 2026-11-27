@@ -53,7 +53,7 @@ class DocTests(unittest.TestCase):
         for needle in ('doctor.py', 'configure.py show', 'configure.py set', '--dry-run', '--accept-access', '/job-permissions',
                        'configure.py fresh-copy', 'never edit'):
             self.assertIn(needle.lower(), text.lower(), f'the hub must mention: {needle}')
-        for route in ('connect', 'automate', 'update', 'uninstall'):  # only what works today is offered
+        for route in ('automate', 'update', 'uninstall'):  # only what works today is offered
             self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
 
     def test_every_question_from_a_list_is_asked_in_pages(self):

@@ -7,7 +7,7 @@ Official documentation: https://mcp.sentry.dev/ (the page https://docs.sentry.io
 Sentry hosts a remote MCP server at `https://mcp.sentry.dev/mcp`. The URL can be scoped to an organization (`/{organizationSlug}`) or a project (`/{organizationSlug}/{projectSlug}`):
 
 ```
-claude mcp add --scope user --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}
+claude mcp add --scope project --transport http sentry https://mcp.sentry.dev/mcp/{organizationSlug}/{projectSlug}
 ```
 
 Project scoping is recommended by the documentation when possible. A local alternative uses the Sentry CLI login (`sentry auth login`). For self-hosted Sentry, check the official documentation (it mentions `SENTRY_HOST`).

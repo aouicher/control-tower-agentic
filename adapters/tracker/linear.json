@@ -2,9 +2,10 @@
   "tool": "linear",
   "capability": "tracker",
   "access": "mcp",
+  "connect": "sign-in",
   "setup_url": "https://linear.app/docs/mcp",
   "install": [
-    "claude mcp add --scope user --transport http linear-server https://mcp.linear.app/mcp/readonly"
+    "claude mcp add --scope project --transport http linear-server https://mcp.linear.app/mcp/readonly"
   ],
   "env": [],
   "permissions_allow": [],

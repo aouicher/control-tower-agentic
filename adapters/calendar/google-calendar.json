@@ -2,9 +2,10 @@
   "tool": "google-calendar",
   "capability": "calendar",
   "access": "mcp",
+  "connect": "sign-in",
   "setup_url": "https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server",
   "install": [
-    "claude mcp add --scope user --transport http calendar https://calendarmcp.googleapis.com/mcp/v1"
+    "claude mcp add --scope project --transport http calendar https://calendarmcp.googleapis.com/mcp/v1"
   ],
   "env": [],
   "permissions_allow": [

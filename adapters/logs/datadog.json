@@ -2,9 +2,10 @@
   "tool": "datadog",
   "capability": "logs",
   "access": "mcp",
+  "connect": "sign-in",
   "setup_url": "https://docs.datadoghq.com/mcp_server/setup.md",
   "install": [
-    "claude mcp add --scope user --transport http datadog-mcp https://mcp.datadoghq.com/v1/mcp"
+    "claude mcp add --scope project --transport http datadog-mcp https://mcp.datadoghq.com/v1/mcp"
   ],
   "env": [],
   "permissions_allow": [

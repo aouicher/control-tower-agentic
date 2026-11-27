@@ -9,7 +9,7 @@ Google documents a remote Calendar MCP server (Streamable HTTP, OAuth 2.0):
 - Server name used in the guide: `calendar`
 - Server URL: `https://calendarmcp.googleapis.com/mcp/v1`
 
-The guide describes Google Antigravity, Claude.ai / Claude Desktop (custom connector) and a generic "Others" option. It has **no Claude Code specific command**. The command in the manifest combines the documented URL with Claude Code's `claude mcp add --transport http` syntax; check the official Claude Code documentation for the current syntax, including how to pass an OAuth client id and secret. The manifest adds `--scope user` so the server is visible from the vault and from scheduled jobs.
+The guide describes Google Antigravity, Claude.ai / Claude Desktop (custom connector) and a generic "Others" option. It has **no Claude Code specific command**. The command in the manifest combines the documented URL with Claude Code's `claude mcp add --transport http` syntax; check the official Claude Code documentation for the current syntax, including how to pass an OAuth client id and secret. The manifest adds `--scope project`, run from the vault folder: scheduled reports start only servers of the vault's `.mcp.json`.
 
 Requirements stated by the guide (check the page, it changes): the feature is labelled a developer preview and needs membership in the Google Workspace Developer Preview Program; an OAuth client created in the Google Cloud console with "Use this client for an AI-powered agent" selected; for an External audience, test users must be added.
 

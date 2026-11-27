@@ -2,9 +2,10 @@
   "tool": "google-analytics",
   "capability": "analytics",
   "access": "mcp",
+  "connect": "developer",
   "setup_url": "https://developers.google.com/analytics/devguides/MCP",
   "install": [
-    "claude mcp add --scope user analytics-mcp -- pipx run analytics-mcp"
+    "claude mcp add --scope project analytics-mcp -- pipx run --spec analytics-mcp analytics-mcp"
   ],
   "env": [
     "GOOGLE_APPLICATION_CREDENTIALS",

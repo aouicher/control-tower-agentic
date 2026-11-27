@@ -148,10 +148,15 @@ def notify(title, message):
         pass
 
 
+NO_SERVERS = '{"mcpServers": {}}'  # for a job installed without an mcp.json
+
+
 def build_command(claude_bin, job, prompt, settings_path):
+    # only the MCP servers the installer copied for this job (connected ones, as approved), never the vault's .mcp.json
+    mcp = os.path.join(os.path.dirname(settings_path), 'mcp.json')
     return [claude_bin, '-p', prompt, '--model', job.get('model', 'sonnet'),
-            '--permission-mode', 'dontAsk', '--setting-sources', 'project',
-            '--settings', settings_path, '--output-format', 'json']
+            '--permission-mode', 'dontAsk', '--setting-sources', 'project', '--settings', settings_path,
+            '--mcp-config', mcp if os.path.isfile(mcp) else NO_SERVERS, '--strict-mcp-config', '--output-format', 'json']
 
 
 def main():

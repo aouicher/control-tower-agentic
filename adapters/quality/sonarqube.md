@@ -7,12 +7,14 @@ Official documentation: https://docs.sonarsource.com/sonarqube-mcp-server/ (setu
 SonarQube Cloud (add `SONARQUBE_URL=https://sonarqube.us` for the US region only):
 
 ```bash
-claude mcp add --scope user sonarqube \
-  --env SONARQUBE_TOKEN=$SONARQUBE_TOKEN \
-  --env SONARQUBE_ORG=$SONARQUBE_ORG \
+claude mcp add --scope project sonarqube \
+  --env 'SONARQUBE_TOKEN=${SONARQUBE_TOKEN}' \
+  --env 'SONARQUBE_ORG=${SONARQUBE_ORG}' \
   --env SONARQUBE_READ_ONLY=true \
   -- docker run -i --rm --init --pull=always -e SONARQUBE_TOKEN -e SONARQUBE_ORG -e SONARQUBE_READ_ONLY sonarsource/sonarqube-mcp
 ```
+
+Run it from the vault folder: scheduled reports start only servers of the vault's `.mcp.json`. The single quotes keep each `${NAME}` as a reference that Claude Code reads from the environment when the server starts, so the token is never written into the vault.
 
 SonarQube Server: replace `SONARQUBE_ORG` with `SONARQUBE_URL` (your server URL). The documented quick-start commands do not include `SONARQUBE_READ_ONLY`; it is added here from the environment-variable reference. A configuration generator is linked from the official page: https://mcp.sonarqube.com/config-generator.html.
 
