@@ -299,7 +299,8 @@ class CorePolicy:
 # an unattended job run any code, write anywhere, or act on the user's behalf. scheduler/guard.py adds the run-time limits.
 SAFE_TOOLS = {'Read', 'Grep', 'Glob', 'TodoWrite', 'Skill'}
 SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r"\']')
-COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]*$')
+COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,31}$')
+MAX_RULE = 120  # with at most two variables, a rule stays one short line: it cannot carry a message to the person reading it
 ENV_PREFIX = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(\S*)$')
 MCP_TOOL = re.compile(r'^mcp__([A-Za-z0-9_.-]+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
 HOST = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
@@ -340,6 +341,8 @@ def permission_problem(rule):
     rule = str(rule).strip()
     if re.search(r'[^\x20-\x7e]', rule):  # a non-breaking or other unusual space would hide the real command from every check
         return 'a rule may only contain plain printable characters'
+    if len(rule) > MAX_RULE:
+        return f'a rule is at most {MAX_RULE} characters long'
     if '{{' in rule:
         return 'unrendered template token in a permission'
     if rule in SAFE_TOOLS or re.fullmatch(r'Read\([^()]+\)', rule):
@@ -362,6 +365,8 @@ def permission_problem(rule):
     if not rule.endswith(')') or SHELL_CHARS.search(rule[5:-1]):
         return 'a command rule may not contain shell operators, quotes or substitutions'
     env, cmd, rest = bash_parts(rule)
+    if len(env) > 2:
+        return 'at most two variables before a command'
     for e in env:
         name = ENV_PREFIX.match(e).group(1)
         if UNSAFE_ENV.match(name):
