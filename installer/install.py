@@ -41,7 +41,7 @@ from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePoli
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
                   eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, kit_commit, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
                   on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers, vault_settings_findings,
-                  vault_files)
+                  tool_connection, vault_files)
 
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
@@ -174,8 +174,16 @@ def validate(answers, repo=REPO):
         if p not in available:
             errors.append(f'answers: unknown pack "{p}" (available: {", ".join(available)})')
     for cap, tool in (answers.get('tools') or {}).items():
+        cid = tool_connection(answers, cap)
         if cap not in CAPABILITIES:
             errors.append(f'answers: unknown capability "{cap}"')
+        elif cid is not None:
+            conn = (answers.get('connections') or {}).get(cid)
+            if not (isinstance(conn, dict) and ('server' in conn or 'command' in conn) and conn.get('read_tools')):
+                errors.append(f'answers: "{cap}" uses {tool}, which is not one of your connections to an MCP server or a command of '
+                              'this computer with read tools (a claude.ai connector serves only reports on claude.ai)')
+            elif (answers.get('servers') or {}).get(cap) or (answers.get('permissions') or {}).get(cap):
+                errors.append(f'answers: "{cap}" uses {tool}: its rules are the connection\'s, never "servers" or "permissions" for {cap}')
         elif tool != 'none' and tool not in list_tools(cap, repo):
             errors.append(f'answers: no adapter "{tool}" for capability "{cap}" (available: {", ".join(list_tools(cap, repo))}, none)')
     if answers.get('scheduler', 'auto') not in ('auto', 'launchd', 'cron', 'none'):
@@ -253,13 +261,19 @@ def read_routine(path):
     return meta, text.split('\n## Prompt\n', 1)[1].strip() + '\n'
 
 
+def routine_missing(meta, tools):
+    """The required connectors of a cloud routine that have no kit tool: none chosen, or the user's own connection, which only
+    this computer reaches."""
+    return [c for c in meta.get('connectors_required', []) if tools.get(c, 'none') == 'none' or tool_connection({'tools': tools}, c)]
+
+
 def eligible_routines(ids, packs, tools):
     """Cloud routines of the chosen packs; a routine is offered only if its required connectors have a tool."""
     out = []
     for p in ids:
         for rid in packs[p].manifest.get('routines', []):
             meta, prompt = read_routine(os.path.join(packs[p].dir, 'routines', rid + '.md'))
-            missing = [c for c in meta.get('connectors_required', []) if tools.get(c, 'none') == 'none']
+            missing = routine_missing(meta, tools)
             out.append({'pack': p, 'id': rid, 'meta': meta, 'prompt': prompt, 'missing': missing, 'connectors': {}, 'tokens': {}})
     return out
 
@@ -270,11 +284,23 @@ def routine_cron(days, hhmm):
     return f"{m} {h} * * {','.join(str(d) for d in parse_days(days))}"
 
 
-def adapter_doc(repo, capability, tool):
+def connection_doc(capability, cid, entry):
+    """How a report reaches a capability served by the user's connection: its source and read tools, then the vault's guide."""
+    source = f"the MCP server `{entry['server']}`" if 'server' in entry else f"the command `{entry['command']}`"
+    return (f'## Your tool: the connection {cid}\n\nThis capability uses {source}. A report may call only its read tools: '
+            + ', '.join(f'`{r}`' for r in entry['read_tools']) + f'.\n\nHow to query it for this vault is in `.claude/adapters/{capability}-guide.md`: '
+            'read it before the first call. If that file is missing, query nothing and say in the report that the guide is missing.\n')
+
+
+def adapter_doc(repo, capability, tool, answers):
     with open(os.path.join(repo, 'adapters', capability, 'contract.md'), encoding='utf-8') as fh:
         contract = fh.read()
-    with open(os.path.join(repo, 'adapters', capability, tool + '.md'), encoding='utf-8') as fh:
-        doc = fh.read()
+    cid = tool_connection(answers, capability)
+    if cid:
+        doc = connection_doc(capability, cid, answers['connections'][cid])
+    else:
+        with open(os.path.join(repo, 'adapters', capability, tool + '.md'), encoding='utf-8') as fh:
+            doc = fh.read()
     return (f'<!-- Installed by control-tower {VERSION}: capability {capability}, tool {tool}. '
             f'Jobs and skills read this file to know how to query the tool. -->\n\n'
             f'# {capability.capitalize()} adapter: {tool}\n\n## Contract\n\n{contract}\n\n---\n\n{doc}\n')
@@ -304,6 +330,10 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=(), mcp_blocked=()):
         if tool == 'none':
             continue
         any_tool = True
+        if tool_connection(answers, cap):
+            lines += [f'### {cap}: your connection {tool_connection(answers, cap)}', '', f'Reports that need {cap} use it. How to query it is in '
+                      f'`.claude/adapters/{cap}-guide.md`; in Claude, in your vault, say: check my setup, to know whether it is there.', '']
+            continue
         man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
         lines += [f'### {cap}: {tool}', '', f"Official documentation: {man['setup_url']}", '']
         if man.get('setup_steps'):  # steps that are not shell commands (for example a connector made in the tool's own UI)
@@ -521,8 +551,10 @@ class Ctx:
             allow, _, network = job_rules(self.repo, a, {'id': j['id'], 'meta': j['rendered']})
             check_permissions(f'job "{j["id"]}"', allow)  # adapters and the user's grants: the same limits
             # its servers: the known tools', and the connections it uses (a connection's server goes only to its reports)
+            adapters = job_adapters(self.repo, a, j['rendered'])
+            j['servers'] |= {man['server'] for _, man in adapters.values() if man.get('server')}
             j['approved'] = {s: e for s, e in self.approved.items() if s in known | j['servers']}
-            self.mcp_blocked |= unreachable_servers(job_adapters(self.repo, a, j['rendered']), a, allow, j['approved'])
+            self.mcp_blocked |= unreachable_servers(adapters, a, allow, j['approved'])
             uses = describe_rules(allow, network)
             if any(uses.values()):  # what the user consents to, in plain words (the guided installer asks about it)
                 self.report['permissions_summary'].append({'job': j['id'], 'name': j['rendered'].get('name', j['id']), **uses})
@@ -602,7 +634,7 @@ def step_adapters(ctx):
         rel = f'.claude/adapters/{cap}.md'
         target = os.path.join(ctx.vault, rel)
         errs = []
-        content = render.render_text(adapter_doc(ctx.repo, cap, tool), ctx.table, rel, errs)
+        content = render.render_text(adapter_doc(ctx.repo, cap, tool, ctx.a), ctx.table, rel, errs)
         if errs:
             raise InstallError('; '.join(errs))
         if ctx.update:

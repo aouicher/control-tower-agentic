@@ -522,11 +522,27 @@ def job_capabilities(meta):
     return list(caps), []
 
 
+CONNECTION = 'connection:'  # "tools": {"logs": "connection:<id>"}: a capability served by one of the user's connections
+
+
+def tool_connection(answers, cap):
+    """The id of the user's connection that serves a capability instead of a kit tool, or None."""
+    tool = str((answers.get('tools') or {}).get(cap, ''))
+    return tool[len(CONNECTION):] if tool.startswith(CONNECTION) else None
+
+
 def job_adapters(repo, answers, meta):
-    """{capability: (tool, manifest)} for the job's capabilities whose tool is chosen."""
-    tools = answers.get('tools') or {}
-    return {c: (tools[c], jload(os.path.join(repo, 'adapters', c, tools[c] + '.json')))
-            for c in sum(job_capabilities(meta), []) if tools.get(c, 'none') != 'none'}
+    """{capability: (tool, manifest)} for the job's capabilities whose tool is chosen. A capability served by the user's
+    connection gets a manifest of that connection's read tools and server."""
+    tools, conns, out = answers.get('tools') or {}, answers.get('connections') or {}, {}
+    for c in sum(job_capabilities(meta), []):
+        cid = tool_connection(answers, c)
+        if cid:
+            entry = conns.get(cid) or {}
+            out[c] = (tools[c], {'tool': tools[c], 'permissions_allow': list(entry.get('read_tools', [])), 'server': entry.get('server')})
+        elif tools.get(c, 'none') != 'none':
+            out[c] = (tools[c], jload(os.path.join(repo, 'adapters', c, tools[c] + '.json')))
+    return out
 
 
 def mcp_server(rule):
