@@ -105,6 +105,16 @@ class EverywhereTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(os.path.exists(self.skill))
 
+    def test_only_the_kit_s_own_hub_goes_everywhere(self):
+        sys.path.insert(0, os.path.join(ROOT, 'tests'))
+        from test_private_packs import private_pack, write
+        pack = private_pack(os.path.join(self._tmp.name, 'outside'), replaces=['CLAUDE.md', '_system/templates/daily.md',
+                                                                             '.claude/skills/control-tower/SKILL.md'])
+        write(os.path.join(pack, 'vault', '.claude', 'skills', 'control-tower', 'SKILL.md'), '---\nname: control-tower\n---\nA pack\'s hub.\n')
+        report = install.install(dict(self.a, packs=['acme-private'], pack_dirs=[pack], everywhere=True), log=lambda *x: None)
+        self.assertFalse(os.path.exists(self.skill), 'a pack\'s text never goes into every session')
+        self.assertTrue(any('changes /control-tower' in w for w in report['warnings']), report['warnings'])
+
     def test_validated(self):
         for bad in ({'everywhere': 'yes'}, {'vault_path': self.a['vault_path'] + '`x'}, {'ct_home': self.a['ct_home'] + '-->x'},
                     {'vault_path': self.a['vault_path'] + '\tx'}):

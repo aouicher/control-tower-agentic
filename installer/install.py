@@ -795,15 +795,9 @@ def step_obsidian(ctx):
 
 
 def everywhere_text(ctx):
-    """The personal /control-tower skill: the hub's text as the kit installs it in the vault (never read from the vault at run
-    time: a synced vault is not trusted in every session), with this vault named and a way out for another vault's session."""
-    rel = os.path.join('.claude', 'skills', 'control-tower', 'SKILL.md')
-    sources = [os.path.join(ctx.repo, 'core', 'vault', rel)] + [os.path.join(ctx.packs[p].dir, 'vault', rel) for p in ctx.a['packs']]
-    with open([f for f in sources if os.path.isfile(f)][-1], encoding='utf-8') as fh:
-        errs = []
-        hub = render.render_text(fh.read(), ctx.table, rel, errs).split('\n---\n', 1)[-1]  # rendered as in the vault; its frontmatter is replaced
-    if errs:
-        raise InstallError('; '.join(errs))
+    """The personal /control-tower skill: the kit's own hub, as is (never the vault's copy, a pack's, or an answer's text: what
+    every session follows comes from the kit only), with this vault named and a way out for another vault's session."""
+    hub = hub_text(ctx).split('\n---\n', 1)[-1]  # its frontmatter is replaced
     kit_job_permissions = os.path.join(ctx.repo, 'core', 'vault', '.claude', 'skills', 'job-permissions', 'SKILL.md')
     return ('---\nname: control-tower\ndescription: Your control tower from any folder. Use when the user says /control-tower or "hello control '
             'tower".\n---\n'
@@ -819,6 +813,23 @@ def everywhere_text(ctx):
             + hub)
 
 
+HUB = os.path.join('.claude', 'skills', 'control-tower', 'SKILL.md')
+
+
+def hub_text(ctx):
+    with open(os.path.join(ctx.repo, 'core', 'vault', HUB), encoding='utf-8') as fh:
+        return fh.read()
+
+
+def hub_not_the_kit_s(ctx):
+    """Why the vault's /control-tower is not the kit's own hub (a pack replaces or drops it), or why the kit's cannot be
+    written as is (a token in it), or None."""
+    packs = [p for p in ctx.a['packs'] if any(os.path.isfile(os.path.join(ctx.packs[p].dir, 'vault', HUB + ext)) for ext in ('', '.tmpl'))]
+    if packs or (ctx.policy and ctx.policy.excluded(HUB.replace(os.sep, '/'))):
+        return f'the pack {", ".join(packs) or "chosen"} changes /control-tower'
+    return 'the kit\'s /control-tower holds an answer token' if '{{ct.' in hub_text(ctx) else None
+
+
 def step_everywhere(ctx):
     """The personal /control-tower shortcut: written after the user's yes ("everywhere"), refreshed with the kit, removed when
     turned off. Its path and checksum go to install.json: a shortcut the user edited, another install's, or a skill of the
@@ -826,9 +837,10 @@ def step_everywhere(ctx):
     runtime = os.path.join(ctx.ct_home, 'install.json')
     path, unedited = our_shortcut(ctx.ct_home)
     if ctx.a.get('everywhere') and not ctx.runtime_only:
-        if unsafe_in_text(ctx.repo):
-            ctx.report['warnings'].append('/control-tower everywhere: the kit\'s folder name holds a backtick, a control character or "-->": '
-                                          'not written; /control-tower works in the vault session')
+        why = ('the kit\'s folder name holds a backtick, a control character or "-->"' if unsafe_in_text(ctx.repo)
+               else hub_not_the_kit_s(ctx))
+        if why:
+            ctx.report['warnings'].append(f'/control-tower everywhere: {why}: not written; /control-tower works in the vault session')
             return
         target = user_skill_path()
         if os.path.exists(target) and not (target == path and unedited):
