@@ -195,12 +195,12 @@ class InstallTests(unittest.TestCase):
             a = answers_for(tmp, ['engineering', 'product'], scheduler='none')
             install.install(a, log=lambda *x: None)
             home = open(os.path.join(a['vault_path'], 'cockpit.md'), encoding='utf-8').read()
-            self.assertLess(home.index('![[pulse]]'), home.index('![[delivery]]'))
-            self.assertLess(home.index('![[delivery]]'), home.index('![[roadmap]]'), 'in the order of the profiles')
+            self.assertIn('![[pulse]]', home, 'a short glance page')
+            self.assertNotIn('![[delivery]]', home, 'full pages stay in the Pages table: their tables would show twice')
+            self.assertNotIn('![[roadmap]]', home)
             install.install(dict(a, jobs={'service-health': {'enabled': False}}), update=True, log=lambda *x: None)
             home = open(os.path.join(a['vault_path'], 'cockpit.md'), encoding='utf-8').read()
             self.assertNotIn('![[pulse]]', home, 'its report is off: the page would stay empty')
-            self.assertIn('![[delivery]]', home)
             sys.path.insert(0, os.path.join(ROOT, 'tests'))
             from test_private_packs import private_pack
             for bad in (['missing'], ['x]]\n## Mine'], 'pulse'):

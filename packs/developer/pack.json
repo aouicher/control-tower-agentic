@@ -7,7 +7,7 @@
   "skills": ["standup", "review-queue", "worklog", "debug-journal"],
   "templates": ["debug-journal", "pull-request-notes", "spike"],
   "dashboards": ["my-pull-requests"],
-  "cockpit_pages": ["dev-today"],
+  "cockpit_pages": [],
   "jobs": ["morning-prs", "weekly-wrap"],
   "routines": ["daily-note", "weekly-review", "morning-brief"],
   "capabilities": {
