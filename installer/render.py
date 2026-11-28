@@ -83,7 +83,8 @@ def sha256(path):
 
 
 def update_action(target, out_rel, content, src, installed):
-    """What an update does with one kit file: create, kept (already identical), updated, stashed or skipped."""
+    """What an update does with one kit file: create, kept (already identical, or edited while the kit's version did not
+    change: nothing new to merge), updated, stashed or skipped."""
     if not os.path.exists(target):
         return 'skipped' if out_rel in installed else 'create'
     new = (content.encode('utf-8') if content is not None else open(src, 'rb').read())
@@ -92,7 +93,7 @@ def update_action(target, out_rel, content, src, installed):
         return 'kept'
     if installed.get(out_rel) and hashlib.sha256(current).hexdigest() == installed[out_rel]:
         return 'updated'
-    return 'stashed'
+    return 'kept' if hashlib.sha256(new).hexdigest() == installed.get(out_rel) else 'stashed'
 
 
 def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None, installed=None, stash_dir=None, skip=None,

@@ -288,6 +288,9 @@ class UpdateTests(unittest.TestCase):
             with open(claude_md, 'a', encoding='utf-8') as fh:
                 fh.write('\nMy own rule.\n')
             os.remove(research)
+            same = install.install(a, repo=kit, update=True, log=lambda *x: None)
+            self.assertEqual(same['stashed'], [], 'the kit did not change the file: nothing new to merge, the edit is kept')
+            self.assertIn('My own rule.', open(claude_md, encoding='utf-8').read())
             # a new version of the kit changes three files and adds one
             for rel in ('core/vault/.claude/skills/today/SKILL.md', 'core/vault/CLAUDE.md.tmpl', 'core/vault/.claude/skills/research/SKILL.md'):
                 with open(os.path.join(kit, rel), 'a', encoding='utf-8') as fh:
