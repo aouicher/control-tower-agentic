@@ -10,6 +10,8 @@ Target: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`, section `## 📝 Notes`.
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. Get the date and time with `date "+%F %H:%M"` (timezone {{ct.timezone}}).
 2. If the daily note is missing, create it from `_system/templates/daily.md` (replace the `{{date:...}}` placeholders with real values). Re-read the note before editing: the vault may sync.
 3. Build the entry from the argument or the conversation. A good entry:

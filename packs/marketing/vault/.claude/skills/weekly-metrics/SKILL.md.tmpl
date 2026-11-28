@@ -10,6 +10,8 @@ Same logic as the `weekly-metrics` job, run by hand with the user present.
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. The week to report is the argument, else the LAST COMPLETE ISO week (Monday to Sunday; on macOS `date -v-7d +%G-W%V`, on Linux `date -d '7 days ago' +%G-W%V`). The report is named after that week. Compare it with the week before: both periods are 7 days. Compute both date ranges before reading any data.
 2. Read the adapter notes in `.claude/adapters/`: `analytics.md` and `crm.md`. If a capability is not configured, say so in the report and ask the user to paste the figures for it, or continue without it.
 3. Collect, for both weeks, with the same definitions:

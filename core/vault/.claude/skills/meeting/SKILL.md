@@ -10,6 +10,8 @@ Output: ONE note from `_system/templates/meeting.md`: `journal/meetings/<type>/<
 
 ## 1. Identify the meeting
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 - Type: a recurring-meeting slug. The existing subfolders of `journal/meetings/` are the reference; create a new one only when none fits.
 - One-to-one: `<person-slug>` is the file name of the {{ct.person}}'s note in `team/`; link it as a wikilink. Create the folder if missing. The file name keeps the person and the date so wikilinks stay unique.
 - Date: given, else today (`date +%F`). Attendees and title: read the event with the calendar tool configured for this vault (e.g. a Google Calendar MCP server, timezone `{{ct.timezone}}`). If no calendar is configured, ask only for what is missing.

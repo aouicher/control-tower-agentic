@@ -71,3 +71,5 @@ Whatever the mode, a routine that finds a report missing or older than today say
 ## Writing rules for unattended prompts
 
 Never ask questions, be read-only on external systems, always pass explicit limits and paginate, tag proposed tasks `#to-triage`, and never include secrets or customer data.
+
+Dates come from the runner. Before each run, `run_job.py` puts a `## Run context` block at the top of the prompt, in the timezone you installed with: now, today, the year, the current ISO week, the last complete ISO week, the week before it and the previous working day, each week with its Monday and Sunday. A prompt takes its dates from there and never runs `date`; it finds vault notes with the Glob tool, never `ls`. A skill that a job follows says so before its first `date` command, so the same skill still works in an interactive session. Tests check both (`tests/test_run_context.py`).

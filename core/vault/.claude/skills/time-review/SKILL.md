@@ -8,6 +8,8 @@ argument-hint: "[YYYY-Www]"
 
 ## Steps
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 1. Get the ISO week with `date +%G-W%V` (or use the argument) and the Monday to Sunday dates. Default: the current week up to today; on a Monday, the week that just ended.
 2. Read the calendar with the calendar tool configured for this vault (e.g. a Google Calendar MCP server), primary calendar, timezone `{{ct.timezone}}`, accepted or no-response events only; skip all-day and declined events. If no calendar tool is configured, say so, stop, and suggest configuring one. Write nothing.
 3. Classify each event into ONE category from its title and attendees.

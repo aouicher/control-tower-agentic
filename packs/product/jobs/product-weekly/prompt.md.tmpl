@@ -3,7 +3,7 @@ Unattended scheduled job: never ask, never wait. Read-only on every external sys
 Run the logic of the `product-weekly` skill (`.claude/skills/product-weekly/SKILL.md`) for the current ISO week (Monday 00:00 to Sunday 23:59, {{ct.timezone}}), compared with the previous ISO week.
 
 ## Steps
-1. Get the ISO week with `date +%G-W%V` and the real time with `date "+%d/%m/%Y at %H:%M"`.
+1. Take the current ISO week ("ISO week"), the previous ISO week ("Last complete ISO week") and the time from the Run context at the top of this prompt.
 2. Read the active {{ct.workstreams}} in `work/workstreams/` and their `tracker` property.
 3. Use the tracker adapter configured in `.claude/adapters/tracker.md`: per {{ct.workstream}}, items shipped, in progress and blocked. Trackers return at most 100 items per page: paginate to the end, or write "at least N (truncated)". Never report a count from a truncated page.
 4. Use the analytics adapter configured in `.claude/adapters/analytics.md` for the metrics named in the PRDs. Compare like with like: same period length, segment and definition. If a figure comes from a sampled export, write "sampled" next to it. If unavailable, write "no data".

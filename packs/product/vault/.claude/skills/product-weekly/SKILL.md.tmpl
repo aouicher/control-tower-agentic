@@ -7,6 +7,9 @@ argument-hint: "[YYYY-Www]"
 # Product weekly
 
 ## Window
+
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 ISO week from the argument, else the current one (`date +%G-W%V`). Monday 00:00 to Sunday 23:59, in {{ct.timezone}}. The comparison period is the previous ISO week, same length.
 
 ## Steps
