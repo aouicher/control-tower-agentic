@@ -22,6 +22,8 @@ group by filename
 limit 8
 ```
 
+{{ct.cockpit_pages}}
+
 ## 🚧 Work in progress
 ![[projects.base]]
 

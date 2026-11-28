@@ -552,6 +552,9 @@ class Ctx:
         self.approved = approved_servers(self.vault, a, recorded_servers(a))  # the servers jobs may start, as approved
         self.mcp_blocked = set()  # (capability, tool) of an MCP server no job may call yet: not connected, or no read tool allowed
         self.jobs_on, self.jobs_off = self.plan_jobs()
+        idle = {o for j in self.jobs_off for o in j['meta'].get('outputs', [])}  # a page whose report is off would stay empty
+        self.table['cockpit_pages'] = '\n\n'.join(dict.fromkeys(f'![[{c}]]' for p in a['packs'] for c in self.packs[p].manifest.get('cockpit_pages', [])
+                                                                if f'cockpit/{c}.md' not in idle))
 
     def plan_jobs(self):
         """Which jobs run, their final (rendered) definition, and every check on them: nothing is written if one fails."""

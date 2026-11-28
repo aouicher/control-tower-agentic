@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The cockpit shows the pages of the chosen profiles, not only their names in the Pages table: it embeds each pack's `cockpit_pages` (engineering's pulse and delivery, product's roadmap, a private pack's own), in the order of the packs, and leaves out a page whose report is off, which would stay empty.
 - The cockpit no longer shows today's title three times: it embeds `cockpit/today.md` without a heading of its own, and a new vault's Obsidian settings hide the file name above each page (`showInlineTitle: false`), since every page has its own title.
 - An update saves a kit file's new version in `.control-tower/updates/` only when the kit changed it. A file you edited, or a page a report or a skill rewrites (`cockpit/today.md`, `cockpit/pulse.md`), is kept without a copy when the kit's version is the one installed: every update no longer leaves a pile of identical copies to merge.
 - A job that runs `slackcli` no longer counts as blocked: the known-command table (`adapters/commands.json`) can set environment switches for a command (`env`), written into the settings of the jobs allowed that command, and `slackcli` gets `SLACKCLI_NO_UPDATE_NOTIFIER=1`, so its update check no longer reaches `api.github.com`, which the job's sandbox refuses. Only the kit's table sets an environment; a `commands` answer cannot.
