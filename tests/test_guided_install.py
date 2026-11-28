@@ -84,6 +84,10 @@ class MatchToolsTests(unittest.TestCase):
         self.assertTrue(install.vault_path_problems({'vault_path': os.path.join(home, 'v'), 'ct_home': os.path.join(home, 'v', 'ct')}))
         self.assertEqual(install.vault_path_problems({'vault_path': os.path.join(home, 'Documents', 'notes'), 'ct_home': '~/.control-tower'}), [])
 
+    def test_every_known_tool_fits_on_one_screen(self):
+        tools = sum(toolnames.known_tools(install.list_packs()).values(), [])
+        self.assertLessEqual(len(tools), 16, 'the tool question shows at most 4 questions of 4 on one screen')
+
     def test_whole_words_only(self):
         self.assertEqual(toolnames.match_tools('nonlinear jiraffe', ['product'])['tools']['tracker'], 'none')
 
@@ -145,8 +149,10 @@ class SkillTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'^\d+\. ', ask, re.M)), 5)
         self.assertIn('language', steps[0][1].lower(), 'the vault\'s language first: the rest of the conversation uses it')
         tools = next(s for s in re.split(r'\n(?=\d+\. )', ask) if '--match-tools' in s)
-        self.assertIn('plain message', tools, 'typed by the user: the question tool would make up options')
-        self.assertIn('never suggest', tools.lower())
+        self.assertIn('configure.py choices', tools, 'a list to tick: typing every tool is slow')
+        self.assertIn('nothing ticked', tools)
+        self.assertIn('"Other"', tools, 'a tool that is not listed is typed')
+        self.assertIn('never tick or suggest', tools.lower())
         questions = [q for q in re.findall(r'"([^"]+\?)"', ask) if q not in {q for _, q in steps}]
         self.assertEqual(len(questions), 1, f'one follow-up only, the conflict: {questions}')
         self.assertIn(questions[0], tools)
@@ -162,6 +168,8 @@ class SkillTests(unittest.TestCase):
         last = re.split(r'\n## ', self.text)[-1]
         self.assertIn('hello control tower', last)
         self.assertIn('control-tower-vault', last)
+        self.assertIn('Open your vault session now?', last, 'started for the user when the app can')
+        self.assertIn('happens in the vault session', last, 'a command asked in the install session is pointed there')
 
     def test_the_vault_language(self):
         self.assertEqual(install.default_answers(detect=False)['language'], 'English')
