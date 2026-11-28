@@ -26,9 +26,9 @@ In the Claude desktop app, open the **Code** tab, choose any folder (your home f
 
 Claude asks before downloading the kit. Then it asks:
 
-1. the language of your notes and reports (the rest of the install continues in it);
+1. the language of your notes and reports (the rest of the install continues in it; the vault's templates, section titles and folder names stay in English);
 2. which describes your work: engineering leader, developer, marketing, product (one or more);
-3. which tools you use at work, in your own words ("Jira, GitHub and Amplitude");
+3. which tools you use at work: tick them in a list, and type any other;
 4. where the vault goes: keep the default, **control-tower-vault** in your home folder (on a Mac, a vault inside iCloud Drive, Documents or Desktop may be blocked for scheduled reports by the privacy rules, which then fail without a window to ask you);
 5. whether reports run on their own, at the usual times.
 
@@ -53,7 +53,7 @@ Obsidian keeps the vault in its list: next time it opens there directly.
 
 ## 3. Talk to your control tower
 
-Everything else happens in a Claude session on your vault. In the Claude app, start a new **Code** session and choose the folder **control-tower-vault** (it stays in your recent folders). Say **hello control tower**, then, in your own words:
+Everything else happens in a Claude session on your vault: the control tower's commands exist only there, not in the session that installed it. At the end of the install, Claude offers to open that session for you; otherwise, in the Claude app, start a new **Code** session and choose the folder **control-tower-vault** (it stays in your recent folders). Say **hello control tower**, then, in your own words:
 
 | You say | Claude |
 |---|---|
