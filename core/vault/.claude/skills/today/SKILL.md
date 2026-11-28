@@ -8,6 +8,8 @@ argument-hint: "[YYYY-MM-DD | refresh]"
 
 Target note: `journal/daily/<YYYY>/<YYYY-MM-DD>.md`. Reading page: `cockpit/today.md`, written only by this skill (other skills and routines never edit it). Tasks are never copied from one day to another: a task lives once in its own note and the cockpit aggregates them.
 
+If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
+
 ## Refresh mode (`/today refresh`)
 
 If the argument is `refresh`, do only this, then stop (do not run the steps below, do not ask "Anything to add?"):
@@ -17,8 +19,6 @@ If the argument is `refresh`, do only this, then stop (do not run the steps belo
 4. Reply in 2 lines: what is in progress and what comes next.
 
 ## Steps
-
-If the prompt has a `## Run context`, take dates and times from it and do not run `date`; otherwise get them as below.
 
 1. Get the date with `date +%F` (or use the argument) and the year with `date +%Y`. Create the year folder if it is missing.
 2. If the daily note exists, read it and summarise it in one line. Otherwise build it from `_system/templates/daily.md`: replace the Obsidian `{{date:...}}` placeholders with real values, the heading is the weekday and full date.
