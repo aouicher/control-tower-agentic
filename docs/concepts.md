@@ -37,6 +37,10 @@ Every note has YAML properties. Dashboards (`_system/dashboards/*.base`, Obsidia
 
 The core uses neutral words. Each pack can rename the shown words (for example workstream becomes campaign, person becomes teammate) in `vocabulary.json`. Folder names, property values and tags stay stable.
 
+## The vault's language
+
+Notes and reports are written in the answers' `language`. The vault's templates, dashboards and pages are translated into it once, by Claude, at install (`install.py --strings` lists their texts; `translation_file` in the answers brings the translation). The translation changes words only: links, tokens, tags, handles, code, queries, properties and folder names stay as they are, and `installer/translate.py` refuses one that changes them or adds a table cell, a heading, a quote, a list, code, a link, HTML or a comment. It is kept in `.control-tower/translation.json` and put back every time the installer writes those files, so an update keeps it and finds nothing edited; the texts a new version adds are translated from `/control-tower` (`configure.py translate --missing`, then `--file`). Skills and `CLAUDE.md` stay in English, and so does every heading a skill, a rule or a report names (`## ✅ Tasks`), so they still find it; a translation is kept only for texts the vault has.
+
 ## Page style
 
 Short pages stay plain. Long pages open with a summary callout, use tables and icons, fold annexes in `> [!note]-` blocks and end with a `🕐 Generated on` line when machine-written.

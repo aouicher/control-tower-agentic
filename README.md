@@ -26,7 +26,7 @@ In the Claude desktop app, open the **Code** tab, choose any folder (your home f
 
 Claude asks before downloading the kit. Then it asks:
 
-1. the language of your notes and reports (the rest of the install continues in it; the vault's templates, section titles and folder names stay in English);
+1. the language of your notes and reports (the rest of the install continues in it, and Claude translates the vault's templates, dashboards and pages into it; only folder names stay in English);
 2. which describes your work: engineering leader, developer, marketing, product (one or more);
 3. which tools you use at work: tick them in a list, and type any other;
 4. where the vault goes: keep the default, **control-tower-vault** in your home folder (on a Mac, a vault inside iCloud Drive, Documents or Desktop may be blocked for scheduled reports by the privacy rules, which then fail without a window to ask you);

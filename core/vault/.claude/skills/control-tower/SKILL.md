@@ -41,6 +41,7 @@ Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the c
    - write notes and reports in another language: `--language <its name in letters>` (for example `--language Deutsch`);
    - `/control-tower` in every Claude session, or only in this vault: `--everywhere on` or `--everywhere off`;
    - the sources of one of the user's own reports (`my_jobs` in `show`): `--job <id> --uses <its sources>`, the known tools' capabilities and connection ids it reads, the whole list each time. To forget such a report entirely, the change is `python3 <repo>/installer/configure.py remove-job --vault <this vault> --id <id>` instead of `set`.
+   After a change of language, continue with "Translate the vault".
    If the request needs several changes, do them one after the other, each with its own yes. If it is none of these, say what can be changed here and stop.
 2. Apply it (see Ground rules).
 3. Offer to check the setup again.
@@ -122,9 +123,17 @@ A report that runs on claude.ai (`runs_on: cloud`) exists there only as a routin
 2. On "Update", run `python3 <repo>/installer/configure.py update --vault <this vault> --apply --to <to>` with exactly the `to` of step 1 (it can take a minute).
    - Exit 2 with "needs consent": this version gives jobs more access, listed after it, and nothing in the vault changed yet. Show the list in plain words and ask "Allow this?" with "Allow" and "Not now"; on "Allow", run the same command with `--accept-access`. On "Not now", say the kit stayed on its version and the next update check offers it again.
    - Any other exit: relay it as in "Applying a change" (see Ground rules). The kit's folder stays on the new version and the next check offers to finish the update (`pending`).
-   - Exit 0: say it is done, then continue with "Check my setup".
+   - Exit 0: say it is done; when the vault's language is not English, do "Translate the vault" (asking nothing: the update was the yes); then continue with "Check my setup".
 3. For each file in `kept`: the user edited it, and the kit's new version is in the newest folder of `.control-tower/updates/` in this vault. Ask "Your version of <file> was kept. Merge the new parts into it?" with a short summary of what the new version adds. On yes, add those parts to the user's file and keep everything they wrote.
 4. If `routines_changed` is not empty, say "Cloud routines are not updated automatically. These changed: <names>." and offer to bring each one up to date as in "Reports that run on claude.ai".
+
+## Translate the vault
+
+The vault's templates, dashboards and pages are written in its language (`language` in `show`): Claude translates their texts once, and the kit puts the translation back every time it writes those files.
+
+1. Run `python3 <repo>/installer/configure.py translate --vault <this vault> --missing`. It prints, as a JSON list, the texts still in English (new ones after an update, all of them after a change of language). When the list is empty, or the language is English, there is nothing to do.
+2. Make a temporary folder (`mktemp -d`) and write `translation.json` in it with the Write tool: one object with each text as a key and its translation as the value. Translate the words only: keep every `[[link]]`, `{{token}}`, `` `code` ``, `#tag`, `@handle` and web address exactly as written, one line each, no `|` and no leading `#`, `>`, `-` or number the English text does not have.
+3. Apply `python3 <repo>/installer/configure.py translate --vault <this vault> --file <that file>` as in "Applying a change". When it says the translation is refused, fix the texts it names and apply it again. Then delete the temporary folder (`rm -f <that file>`, then `rmdir` the folder).
 
 ## Uninstall
 

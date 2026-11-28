@@ -44,6 +44,7 @@ Replace `~/control-tower-vault` with your vault folder. The installer saved your
 | A kit file you **edited** (for example your `CLAUDE.md`) | Kept as it is. The new version is saved in `.control-tower/updates/<date>/` so you can merge what you want. |
 | A kit file you **deleted** | Left deleted. |
 | A file that is **new** in the kit | Added. |
+| A translated kit file (a vault in another language than English) | Written again with its translation, from `.control-tower/translation.json`; Claude translates the texts the new version adds. |
 | The runtime (`~/.control-tower/`: guard, job prompts, permissions, schedule files) | Always refreshed: this is where most security fixes land. |
 
 The installer knows which files you edited because it stored a checksum of every file it installed in `.control-tower/manifest.json`.

@@ -33,6 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
 import scheduling  # noqa: E402
+import translate  # noqa: E402
 import update  # noqa: E402
 from plan import (ID_RE, MAX_SUBCOMMANDS, MCP_TOOL, READ_VERBS, SUBCOMMAND, bash_parts, claude_bin, command_needs, command_problem, connection_problem,  # noqa: E402
                   describe_rules, expand, fingerprint, jload, known_commands, mcp_server, my_report_name, name_words, needs_host, permission_problem,
@@ -646,6 +647,33 @@ def cmd_add_server(args):
     return 0
 
 
+def translate_vault(data, args):
+    """`translate --file`: add these texts to the vault's translation; the installer checks them and writes the vault again."""
+    data['translation_file'] = expand(args.translations)
+    return data, 'the vault is written in its language with these texts'
+
+
+def cmd_translate(args):
+    """`translate --missing`: the vault's texts still in English, as JSON, for Claude to translate.
+    `translate --file`: a change that adds those translations."""
+    if args.translations:
+        return change(args, translate_vault)
+    _, data = load_answers(args.vault)
+    if data is None:
+        return 2
+    if data.get('language', 'English') == 'English':
+        print('[]')
+        return 0
+    try:
+        texts = install.install(data, dry_run=True, strings=True, log=lambda *x: None)['strings']
+        done = translate.load(expand(args.vault), data.get('language', 'English'))
+    except (install.InstallError, install.render.RenderError) as exc:
+        print(f'error: {exc}', file=sys.stderr)
+        return 2
+    print(json.dumps([t for t in texts if t not in done], indent=1, ensure_ascii=False))
+    return 0
+
+
 def refresh(data, args):
     """`refresh`: the same answers, applied by this version of the kit (after an update): new access needs a yes."""
     return data, 'the vault and the runtime follow this version of the kit'
@@ -841,6 +869,10 @@ def main(argv=None):
     p.add_argument('--apply', action='store_true', help="move the kit's folder to --to, then refresh the vault and the runtime")
     p.add_argument('--to', help='the commit the check showed (`to`)')
     sub.add_parser('refresh', parents=[vault], help='apply the same answers with this version of the kit (after an update)')
+    p = sub.add_parser('translate', parents=[vault], help="the vault in its language: the texts to translate, or a file of translations to add")
+    which = p.add_mutually_exclusive_group(required=True)
+    which.add_argument('--missing', action='store_true', help='the texts not translated yet, as JSON')
+    which.add_argument('--file', dest='translations', help='a JSON object {"English text": "translated text"} to add')
     p = sub.add_parser('check-skill', parents=[vault], help='can this vault skill run as a scheduled report')
     p.add_argument('--skill', required=True)
     p = sub.add_parser('add-job', parents=[vault], help='schedule one of your vault skills as a report')
@@ -855,7 +887,7 @@ def main(argv=None):
     ap.set_defaults(job=None, schedule=None, accept_access=False, dry_run=False, file=None)  # flags only some changes have
     args = ap.parse_args(argv)
     direct = {'show': cmd_show, 'denials': cmd_denials, 'probe': cmd_probe, 'choices': cmd_choices, 'add-server': cmd_add_server,
-              'check-skill': cmd_check_skill, 'update': cmd_update}
+              'check-skill': cmd_check_skill, 'update': cmd_update, 'translate': cmd_translate}
     if args.action in direct:
         return direct[args.action](args)
     build = {'set': edit, 'grant': grant, 'revoke': revoke, 'add-command': add_command, 'remove-command': remove_command,
