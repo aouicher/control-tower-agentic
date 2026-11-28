@@ -59,7 +59,7 @@ A job may use only what its rules allow: jobs run with `--permission-mode dontAs
 ```
 
 - `permissions.allow`: the commands, MCP tools and web sites the job uses. The person installing sees them in plain words and says yes or no per job (the guided installer asks one question; the report has `permissions_summary`, also in `install.py --json`). A job that is refused is installed disabled.
-- `network` (optional): the hosts the job's commands reach. Only used in strict mode, where the sandbox lets commands reach these hosts and nothing else.
+- `network` (optional): the hosts the job's commands reach. A job with a command runs it in Claude Code's sandbox, which lets it reach these hosts and nothing else.
 - `sandbox_allow_write` (optional): folders a sandboxed command must write to (a CLI's own log folder). Only per-user log and cache folders: `~/Library/Logs/`, `~/Library/Caches/`, `~/.cache/`, `~/.local/state/`.
 
 Later, a user grants a job more access by answering `/job-permissions` in the vault: the skill records the answer as `job_permissions` in `<vault>/.control-tower/answers.json` and re-runs the installer (see [permissions](permissions.md)). Nobody edits a rule by hand.
@@ -80,7 +80,7 @@ The installer checks every rule on the final text (after `{{ct.*}}` tokens are f
 
 Answers files from older versions may still hold `trusted_commands`, `trusted_env`, `trusted_mcp_tools` or `trusted_domains`: they are ignored.
 
-At run time, the guard hook checks every call whatever the rules say: file-tool reads stay in the vault and never touch secrets, file-tool writes stay in the vault and never touch its settings, templates, git or Claude files (nested ones included), and outward or destructive commands are refused (`git push`, `gh pr create`, `gh api -X`, cloud and cluster writes, `rm -r`, `sudo`, reading credential files...). A command is checked only against those patterns, so one with an option that writes a file (`sort -o`, `git log --output`) is not stopped by the guard. With `"strict": true` in the answers, every shell command also runs in Claude Code's sandbox, which keeps its writes in the vault (see [permissions](permissions.md#strict-mode-optional)).
+At run time, the guard hook checks every call whatever the rules say: file-tool reads stay in the vault and never touch secrets, file-tool writes stay in the vault and never touch its settings, templates, git or Claude files (nested ones included), and outward or destructive commands are refused (`git push`, `gh pr create`, `gh api -X`, cloud and cluster writes, `rm -r`, `sudo`, reading credential files...). Every shell command also runs in Claude Code's sandbox, whatever its syntax: its writes stay in the vault and it reaches only the declared hosts (see [permissions](permissions.md#the-sandbox)).
 
 What a pack may not contain: symlinks (a `vault/` or `jobs/` folder that is itself a link included), a vocabulary file outside the pack, anything the guard protects except skills, rules, templates and dashboards (so no `.claude/settings*.json`, hooks, agents or commands, no `.git`, `.github`, `.vscode`, `.obsidian`, `.control-tower`, `.mcp.json`), and the same names nested deeper. Only private packs may ship `CLAUDE.md`. These checks ignore case, as macOS and Windows do.
 
