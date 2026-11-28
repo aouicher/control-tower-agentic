@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
 import scheduling  # noqa: E402
-from plan import REPO, CorePolicy, core_files, mcp_file_findings, skill_problem, tool_connection, vault_settings_findings  # noqa: E402
+from plan import REPO, CorePolicy, core_files, jload, mcp_file_findings, our_shortcut, skill_problem, tool_connection, vault_settings_findings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -139,6 +139,12 @@ def check(vault, ct_home, claude_bin='claude'):
             if tool_connection(manifest, cap) and not os.path.isfile(os.path.join(vault, '.claude', 'adapters', f'{cap}-guide.md')):
                 r.add('warn', f'{cap} guide', f'.claude/adapters/{cap}-guide.md is missing: reports that need {cap} will not know how to '
                       'query your connection. In Claude, in this vault, say: connect a tool for ' + cap)
+    shortcut, unedited = our_shortcut(ct_home)
+    if unedited:
+        r.add('ok', '/control-tower everywhere', f'{shortcut} gives this control tower\'s /control-tower in any folder')
+    elif jload(os.path.join(vault, '.control-tower', 'answers.json'), {}).get('everywhere'):
+        r.add('warn', '/control-tower everywhere', 'asked for, but the personal /control-tower is not this control tower\'s (another skill '
+              'of that name, or an edited copy, is kept): it works in the vault session only')
     # obsidian
     obs = os.path.join(vault, '.obsidian')
     if os.path.isdir(obs):

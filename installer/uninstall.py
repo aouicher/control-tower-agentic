@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
 import scheduling  # noqa: E402
 import update  # noqa: E402
-from plan import claude_bin, fingerprint, jload, kit_commit, vault_servers  # noqa: E402
+from plan import claude_bin, fingerprint, jload, kit_commit, our_shortcut, remove_shortcut, vault_servers  # noqa: E402
 
 
 def sha(path):
@@ -159,6 +159,9 @@ def main():
     claude = claude_bin(ct)  # read before the runtime goes
     if os.path.isdir(ct) and not args.schedule_only:
         plan.append(('rmtree', ct))
+        shortcut, unedited = our_shortcut(ct)
+        if unedited:  # the personal /control-tower of a runtime that goes; an edited copy is the user's, and stays
+            plan.append(('remove-file', shortcut))
     unedited = []
     if vault and args.remove_vault_files:
         if not os.path.isfile(os.path.join(vault, '.control-tower', 'manifest.json')):
@@ -198,6 +201,9 @@ def main():
         print(f'warning: {w}', file=sys.stderr)
     if ('rmtree', ct) in plan:
         shutil.rmtree(ct)
+    for kind, what in plan:
+        if kind == 'remove-file':
+            remove_shortcut(what)
     if unedited:
         parents = set()
         for rel in unedited:
