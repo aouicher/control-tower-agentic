@@ -35,7 +35,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
 from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError, check_permissions, check_rendered,  # noqa: E402
-                  describe_rules, expand, guard_rules, jload, list_packs, permission_problem, resolve_packs, vault_files)
+                  command_needs, command_problem, describe_rules, expand, guard_rules, jload, list_packs, permission_problem,
+                  resolve_packs, vault_files)
 
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
@@ -97,6 +98,11 @@ def validate(answers, repo=REPO):
             errors.append(f'answers: job_permissions "{jid}" must be a list of rules')
             continue
         errors += [f'answers: job_permissions "{jid}": "{r}": {p}' for r in rules for p in [permission_problem(r)] if p]
+    commands = answers.get('commands') or {}
+    if not isinstance(commands, dict):
+        errors.append('answers: "commands" must be an object, for example {"twg": {"network": ["acme.atlassian.net"]}}')
+        commands = {}
+    errors += [f'answers: {p}' for name, entry in commands.items() for p in [command_problem(name, entry)] if p]
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -375,7 +381,7 @@ def job_rules(repo, answers, job):
             deny += man.get('permissions_deny', [])
             network += man.get('network', [])
     allow += list((answers.get('job_permissions') or {}).get(job['id'], []))
-    return allow, deny, network
+    return allow, deny, network + command_needs(repo, answers, allow)[0]
 
 
 # Claude Code's sandbox around every shell command of a job that may run one (any Bash rule): writes only in the vault minus
@@ -385,14 +391,14 @@ SANDBOX_DENY_READ = ['~/.ssh', '~/.aws', '~/.gnupg', '~/.kube', '~/.docker', '~/
 SANDBOX_DENY_WRITE = list(PROTECTED_DIRS) + list(PROTECTED_FILES_CASED)  # the guard's list: one source for both
 
 
-def sandbox_settings(vault, meta, allow, network):
+def sandbox_settings(vault, network, writable, weaker):
     fs = {'denyRead': list(SANDBOX_DENY_READ), 'denyWrite': ['/' + os.path.join(vault, p) for p in SANDBOX_DENY_WRITE]}
-    if meta.get('sandbox_allow_write'):
-        fs['allowWrite'] = list(meta['sandbox_allow_write'])
+    if writable:
+        fs['allowWrite'] = sorted(set(writable))
     box = {'enabled': True, 'failIfUnavailable': True, 'allowUnsandboxedCommands': False, 'filesystem': fs,
            'network': {'allowedDomains': sorted(set(network))}}
-    if any(r.startswith('Bash(gh ') for r in allow):
-        box['enableWeakerNetworkIsolation'] = True  # gh (Go) checks TLS certificates through a macOS service the sandbox blocks
+    if weaker:  # from adapters/commands.json: gh (Go) checks TLS certificates through a macOS service the sandbox blocks
+        box['enableWeakerNetworkIsolation'] = True
     return box
 
 
@@ -409,7 +415,8 @@ def job_settings(repo, answers, job):
     settings = {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
                 'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
     if any(r.startswith('Bash(') for r in allow):
-        settings['sandbox'] = sandbox_settings(vault, job['meta'], allow, network)
+        _, writable, weaker = command_needs(repo, answers, allow)
+        settings['sandbox'] = sandbox_settings(vault, network, list(job['meta'].get('sandbox_allow_write', [])) + writable, weaker)
     return settings
 
 

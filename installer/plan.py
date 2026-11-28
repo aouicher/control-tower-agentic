@@ -118,19 +118,65 @@ def check_id(kind, value):
     return value
 
 
-# Strict mode lets a pack add folders a sandboxed command may write to: only per-user log and cache folders.
+# Folders a sandboxed command may also write to: a tool's own folder under a per-user log or cache root, never the root itself.
 SANDBOX_WRITABLE = ('~/Library/Logs/', '~/Library/Caches/', '~/.cache/', '~/.local/state/')
+WRITABLE = re.compile(r'^(~/Library/Logs|~/Library/Caches|~/\.cache|~/\.local/state)(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+/?\Z')
+
+
+def valid_host(host):
+    """One exact public host name: no wildcard, no IP address, no local-only name (.local, .localhost, .internal)."""
+    return (isinstance(host, str) and len(host) <= 253 and bool(HOST.fullmatch(host)) and all(len(x) <= 63 for x in host.split('.'))
+            and not host.lower().endswith(('.local', '.localhost', '.internal')))
 
 
 def job_meta_problem(meta):
     """The optional sandbox fields of a job.json: `network` (web hosts its commands reach) and `sandbox_allow_write`."""
     net, writable = meta.get('network', []), meta.get('sandbox_allow_write', [])
-    if not isinstance(net, list) or not all(isinstance(h, str) and HOST.match(h) for h in net):
+    if not isinstance(net, list) or not all(valid_host(h) for h in net):
         return '"network" must be a list of host names, for example ["api.github.com"]'
-    if not isinstance(writable, list) or not all(isinstance(w, str) and w.startswith(SANDBOX_WRITABLE) and '..' not in w.split('/')
-                                                 for w in writable):
-        return f'"sandbox_allow_write" may only list folders under {", ".join(SANDBOX_WRITABLE)}'
+    if not isinstance(writable, list) or not all(isinstance(w, str) and WRITABLE.match(w) and '..' not in w.split('/') for w in writable):
+        return f'"sandbox_allow_write" may only list a tool\'s own folder under {", ".join(SANDBOX_WRITABLE)}'
     return None
+
+
+# Hosts and write folders of known command-line tools (measured with the real CLI, docs/design/runtime-facts.md), merged
+# with the developer's own answers (`commands`), so a granted command can reach what it needs inside the sandbox.
+COMMAND_KEYS = {'network', 'allow_write'}
+
+
+def known_commands(repo=REPO):
+    return jload(os.path.join(repo, 'adapters', 'commands.json'))
+
+
+def command_problem(name, entry):
+    """Why one `commands` answer is refused: `{name: {"network": [hosts], "allow_write": [per-user log or cache folders]}}`."""
+    if not COMMAND_NAME.match(str(name)):
+        return f'"commands": "{name}" is not a command name'
+    if not isinstance(entry, dict) or set(entry) - COMMAND_KEYS:
+        return f'"commands" "{name}" may only hold {sorted(COMMAND_KEYS)}'
+    why = permission_problem(f'Bash({name}:*)')
+    if why:
+        return f'"{name}" can never be allowed: {why}'
+    own = [w for w in entry.get('allow_write', []) if not (isinstance(w, str) and w.rstrip('/').rsplit('/', 1)[-1] == name
+                                                           and w.rstrip('/').rsplit('/', 1)[0] + '/' in SANDBOX_WRITABLE)]
+    if own:  # a command writes only in its own folder: ~/.cache/<name>, never another tool's (a code cache) or a deeper one
+        return f'"commands" "{name}" may write only in its own folder, for example ~/.cache/{name}'
+    return job_meta_problem({'network': entry.get('network', []), 'sandbox_allow_write': entry.get('allow_write', [])})
+
+
+def command_needs(repo, answers, allow):
+    """(hosts, write folders, macOS certificate flag) for the commands of these rules: the table plus the answers."""
+    table, mine = known_commands(repo), answers.get('commands') or {}
+    hosts, writable, weaker = [], [], False
+    for rule in allow:
+        parts = bash_parts(rule)
+        if not parts:
+            continue
+        known, own = table.get(parts[1], {}), mine.get(parts[1], {})
+        hosts += known.get('network', []) + own.get('network', [])
+        writable += known.get('allow_write', []) + own.get('allow_write', [])
+        weaker = weaker or bool(known.get('weaker_network_isolation'))
+    return sorted(set(hosts)), sorted(set(writable)), weaker
 
 
 def check_pack(pk):
@@ -303,7 +349,7 @@ COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,31}$')
 MAX_RULE = 120  # with at most two variables, a rule stays one short line: it cannot carry a message to the person reading it
 ENV_PREFIX = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(\S*)$')
 MCP_TOOL = re.compile(r'^mcp__([A-Za-z0-9_.-]+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
-HOST = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
+HOST = re.compile(r'^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]([A-Za-z0-9-]*[A-Za-z0-9])?$')  # a name, never an IP address
 # shells, interpreters, wrappers that run another command, and tools that copy files or talk to the network by themselves
 NEVER_COMMANDS = {'sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'python', 'node', 'perl', 'ruby', 'php', 'osascript', 'curl', 'wget',
                   'nc', 'ncat', 'ssh', 'scp', 'sftp', 'rsync', 'cp', 'mv', 'rm', 'dd', 'tee', 'chmod', 'chown', 'sudo', 'su', 'env',
@@ -358,7 +404,7 @@ def permission_problem(rule):
         return 'a web search can send your notes to any site'
     if rule.startswith('WebFetch'):
         m = re.fullmatch(r'WebFetch\(domain:([^()\s]+)\)', rule)
-        return None if m and HOST.match(m.group(1)) else 'web access is granted one site at a time (WebFetch(domain:host))'
+        return None if m and valid_host(m.group(1)) else 'web access is granted one site at a time (WebFetch(domain:host))'
     if rule.startswith('mcp__'):
         m = MCP_TOOL.match(rule)
         if not m or '__' in rule.split('__', 2)[2]:

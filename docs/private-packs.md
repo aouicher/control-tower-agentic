@@ -62,6 +62,8 @@ A job may use only what its rules allow: jobs run with `--permission-mode dontAs
 - `network` (optional): the hosts the job's commands reach. A job with a command runs it in Claude Code's sandbox, which lets it reach these hosts and nothing else.
 - `sandbox_allow_write` (optional): folders a sandboxed command must write to (a CLI's own log folder). Only per-user log and cache folders: `~/Library/Logs/`, `~/Library/Caches/`, `~/.cache/`, `~/.local/state/`.
 
+A command also gets the addresses and folders of `adapters/commands.json` (known tools such as `gh`, `twg`, `slackcli`) and of the `commands` answers, `{"twg": {"network": ["acme.atlassian.net"], "allow_write": ["~/.cache/twg"]}}`, `/job-permissions` records `network` when a developer grants an unknown command (see [adapters](adapters.md#command-line-tools-in-jobs)). An address recorded for a command applies to every job that is allowed that command. The same checks apply: exact public host names, a tool's own folder under a per-user log or cache folder, and never a command on the never-list.
+
 Later, a user grants a job more access by answering `/job-permissions` in the vault: the skill records the answer as `job_permissions` in `<vault>/.control-tower/answers.json` and re-runs the installer (see [permissions](permissions.md)). Nobody edits a rule by hand.
 
 The installer checks every rule on the final text (after `{{ct.*}}` tokens are filled in), before anything is written, whoever asked for it (the pack, the chosen tool adapters, the user). Well-formed rules are accepted: `Read`, `Grep`, `Glob`, `TodoWrite`, `Skill`, `Bash(<command> ...)` for a plain command name (company CLIs included), one exact `mcp__<server>__<tool>`, `WebFetch(domain:<host>)`. These are refused for everyone, always:

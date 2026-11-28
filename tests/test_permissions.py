@@ -34,7 +34,8 @@ class PolicyTests(unittest.TestCase):
              'Bash(/bin/sh -c x)', 'Bash(git push:*)', 'Bash(git commit:*)', 'Bash(git:*)', 'Bash(git -c core.pager=sh log)',
              'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(echo $(id))', 'Bash(PAGER=sh git log:*)',
              'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(HTTPS_PROXY=x twg x)', 'Bash(GH_HOST=x gh pr list)', 'Bash(LD_PRELOAD=x ls)',
-             'Bash(git log {{ct.team}}:*)', 'Agent', 'Task', 'Bash(cat:*)', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)']
+             'Bash(git log {{ct.team}}:*)', 'Agent', 'Task', 'Bash(cat:*)', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)',
+             'WebFetch(domain:10.0.0.1)', 'WebFetch(domain:192.168.1.1)']
 
     def test_acceptable_rules(self):
         for rule in self.ACCEPTABLE:
@@ -104,7 +105,7 @@ class InstallTests(unittest.TestCase):
             a = answers(tmp, ['acme-private'], [pd])
             report = install.install(a, log=lambda *x: None)
             self.assertIn('Bash(slackcli conversations unread *)', settings(a)['permissions']['allow'])
-            self.assertEqual(report['permissions_summary'], [{'job': 'acme-brief', 'name': 'Acme brief', 'web': [], 'mcp_tools': [],
+            self.assertEqual(report['permissions_summary'], [{'job': 'acme-brief', 'name': 'Acme brief', 'web': ['api.atlassian.com'], 'mcp_tools': [],
                                                               'commands': ['twg jira workitem query', 'slackcli conversations unread']}])
             self.assertNotIn('--commands', settings(a)['hooks']['PreToolUse'][0]['hooks'][0]['command'])
 
@@ -237,6 +238,107 @@ class StrictModeTests(unittest.TestCase):
             self.assertNotIn('sandbox', settings(a), 'strict no longer adds a sandbox to a job that runs no command')
             saved = json.load(open(os.path.join(a['vault_path'], '.control-tower', 'answers.json')))
             self.assertNotIn('strict', saved, 'dropped once, so the notice does not come back at every change')
+
+
+class CommandHostsTests(unittest.TestCase):
+    """A command granted to a job reaches, inside the sandbox, the hosts of the known-command table (adapters/commands.json)
+    and the hosts a developer answered for it (`commands` in the answers, written by `permissions.py add-command`)."""
+
+    def cli(self, *args):
+        return subprocess.run([sys.executable, PERMISSIONS] + list(args), capture_output=True, text=True)
+
+    def test_a_granted_twg_reaches_the_table_host_and_the_answered_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])], job_permissions={'acme-brief': ['Bash(twg jira:*)']},
+                        commands={'twg': {'network': ['acme.atlassian.net']}})
+            install.install(a, log=lambda *x: None)
+            box = settings(a)['sandbox']
+            self.assertTrue(box['failIfUnavailable'])
+            self.assertEqual(box['network']['allowedDomains'], ['acme.atlassian.net', 'api.atlassian.com'])
+            self.assertNotIn('enableWeakerNetworkIsolation', box, 'from the table: gh only')
+
+    def test_a_granted_slackcli_may_write_its_log_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])],
+                        job_permissions={'acme-brief': ['Bash(slackcli conversations unread:*)']})
+            install.install(a, log=lambda *x: None)
+            self.assertIn('~/Library/Logs/slackcli', settings(a)['sandbox']['filesystem']['allowWrite'])
+
+    def test_bad_command_answers_are_refused_by_the_installer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])])
+            for bad in ({'twg': {'network': ['*.example.com']}}, {'twg': {'network': ['10.0.0.1']}}, {'twg': {'allow_write': ['~/Documents']}},
+                        {'cat': {'network': ['example.com']}}, {'Bad Name': {}}, {'twg jira': {}}, {'A=1 twg': {}}, {'twg': {'shell': 'x'}},
+                        ['twg'], {'twg': {'network': ['evil.com\n']}}, {'twg': {'network': ['printer.local']}},
+                        {'twg': {'network': ['app.localhost']}}, {'twg': {'network': ['metadata.google.internal']}},
+                        {'twg': {'network': ['a' * 64 + '.com']}}, {'twg': {'network': ['example.com.']}},
+                        {'twg': {'allow_write': ['~/.cache/']}}, {'twg': {'allow_write': ['~/.cache/*']}},
+                        {'twg': {'allow_write': ['~/.cache/twg/../../.ssh']}}, {'twg': {'allow_write': ['~/Library/Logs']}},
+                        {'twg': {'allow_write': ['~/.cache/zsh']}}, {'twg': {'allow_write': ['~/.cache/twg/plugins']}}):
+                with self.subTest(commands=bad), self.assertRaises(install.InstallError):
+                    install.install(dict(a, commands=bad), dry_run=True)
+
+    def test_add_command_checks_every_answer_and_writes_only_valid_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])], job_permissions={'acme-brief': ['Bash(acme-cli tickets:*)']})
+            install.install(a, log=lambda *x: None)
+            v = a['vault_path']
+            path = os.path.join(v, '.control-tower', 'answers.json')
+            before = open(path, 'rb').read()
+            for bad in (['--host', '*.example.com'], ['--host', '10.0.0.1'], ['--allow-write', '~/Documents'], ['--host', 'a b']):
+                with self.subTest(args=bad):
+                    r = self.cli('add-command', '--vault', v, '--command', 'acme-cli', *bad)
+                    self.assertEqual(r.returncode, 2, r.stdout)
+                    self.assertEqual(open(path, 'rb').read(), before)
+            r = self.cli('add-command', '--vault', v, '--command', 'cat', '--host', 'example.com')
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('never', r.stderr)
+            r = self.cli('add-command', '--vault', v, '--command', 'acme-cli', '--host', 'api.acme.test', '--allow-write', '~/.cache/acme-cli')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            saved = json.load(open(path))
+            self.assertEqual(saved['commands'], {'acme-cli': {'network': ['api.acme.test'], 'allow_write': ['~/.cache/acme-cli']}})
+            box = settings(a)['sandbox']
+            self.assertEqual(box['network']['allowedDomains'], ['api.acme.test'])
+            self.assertEqual(box['filesystem']['allowWrite'], ['~/.cache/acme-cli'])
+
+    def test_the_known_command_table_passes_the_same_checks(self):
+        table = plan.known_commands()
+        self.assertTrue({'gh', 'twg', 'slackcli'} <= set(table))
+        for name, entry in table.items():
+            with self.subTest(command=name):
+                self.assertLessEqual(set(entry), {'network', 'allow_write', 'weaker_network_isolation', 'ask_host'})
+                self.assertIsNone(plan.command_problem(name, {k: v for k, v in entry.items() if k in plan.COMMAND_KEYS}))
+
+    def test_a_command_with_no_web_address_and_taking_one_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])])
+            install.install(a, log=lambda *x: None)
+            v, ct = a['vault_path'], a['ct_home']
+            write(os.path.join(ct, 'logs', 'acme-brief.denials.json'), json.dumps([
+                {'tool': 'Bash', 'input': 'acme-cli tickets list', 'reason': 'not allowed for this job', 'source': 'permissions', 'at': 'T'}]))
+            self.assertEqual(self.cli('add-command', '--vault', v, '--command', 'acme-cli', '--no-network').returncode, 0)
+            item = json.loads(self.cli('list', '--ct-home', ct).stdout)['denials'][0]
+            self.assertEqual((item['hosts'], item['needs_host']), ([], False), 'answered: it needs no web address')
+            self.assertEqual(self.cli('add-command', '--vault', v, '--command', 'acme-cli', '--host', 'api.acme.test').returncode, 0)
+            r = self.cli('remove-command', '--vault', v, '--command', 'acme-cli')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn('commands', json.load(open(os.path.join(v, '.control-tower', 'answers.json'))))
+            self.assertTrue(json.loads(self.cli('list', '--ct-home', ct).stdout)['denials'][0]['needs_host'])
+
+    def test_a_refused_command_comes_with_its_hosts_or_needs_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])])
+            install.install(a, log=lambda *x: None)
+            write(os.path.join(a['ct_home'], 'logs', 'acme-brief.denials.json'), json.dumps([
+                {'tool': 'Bash', 'input': cmd, 'reason': 'not allowed for this job', 'source': 'permissions', 'at': 'T'}
+                for cmd in ('twg jira workitem query --jql x', 'acme-cli tickets list', 'slackcli conversations unread')]))
+            items = {i['rule']: i for i in json.loads(self.cli('list', '--ct-home', a['ct_home']).stdout)['denials']}
+            twg = items['Bash(twg jira workitem query:*)']
+            self.assertEqual((twg['hosts'], twg['needs_host']), (['api.atlassian.com'], False))
+            self.assertTrue(items['Bash(acme-cli tickets list:*)']['needs_host'], 'unknown command: ask which address it talks to')
+            slack = items['Bash(slackcli conversations unread:*)']
+            self.assertTrue(slack['needs_host'], 'the workspace address depends on the company')
+            self.assertIn('slack.com', slack['ask_host'])
 
 
 class GrantByAnsweringTests(unittest.TestCase):
