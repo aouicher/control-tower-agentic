@@ -45,7 +45,7 @@ Replace `~/control-tower-vault` with your vault folder. The installer saved your
 |---|---|
 | Your own notes (projects, meetings, daily notes...) | Never touched: they did not come from the kit. |
 | A kit file you **never edited** (a skill, a template, a dashboard) | Replaced by the new version. |
-| A kit file you **edited** (for example your `CLAUDE.md`) | Kept as it is. The new version is saved in `.control-tower/updates/<date>/` so you can merge what you want. |
+| A kit file you **edited** (for example your `CLAUDE.md`), or a page a report or skill rewrites (`cockpit/today.md`, `cockpit/pulse.md`) | Kept as it is. When the kit's version changed, the new version is saved in `.control-tower/updates/<date>/` so you can merge what you want; when it did not, nothing is saved. |
 | A kit file you **deleted** | Left deleted. |
 | A file that is **new** in the kit | Added. |
 | A translated kit file (a vault in another language than English) | Written again with its translation, from `.control-tower/translation.json`; Claude translates the texts the new version adds. |
