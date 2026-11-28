@@ -719,23 +719,29 @@ def step_schedule(ctx):
     if not ctx.dry_run:
         shutil.rmtree(sched_dir, ignore_errors=True)
     plist_paths, cron_lines = [], []
-    for j in ctx.jobs_on:
-        sched = j['rendered']['schedule']
-        args = [python_bin(a), os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home]
+    runs = [(j['id'], [os.path.join(ct_home, 'bin', 'run_job.py'), '--job', j['id'], '--ct-home', ct_home], j['rendered']['schedule'])
+            for j in ctx.jobs_on]
+    if runs and unsafe_in_text(ctx.repo):
+        ctx.report['warnings'].append("the kit's folder name cannot go into the schedule: no weekly look for a new version")
+    elif runs:  # with the reports, a weekly look for a new version of the kit (an id no job can have)
+        runs.append(('kit.update', [os.path.join(ctx.repo, 'installer', 'configure.py'), 'update', '--vault', ctx.vault, '--notify'],
+                     {'days': 'mon', 'time': '09:00'}))
+    for rid, args, sched in runs:
+        args = [python_bin(a)] + args
         lt, shift, warn = local_time(sched['time'], a['timezone'])
         days = shift_days(parse_days(sched['days']), shift)
         if warn:
-            ctx.report['warnings'].append(f"{j['id']}: {warn}")
+            ctx.report['warnings'].append(f"{rid}: {warn}")
         if kind == 'launchd':
-            label = f"com.control-tower.{j['id']}"
+            label = f"com.control-tower.{rid}"
             path = os.path.join(sched_dir, 'launchd', label + '.plist')
             plist_paths.append((label, path))
             if not ctx.dry_run:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, 'w', encoding='utf-8') as fh:
-                    fh.write(launchd_plist(label, args, days, lt, os.path.join(ct_home, 'logs', j['id'] + '.launchd.log')))
+                    fh.write(launchd_plist(label, args, days, lt, os.path.join(ct_home, 'logs', rid + '.launchd.log')))
         elif kind == 'cron':
-            cron_lines.append(f'# {j["id"]}\n' + cron_line(args, days, lt))
+            cron_lines.append(f'# {rid}\n' + cron_line(args, days, lt))
     if kind == 'cron' and cron_lines and not ctx.dry_run:  # no job: no file, and applying removes this install's block
         os.makedirs(sched_dir, exist_ok=True)
         with open(os.path.join(sched_dir, 'crontab.txt'), 'w', encoding='utf-8') as fh:

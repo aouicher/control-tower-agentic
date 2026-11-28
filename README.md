@@ -63,7 +63,7 @@ Everything else happens in a Claude session on your vault: the control tower's c
 | "move the triage to 9:00", "stop the debt review", "add the product profile", "write my notes in Deutsch" | changes your setup after showing you what changes |
 | "fix my job" (when a notification says a report was blocked) | explains what the report was refused and asks whether to allow it |
 | "check my setup" | says what is installed, what runs when, and what needs your attention |
-| "update the kit", "uninstall" | updates or removes the kit; your notes are never removed |
+| "update the kit", "uninstall" | updates or removes the kit; your notes are never removed. "hello control tower", "check my setup" and, with automatic reports, a weekly notification say when a new version is ready |
 
 Day-to-day commands such as `/today`, `/inbox`, `/weekly-review` and `/meeting` are described in [Using it every day](docs/daily-use.md).
 

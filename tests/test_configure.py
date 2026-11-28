@@ -208,7 +208,8 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn('com.control-tower.morning-prs.plist', os.listdir(self.la))
         self.assertTrue(self.show()['schedule']['applied'])
         self.assertEqual(self.cli('set', '--job', 'morning-prs', '--enabled', 'false').returncode, 0)
-        self.assertEqual(sorted(os.listdir(self.la)), ['com.control-tower.weekly-wrap.plist'], 'a loaded schedule follows a change')
+        self.assertEqual(sorted(os.listdir(self.la)), ['com.control-tower.kit.update.plist', 'com.control-tower.weekly-wrap.plist'],
+                         'a loaded schedule follows a change, with the weekly look for a new version of the kit')
         r = self.cli('set', '--job', 'weekly-wrap', '--enabled', 'false')
         self.assertEqual(r.returncode, 0, 'no job left to load is not a failure: ' + r.stderr)
         self.assertEqual(os.listdir(self.la), [])
