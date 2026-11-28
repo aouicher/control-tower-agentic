@@ -32,7 +32,8 @@ Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the c
    - use another tool for a capability, or none: `--tool <capability>=<tool>` (for example `tracker=linear`, `tracker=none`);
    - move a report: `--job <id> --time HH:MM` and/or `--days mon-fri` (also `weekdays`, `daily`, `mon,wed`);
    - stop or restart a report: `--job <id> --enabled false` or `--enabled true`;
-   - turn automatic runs on or off on this computer: `--schedule on` or `--schedule off`.
+   - turn automatic runs on or off on this computer: `--schedule on` or `--schedule off`;
+   - the sources of one of the user's own reports (`my_jobs` in `show`): `--job <id> --uses <its sources>`, the known tools' capabilities and connection ids it reads, the whole list each time. To forget such a report entirely, the change is `python3 <repo>/installer/configure.py remove-job --vault <this vault> --id <id>` instead of `set`.
    If the request needs several changes, do them one after the other, each with its own yes. If it is none of these, say what can be changed here and stop.
 2. Run the change with `--dry-run` first. It prints `jobs_added`, `jobs_removed` and `new_access` (what jobs could use that they cannot today: commands, connections, web sites). Explain the effect in plain words, for example "The Weekly product digest will run every Monday at 08:00 and read your Amplitude data."
 3. Ask "Apply this?" with "Apply" and "Not now". If `new_access` was not empty, the question says so, and "Apply" is the user's consent to it.
@@ -75,7 +76,7 @@ When the tool has no adapter in the kit, ask "What is the tool called?" (its id:
   2. Its web addresses: if `adapters/commands.json` in the kit lists the command, show them ("It talks to api.github.com. OK?"); an address that depends on the company is a question with an example ("What is your Slack address? For example acme.slack.com"). Otherwise ask "Which web address does it talk to?" with "It needs none" and "I don't know"; on "I don't know", say that someone who knows the tool must answer, and stop. Record the answer with `python3 <repo>/installer/configure.py add-command --vault <this vault> --command <command> --host <address>` (or `--no-network` for "It needs none"); a known command with its listed addresses needs nothing recorded.
   3. Run `python3 <repo>/installer/configure.py add-connection --vault <this vault> --id <id> --command <command> --read-tools <the rules>`.
 
-Relay any refusal in plain words. Once connected, say: <tool> is connected, and reports use it once you choose it as a source for one of your own reports.
+Relay any refusal in plain words. Then, if the user has reports of their own (`my_jobs` in `show`), ask "Which of your reports should use it?" from `python3 <repo>/installer/configure.py choices --items <their ids>` (see Lists), and add it to the sources of each one chosen as in "Change my setup" (`--job <id> --uses <its sources and the new connection>`). A report uses a connection only once it is one of its sources. Otherwise say: <tool> is connected, and reports use it once you choose it as a source for one of your own reports.
 
 ## Fix a blocked job
 

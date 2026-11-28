@@ -17,6 +17,10 @@ It starts `claude -p` in the vault with:
 
 Try each job by hand first.
 
+### Your own reports
+
+Any skill of the vault can run as a scheduled report: `configure.py add-job --skill <name> [--id <id>] --days mon-fri --time 08:00 --uses <sources>` records it as `my_jobs.<id>` (`{skill, uses}`) in the answers, with its days and time in `jobs.<id>` like any job (`set --job <id> --time` moves it; `remove-job` forgets it). The installer renders it from one prompt, `core/jobs/skill-job/prompt.md.tmpl`: read `.claude/skills/<name>/SKILL.md` with `Read` and follow it, take dates from the Run context, never ask (questions go under `## Questions for you`), and write `journal/reports/my-<id>-YYYY-MM-DD.md`. Its rules are the base rules plus the read tools of its sources: the known tools' capabilities (their adapters; a capability with no tool chosen leaves the report off) and the connections (their read tools; a connection's server starts only for the reports that use it). The skill must pass `configure.py check-skill`: the closed frontmatter pack skills have, no `allowed-tools`, and a `date` command only after saying to use the Run context. Its id may not be a pack job's. The schedule, the doctor and the uninstaller treat it like any job; the doctor warns when its skill goes missing or stops passing the check.
+
 ### Scheduler choice
 
 | Value | Behaviour |

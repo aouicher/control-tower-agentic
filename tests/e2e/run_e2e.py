@@ -115,6 +115,16 @@ def scenario(packs):
                     dict(env, FAKE_CLAUDE_CALLS=json.dumps([{'tool_name': 'mcp__atlassian__search', 'tool_input': {'jql': 'x'}}])))
             step('a connected Jira with chosen read tools: the job calls it, nothing refused', r1.returncode == r2.returncode == r.returncode == 0
                  and json.load(open(os.path.join(ct, 'logs', 'morning-prs.denials.json'))) == [], (r1.stderr + r2.stderr + r.stderr)[-300:])
+        skill = os.path.join(vault, '.claude', 'skills', 'e2e-digest')  # one of the user's skills, scheduled as a report
+        os.makedirs(skill, exist_ok=True)
+        with open(os.path.join(skill, 'SKILL.md'), 'w') as fh:
+            fh.write('---\nname: e2e-digest\ndescription: A digest.\n---\n\nSummarise the week.\n')
+        r1 = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'add-job', '--vault', vault, '--skill', 'e2e-digest', '--accept-access'], env)
+        r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'e2e-digest', '--ct-home', ct], env)
+        sched_files = [os.path.join(dp, f) for dp, _, fs in os.walk(os.path.join(ct, 'schedule')) for f in fs]
+        step('a vault skill scheduled as a report: rendered, scheduled, runs', r1.returncode == r.returncode == 0
+             and '.claude/skills/e2e-digest/SKILL.md' in open(os.path.join(ct, 'jobs', 'e2e-digest', 'prompt.md')).read()
+             and any('e2e-digest' in open(f).read() for f in sched_files), (r1.stderr + r.stderr)[-300:])
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
         idx = os.path.join(ct, 'routines', 'routines.json')
