@@ -32,6 +32,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
+import scheduling  # noqa: E402
 import update  # noqa: E402
 from plan import (ID_RE, MAX_SUBCOMMANDS, MCP_TOOL, READ_VERBS, SUBCOMMAND, bash_parts, claude_bin, command_needs, command_problem, connection_problem,  # noqa: E402
                   describe_rules, expand, fingerprint, jload, known_commands, mcp_server, my_report_name, name_words, needs_host, permission_problem,
@@ -194,7 +195,7 @@ def ct_home(data):
 
 
 def scheduler(data):
-    return install.pick_scheduler(data.get('scheduler', 'auto'))
+    return scheduling.pick_scheduler(data.get('scheduler', 'auto'))
 
 
 def reinstall(path, data, args, before, after):
@@ -249,7 +250,7 @@ def cmd_update(args):
 
 def schedule_applied(data, args):
     """Whether this install's jobs are loaded in the operating system's scheduler."""
-    return install.schedule_applied(scheduler(data), os.path.join(ct_home(data), 'schedule'), args.launch_agents_dir)
+    return scheduling.schedule_applied(scheduler(data), os.path.join(ct_home(data), 'schedule'), args.launch_agents_dir)
 
 
 def dry_run(data, fresh=()):

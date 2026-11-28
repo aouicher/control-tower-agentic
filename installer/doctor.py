@@ -16,6 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
+import scheduling  # noqa: E402
 from plan import REPO, CorePolicy, core_files, mcp_file_findings, skill_problem, vault_settings_findings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
@@ -208,7 +209,7 @@ def check_runtime(r, vault, ct_home):
             rc = subprocess.run(['plutil', '-lint', os.path.join(sched, 'launchd', f)], capture_output=True).returncode
             r.add('ok' if rc == 0 else 'FAIL', f'launchd file {f}')
     if os.path.isdir(sched):
-        applied = install.schedule_applied('cron' if os.path.isfile(os.path.join(sched, 'crontab.txt')) else 'launchd', sched)
+        applied = scheduling.schedule_applied('cron' if os.path.isfile(os.path.join(sched, 'crontab.txt')) else 'launchd', sched)
         r.add('ok' if applied else 'warn', 'schedule generated',
               'jobs run on schedule only after --apply-schedule' if not applied else 'applied')
     return r

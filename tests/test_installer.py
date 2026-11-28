@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
 import doctor  # noqa: E402
 import install  # noqa: E402
+import scheduling  # noqa: E402
 
 INSTALL = os.path.join(ROOT, 'installer', 'install.py')
 UNINSTALL = os.path.join(ROOT, 'installer', 'uninstall.py')
@@ -145,9 +146,9 @@ class InstallTests(unittest.TestCase):
             self.assertEqual((job['time'], job['days']), ('07:15', 'mon,wed'))
             cron = open(os.path.join(a['ct_home'], 'schedule', 'crontab.txt'), encoding='utf-8').read()
             self.assertIn('# BEGIN control-tower', cron)
-            local, shift, _ = install.local_time('07:15', 'UTC')  # the schedule uses machine time
+            local, shift, _ = scheduling.local_time('07:15', 'UTC')  # the schedule uses machine time
             h, m = (int(x) for x in local.split(':'))
-            dow = ','.join(str(d) for d in install.shift_days([1, 3], shift))
+            dow = ','.join(str(d) for d in scheduling.shift_days([1, 3], shift))
             self.assertRegex(cron, rf'{m} {h} \* \* {dow} \S*python\S* .*run_job\.py --job morning-prs')
 
     def test_apply_schedule_links_plists_without_loading_them(self):
@@ -349,22 +350,22 @@ class CrontabTests(unittest.TestCase):
 
     def test_the_block_belongs_to_one_install_only(self):
         other = '/x/.control-tower-b'
-        block = f'{install.CRON_BEGIN} {other}\n0 8 * * 1 python3 {other}/bin/run_job.py --job a --ct-home {other}\n{install.CRON_END}\n'
+        block = f'{scheduling.CRON_BEGIN} {other}\n0 8 * * 1 python3 {other}/bin/run_job.py --job a --ct-home {other}\n{scheduling.CRON_END}\n'
         open(self.store, 'a').write(block)
-        self.assertTrue(install.cron_applied(other + '/schedule'))
-        self.assertFalse(install.cron_applied('/x/.control-tower/schedule'), 'a path that is a prefix of another install')
+        self.assertTrue(scheduling.cron_applied(other + '/schedule'))
+        self.assertFalse(scheduling.cron_applied('/x/.control-tower/schedule'), 'a path that is a prefix of another install')
         a = answers_for(self.tmp.name, ['developer'], scheduler='cron')
         install.install(a, schedule='load')
         cur = open(self.store).read()
         self.assertIn(block, cur, "loading one install keeps another install's block")
-        self.assertTrue(install.cron_applied(os.path.join(a['ct_home'], 'schedule')))
-        install.apply('cron', [], os.path.join(a['ct_home'], 'schedule'), None, True, {'warnings': []}, unload=True)
+        self.assertTrue(scheduling.cron_applied(os.path.join(a['ct_home'], 'schedule')))
+        scheduling.apply('cron', [], os.path.join(a['ct_home'], 'schedule'), None, True, {'warnings': []}, unload=True)
         self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n' + block, 'unloading removes only its own block')
 
     def test_a_block_from_before_blocks_had_a_path_counts_as_this_install(self):
-        open(self.store, 'a').write(f'{install.CRON_BEGIN}\n0 8 * * 1 python3 /x/run_job.py\n{install.CRON_END}\n')
-        self.assertTrue(install.cron_applied('/x/.control-tower/schedule'))
-        install.apply('cron', [], '/x/.control-tower/schedule', None, True, {'warnings': []}, unload=True)
+        open(self.store, 'a').write(f'{scheduling.CRON_BEGIN}\n0 8 * * 1 python3 /x/run_job.py\n{scheduling.CRON_END}\n')
+        self.assertTrue(scheduling.cron_applied('/x/.control-tower/schedule'))
+        scheduling.apply('cron', [], '/x/.control-tower/schedule', None, True, {'warnings': []}, unload=True)
         self.assertEqual(open(self.store).read(), '0 1 * * * my-own-backup\n')
 
     def test_block_is_installed_and_replaced_keeping_user_lines(self):

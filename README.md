@@ -84,7 +84,7 @@ python3 installer/doctor.py --vault ~/control-tower-developer   # the vault_path
 core/        neutral vault shared by every pack
 packs/       one folder per profile: vault overlay, vocabulary, jobs, routines
 adapters/    one contract per capability, one note and manifest per tool
-installer/   install.py, doctor.py, uninstall.py, render.py
+installer/   install.py, configure.py, update.py, uninstall.py, doctor.py, and their modules (plan, render, scheduling)
 scheduler/   run_job.py (job runner) and guard.py (safety hook)
 examples/    answers files and a fictional "Acme" sample
 tests/       standard-library unit tests

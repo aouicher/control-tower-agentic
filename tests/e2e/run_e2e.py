@@ -95,8 +95,8 @@ def scenario(packs):
             r = run([PY, os.path.join(ROOT, 'installer', 'configure.py'), 'set', '--vault', vault, '--job', 'weekly-metrics',
                      '--time', '09:00'], env)
             sys.path.insert(0, os.path.join(ROOT, 'installer'))
-            import install
-            hhmm, _, _ = install.local_time('09:00', 'UTC')
+            import scheduling
+            hhmm, _, _ = scheduling.local_time('09:00', 'UTC')
             h, m = map(int, hhmm.split(':'))
             sched = os.path.join(ct, 'schedule')
             text = ''.join(open(os.path.join(d, f)).read() for d, _, fs in os.walk(sched) for f in fs if 'weekly-metrics' in f or f == 'crontab.txt')

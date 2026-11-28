@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(ROOT, 'scheduler'))
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
 import guard  # noqa: E402
 import install  # noqa: E402
+import scheduling  # noqa: E402
 
 RUN_JOB = os.path.join(ROOT, 'scheduler', 'run_job.py')
 
@@ -392,16 +393,16 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(set(install.parse_days('sat-mon')), {6, 0, 1})
 
     def test_cron_line(self):
-        line = install.cron_line(['python3', '/h/bin/run_job.py', '--job', 'x', '--ct-home', '/h'], [1, 2, 3, 4, 5], '08:30')
+        line = scheduling.cron_line(['python3', '/h/bin/run_job.py', '--job', 'x', '--ct-home', '/h'], [1, 2, 3, 4, 5], '08:30')
         self.assertEqual(line, '30 8 * * 1,2,3,4,5 python3 /h/bin/run_job.py --job x --ct-home /h')
 
     def test_cron_line_quotes_unsafe_arguments(self):
-        line = install.cron_line(['python3', '/path with space/run.py'], [5], '16:00')
+        line = scheduling.cron_line(['python3', '/path with space/run.py'], [5], '16:00')
         self.assertIn("'/path with space/run.py'", line)
 
     @unittest.skipUnless(shutil.which('plutil'), 'plutil is only available on macOS')
     def test_launchd_plist_is_valid(self):
-        xml = install.launchd_plist('com.control-tower.x', ['python3', '/h/run.py'], [1, 2], '08:00', '/h/log')
+        xml = scheduling.launchd_plist('com.control-tower.x', ['python3', '/h/run.py'], [1, 2], '08:00', '/h/log')
         with tempfile.NamedTemporaryFile('w', suffix='.plist', delete=False) as fh:
             fh.write(xml)
         try:
@@ -411,17 +412,17 @@ class ScheduleTests(unittest.TestCase):
 
     def test_time_conversion_keeps_same_zone(self):
         utc = install.zoneinfo.ZoneInfo('UTC')
-        self.assertEqual(install.local_time('08:00', 'UTC', machine_tz=utc), ('08:00', 0, None))
+        self.assertEqual(scheduling.local_time('08:00', 'UTC', machine_tz=utc), ('08:00', 0, None))
 
     def test_days_move_when_the_conversion_crosses_midnight(self):
         utc = install.zoneinfo.ZoneInfo('UTC')
-        local, shift, warn = install.local_time('08:00', 'Asia/Tokyo', machine_tz=utc)  # 08:00 JST = 23:00 UTC the day before
+        local, shift, warn = scheduling.local_time('08:00', 'Asia/Tokyo', machine_tz=utc)  # 08:00 JST = 23:00 UTC the day before
         self.assertEqual((local, shift), ('23:00', -1))
         self.assertIn('previous day', warn)
-        self.assertEqual(set(install.shift_days(install.parse_days('mon-fri'), shift)), {0, 1, 2, 3, 4}, 'Sunday to Thursday in UTC')
-        local, shift, _ = install.local_time('22:30', 'America/Los_Angeles', machine_tz=utc)  # next day in UTC
+        self.assertEqual(set(scheduling.shift_days(install.parse_days('mon-fri'), shift)), {0, 1, 2, 3, 4}, 'Sunday to Thursday in UTC')
+        local, shift, _ = scheduling.local_time('22:30', 'America/Los_Angeles', machine_tz=utc)  # next day in UTC
         self.assertEqual(shift, 1)
-        self.assertEqual(install.shift_days([5], shift), [6], 'Friday evening in Los Angeles is Saturday in UTC')
+        self.assertEqual(scheduling.shift_days([5], shift), [6], 'Friday evening in Los Angeles is Saturday in UTC')
 
     def test_day_specs(self):
         self.assertEqual(install.parse_days('Mon - Fri'), [1, 2, 3, 4, 5])
@@ -433,10 +434,10 @@ class ScheduleTests(unittest.TestCase):
     def test_cron_and_plist_survive_awkward_paths(self):
         import plistlib
         args = ['/usr/bin/python3', "/tmp/my vault's & 100%/bin/run_job.py", '--job', 'x']
-        line = install.cron_line(args, [1], '08:00')
+        line = scheduling.cron_line(args, [1], '08:00')
         self.assertIn('\\%', line)
         self.assertNotIn(' 100%/', line.replace('\\%', ''))
-        data = plistlib.loads(install.launchd_plist('com.control-tower.x', args, [1], '08:00', '/tmp/a&b.log').encode())
+        data = plistlib.loads(scheduling.launchd_plist('com.control-tower.x', args, [1], '08:00', '/tmp/a&b.log').encode())
         self.assertEqual(data['ProgramArguments'][1], args[1])
 
     def test_guard_blocks_git_internals_and_credential_reads(self):

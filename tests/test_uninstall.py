@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
 sys.path.insert(0, os.path.join(ROOT, 'tests'))
 import install  # noqa: E402
+import scheduling  # noqa: E402
 from plan import fingerprint  # noqa: E402
 from test_installer import answers_for  # noqa: E402
 from test_update import GIT, git, kit_repo  # noqa: E402
@@ -62,13 +63,13 @@ class UninstallLevelTests(unittest.TestCase):
             json.dump(data, fh)
 
     def test_stopping_the_automatic_runs_keeps_everything_else(self):
-        self.assertTrue(install.own_agents(self.la, os.path.join(self.ct, 'schedule')))
+        self.assertTrue(scheduling.own_agents(self.la, os.path.join(self.ct, 'schedule')))
         dry = self.uninstall('--schedule-only')
         self.assertIn('would unload', dry.stdout)
         self.assertNotIn('rmtree', dry.stdout)
         r = self.uninstall('--schedule-only', '--yes')
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(install.own_agents(self.la, os.path.join(self.ct, 'schedule')), [])
+        self.assertEqual(scheduling.own_agents(self.la, os.path.join(self.ct, 'schedule')), [])
         self.assertTrue(os.path.isfile(os.path.join(self.ct, 'install.json')), 'the runtime stays')
         self.assertTrue(os.path.isfile(os.path.join(self.vault, 'cockpit.md')), 'the vault stays')
         self.assertEqual(self.uninstall('--schedule-only', '--remove-vault-files').returncode, 2, 'one level at a time')
