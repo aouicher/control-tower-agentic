@@ -39,6 +39,7 @@ Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the c
    - stop or restart a report: `--job <id> --enabled false` or `--enabled true`;
    - turn automatic runs on or off on this computer: `--schedule on` or `--schedule off`;
    - write notes and reports in another language: `--language <its name in letters>` (for example `--language Deutsch`);
+   - `/control-tower` in every Claude session, or only in this vault: `--everywhere on` or `--everywhere off`;
    - the sources of one of the user's own reports (`my_jobs` in `show`): `--job <id> --uses <its sources>`, the known tools' capabilities and connection ids it reads, the whole list each time. To forget such a report entirely, the change is `python3 <repo>/installer/configure.py remove-job --vault <this vault> --id <id>` instead of `set`.
    If the request needs several changes, do them one after the other, each with its own yes. If it is none of these, say what can be changed here and stop.
 2. Apply it (see Ground rules).

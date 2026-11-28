@@ -522,6 +522,35 @@ def job_capabilities(meta):
     return list(caps), []
 
 
+EVERYWHERE_MARK = 'control-tower: personal shortcut for the runtime in '
+
+
+def user_skill_path(name='control-tower'):
+    """A personal skill of Claude Code's, seen in every session of this user: under CLAUDE_CONFIG_DIR when set, else ~/.claude."""
+    return os.path.join(expand(os.environ.get('CLAUDE_CONFIG_DIR') or '~/.claude'), 'skills', name, 'SKILL.md')
+
+
+def file_sha256(path):
+    with open(path, 'rb') as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def our_shortcut(ct_home):
+    """(path, unedited) of the /control-tower shortcut the runtime in `ct_home` wrote, as its install.json records it: the path
+    it was written to whatever CLAUDE_CONFIG_DIR is now, and whether it is still exactly what was written. (None, False) when
+    it wrote none."""
+    rec = jload(os.path.join(ct_home, 'install.json'), {}).get('everywhere') or {}
+    path = rec.get('path')
+    return path, bool(path) and os.path.isfile(path) and file_sha256(path) == rec.get('sha256')
+
+
+def remove_shortcut(path):
+    """Remove the /control-tower shortcut, then its folder when nothing else is in it."""
+    os.remove(path)
+    if not os.listdir(os.path.dirname(path)):
+        os.rmdir(os.path.dirname(path))
+
+
 CONNECTION = 'connection:'  # "tools": {"logs": "connection:<id>"}: a capability served by one of the user's connections
 
 

@@ -142,11 +142,11 @@ class SkillTests(unittest.TestCase):
         with open(SKILL, encoding='utf-8') as fh:
             self.text = fh.read()
 
-    def test_five_questions_then_the_confirmation(self):
+    def test_six_questions_then_the_confirmation(self):
         ask = section(self.text, '2. Ask')
         steps = re.findall(r'^(\d+)\. \*\*"([^"]+)"\*\*', ask, re.M)
-        self.assertEqual([n for n, _ in steps], ['1', '2', '3', '4', '5'], 'the language, then the four questions')
-        self.assertEqual(len(re.findall(r'^\d+\. ', ask, re.M)), 5)
+        self.assertEqual([n for n, _ in steps], ['1', '2', '3', '4', '5', '6'], 'the language, the four questions, and /control-tower everywhere')
+        self.assertEqual(len(re.findall(r'^\d+\. ', ask, re.M)), 6)
         self.assertIn('language', steps[0][1].lower(), 'the vault\'s language first: the rest of the conversation uses it')
         tools = next(s for s in re.split(r'\n(?=\d+\. )', ask) if '--match-tools' in s)
         self.assertIn('configure.py choices', tools, 'a list to tick: typing every tool is slow')

@@ -41,7 +41,7 @@ from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePoli
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
                   eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, kit_commit, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
                   on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers, vault_settings_findings,
-                  tool_connection, vault_files)
+                  EVERYWHERE_MARK, file_sha256, our_shortcut, remove_shortcut, tool_connection, user_skill_path, vault_files)
 
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
@@ -100,6 +100,11 @@ def default_answers(detect=True):
     }
 
 
+def unsafe_in_text(value):
+    """Whether a path would change the text it is written into: a backtick, a control character or the end of a comment."""
+    return any(ord(c) < 32 or c in '`\x7f' for c in value) or '-->' in value
+
+
 def vault_path_problems(answers, repo=REPO):
     """Why the vault folder is refused: unattended jobs read the whole vault, so never the root, the home folder or a folder
     above it, nor one that holds the kit or the runtime folder."""
@@ -107,6 +112,9 @@ def vault_path_problems(answers, repo=REPO):
         return []
     vault, home = os.path.realpath(expand(answers['vault_path'])), os.path.realpath(os.path.expanduser('~'))
     held = [p for p in (repo, answers.get('ct_home') or '~/.control-tower') if (os.path.realpath(expand(p)) + os.sep).startswith(vault + os.sep)]
+    for key in ('vault_path', 'ct_home'):  # both are written into a personal skill every session loads
+        if unsafe_in_text(str(answers.get(key) or '')):
+            return [f'answers: "{key}" may not hold a backtick, a control character or "-->"']
     if vault == os.sep or (home + os.sep).startswith(vault + os.sep):
         return [f'answers: the vault cannot be {answers["vault_path"]}: reports would read everything in it. Choose a folder of its own']
     return [f'answers: the vault {answers["vault_path"]} would hold {held[0]}: choose a folder of its own'] if held else []
@@ -166,6 +174,8 @@ def validate(answers, repo=REPO):
         commands = {}
     errors += [f'answers: {p}' for name, entry in commands.items() for p in [command_problem(name, entry)] if p]
     errors += vault_path_problems(answers, repo) + language_problems(answers)
+    if not isinstance(answers.get('everywhere', False), bool):
+        errors.append('answers: "everywhere" is true (/control-tower in every Claude session) or false')
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -517,7 +527,7 @@ class Ctx:
         self.report = {'vault': self.vault, 'ct_home': self.ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [],
                        'warnings': [], 'schedule': None, 'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': self.stash_dir,
                        'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full',
-                       'permissions_summary': [], 'owner': {'name': a['owner_name'], 'handle': a['owner_handle'], 'timezone': a['timezone']}}
+                       'permissions_summary': [], 'everywhere': None, 'owner': {'name': a['owner_name'], 'handle': a['owner_handle'], 'timezone': a['timezone']}}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.seen = set()  # every kit file of the vault this run produces, written or not
         self.approved = approved_servers(self.vault, a, recorded_servers(a))  # the servers jobs may start, as approved
@@ -657,8 +667,9 @@ def step_runtime(ctx):
     for name in ('run_job.py', 'guard.py'):
         shutil.copy2(os.path.join(ctx.repo, 'scheduler', name), os.path.join(ctx.ct_home, 'bin', name))
     runtime = os.path.join(ctx.ct_home, 'install.json')
+    prev = jload(runtime, {})  # kit_commit: step_manifest records the new one last; everywhere: the shortcut it wrote
     jdump(runtime, {'vault': ctx.vault, 'claude_bin': ctx.a.get('claude_bin', 'claude'), 'timezone': ctx.a['timezone'], 'version': VERSION,
-                    'kit_commit': jload(runtime, {}).get('kit_commit')})  # the previous one: step_manifest records the new one last
+                    'kit_commit': prev.get('kit_commit'), **({'everywhere': prev['everywhere']} if 'everywhere' in prev else {})})
     jobs_root = os.path.join(ctx.ct_home, 'jobs')
     keep = {j['id'] for j in ctx.jobs_on}
     for old in (os.listdir(jobs_root) if os.path.isdir(jobs_root) else []):
@@ -783,6 +794,79 @@ def step_obsidian(ctx):
             ctx.files[rel] = None
 
 
+def everywhere_text(ctx):
+    """The personal /control-tower skill: the kit's own hub, as is (never the vault's copy, a pack's, or an answer's text: what
+    every session follows comes from the kit only), with this vault named and a way out for another vault's session."""
+    hub = hub_text(ctx).split('\n---\n', 1)[-1]  # its frontmatter is replaced
+    kit_job_permissions = os.path.join(ctx.repo, 'core', 'vault', '.claude', 'skills', 'job-permissions', 'SKILL.md')
+    return ('---\nname: control-tower\ndescription: Your control tower from any folder. Use when the user says /control-tower or "hello control '
+            'tower".\n---\n'
+            f'<!-- {EVERYWHERE_MARK}{ctx.ct_home} -->\n\n# Control tower, from any folder\n\n'
+            f'Written by the control tower installer from its kit. Below, "this vault" is `{ctx.vault}`, whatever folder this session is on; '
+            f'the kit (`repo`) is `{ctx.repo}` and the runtime folder (`ct_home`) is `{ctx.ct_home}`: use these, never the ones in the '
+            "vault's manifest, which is read only to check that the vault was installed by the kit.\n\n"
+            f'- If this session\'s folder is another control tower vault (it holds `.control-tower/manifest.json`) and is not `{ctx.vault}`, '
+            'this text is not for it: say so, and follow that folder\'s own `.claude/skills/control-tower/SKILL.md` with that folder as the vault.\n'
+            f'- Where this text hands over to `/job-permissions` and this session is not on `{ctx.vault}`, follow `{kit_job_permissions}` instead.\n'
+            f'- Signing in to a tool (`/mcp`) works only in a session opened on `{ctx.vault}`: from another folder, say so and offer to open a '
+            'session there (with a tool that starts a session in a folder, if you have one), or tell the user to start a new Code session on it.\n\n'
+            + hub)
+
+
+HUB = os.path.join('.claude', 'skills', 'control-tower', 'SKILL.md')
+
+
+def hub_text(ctx):
+    with open(os.path.join(ctx.repo, 'core', 'vault', HUB), encoding='utf-8') as fh:
+        return fh.read()
+
+
+def hub_not_the_kit_s(ctx):
+    """Why the vault's /control-tower is not the kit's own hub (a pack replaces or drops it), or why the kit's cannot be
+    written as is (a token in it), or None."""
+    packs = [p for p in ctx.a['packs'] if any(os.path.isfile(os.path.join(ctx.packs[p].dir, 'vault', HUB + ext)) for ext in ('', '.tmpl'))]
+    if packs or (ctx.policy and ctx.policy.excluded(HUB.replace(os.sep, '/'))):
+        return f'the pack {", ".join(packs) or "chosen"} changes /control-tower'
+    return 'the kit\'s /control-tower holds an answer token' if '{{ct.' in hub_text(ctx) else None
+
+
+def step_everywhere(ctx):
+    """The personal /control-tower shortcut: written after the user's yes ("everywhere"), refreshed with the kit, removed when
+    turned off. Its path and checksum go to install.json: a shortcut the user edited, another install's, or a skill of the
+    user's is never replaced or removed. A runtime-only install has no hub."""
+    runtime = os.path.join(ctx.ct_home, 'install.json')
+    path, unedited = our_shortcut(ctx.ct_home)
+    if ctx.a.get('everywhere') and not ctx.runtime_only:
+        why = ('the kit\'s folder name holds a backtick, a control character or "-->"' if unsafe_in_text(ctx.repo)
+               else hub_not_the_kit_s(ctx))
+        if why:
+            ctx.report['warnings'].append(f'/control-tower everywhere: {why}: not written; /control-tower works in the vault session')
+            return
+        target = user_skill_path()
+        if os.path.exists(target) and not (target == path and unedited):
+            with open(target, encoding='utf-8', errors='replace') as fh:
+                text = fh.read()
+            whose = ('your edited copy of the shortcut' if f'<!-- {EVERYWHERE_MARK}{ctx.ct_home} -->' in text else
+                     'the shortcut of another control tower install' if EVERYWHERE_MARK in text else 'a personal skill of yours')
+            ctx.report['warnings'].append(f'{target} is {whose}: it was kept, so /control-tower runs it outside the vault; this control '
+                                          'tower\'s /control-tower works in its vault session')
+            return
+        ctx.report['everywhere'] = target
+        if not ctx.dry_run:
+            if path and path != target and unedited:  # Claude's folder moved: the copy at the old place goes
+                remove_shortcut(path)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, 'w', encoding='utf-8') as fh:
+                fh.write(everywhere_text(ctx))
+            jdump(runtime, dict(jload(runtime), everywhere={'path': target, 'sha256': file_sha256(target)}))
+    elif path and not ctx.dry_run:
+        if unedited:
+            remove_shortcut(path)
+        elif os.path.isfile(path):
+            ctx.report['warnings'].append(f'{path}: your edited copy of the /control-tower shortcut was kept')
+        jdump(runtime, {k: v for k, v in jload(runtime).items() if k != 'everywhere'})
+
+
 def step_manifest(ctx):
     """Checksums of every kit file in the vault (doctor, --update, uninstall), the mode, the core policy, and the answers;
     then the kit commit the runtime now follows, once everything else is written."""
@@ -807,6 +891,7 @@ def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=
             step_vault(ctx)
             step_adapters(ctx)
         step_runtime(ctx)
+        step_everywhere(ctx)
         plist_paths = step_schedule(ctx)
         routines = step_routines(ctx)
         step_next_steps(ctx, routines)

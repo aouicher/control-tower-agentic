@@ -293,8 +293,8 @@ def cmd_show(args):
 
 def edit(new, args):
     """`set`: (new answers, message), or Refused. A builder only checks what the installer cannot; `change` runs the rest."""
-    if not any((args.add_pack, args.remove_pack, args.tool, args.job, args.schedule, args.language)):
-        raise Refused('nothing to change (give --add-pack, --remove-pack, --tool, --job, --schedule or --language)')
+    if not any((args.add_pack, args.remove_pack, args.tool, args.job, args.schedule, args.language, args.everywhere)):
+        raise Refused('nothing to change (give --add-pack, --remove-pack, --tool, --job, --schedule, --language or --everywhere)')
     timing = args.time or args.days or args.enabled
     if bool(args.job) != bool(timing or args.uses is not None):
         raise Refused('--job goes with --time, --days, --enabled or --uses, and they go with --job')
@@ -332,6 +332,8 @@ def edit(new, args):
         new['my_jobs'][args.job]['uses'] = sorted(set(args.uses))
     if args.language:
         new['language'] = args.language
+    if args.everywhere:
+        new['everywhere'] = args.everywhere == 'on'
     if args.schedule == 'on' and new.get('scheduler') == 'none':
         new['scheduler'] = 'auto'
     if args.schedule == 'on' and scheduler(new) == 'none':
@@ -783,6 +785,7 @@ def main(argv=None):
     p.add_argument('--uses', nargs='*', help="the sources of one of your own reports: known tools' capabilities and connections")
     p.add_argument('--schedule', choices=('on', 'off'), help='load the jobs in the scheduler, or unload them all')
     p.add_argument('--language', help='the language notes and reports are written in, for example Deutsch')
+    p.add_argument('--everywhere', choices=('on', 'off'), help='/control-tower in every Claude session of this user, or only in the vault')
     p = sub.add_parser('fresh-copy', parents=[vault], help="the kit's version of an installed file; the user's goes to _system/archive/")
     p.add_argument('--file', required=True, help='path in the vault, for example cockpit.md')
     p = sub.add_parser('probe', parents=[vault], help='what a scheduled job sees: MCP servers and tools (saved for choices)')
