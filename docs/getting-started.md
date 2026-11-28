@@ -10,36 +10,9 @@
 
 Accounts for the tools you want to connect are optional (see [adapters](adapters.md)): you can start with none and add them later. If Python or git is missing on a Mac, the system offers to install them in a dialog during the install: click Install.
 
-**Where to put the vault (macOS).** Keep the default, a folder in your home folder such as `~/control-tower-vault`. A vault inside iCloud Drive, Documents or Desktop may be blocked for scheduled reports by the macOS privacy rules, and they then fail without a window to ask you.
+## Install and first steps
 
-## Install
-
-In the Claude desktop app, open the **Code** tab, choose any folder (your home folder is fine) and paste this sentence:
-
-> Install the Control Tower kit from https://github.com/aouicher/control-tower-agentic into ~/control-tower-kit and follow its install skill.
-
-Claude asks before downloading the kit, then which language your notes and reports should be in (the rest of the install continues in it), and four questions:
-
-1. which describes your work (one or more profiles);
-2. which tools you use at work, named in your own words ("Jira and Amplitude"); a tool you name twice for one job ("Jira, Linear") gets one more question, and a tool the kit does not know is connected later;
-3. where the vault goes;
-4. whether reports run automatically on this computer.
-
-Your name, handle and timezone come from the computer. Claude then shows what it will install: the vault, each report with its time and what it may read. It installs after your yes, which is also your consent to what the reports read. It checks the result and offers to open the vault in Obsidian, and, if you like, reports that run on claude.ai.
-
-It never asks for passwords, tokens or API keys, and never changes your Claude Code settings or loads a schedule without an explicit yes. Existing files are never overwritten.
-
-## After installing
-
-Everything else happens in your vault. In the Claude app, start a new Code session and choose the **control-tower-vault** folder (it stays in your recent folders), then say **hello control tower**. From there you can say:
-
-- "connect Amplitude" (or any tool): Claude adds the connection, you sign in, and the reports that use it can read it;
-- "every Monday, sum up my tickets": Claude writes a report, tries it and schedules it;
-- "move the triage to 9:00", "stop the debt review", "add the product profile": change the setup;
-- "fix my job" when a notification says a report was blocked;
-- "update the kit", "uninstall".
-
-In Obsidian, open `cockpit.md`, and turn on the Tasks plugin (Settings, Community plugins, Browse, "Tasks", Install, then Enable). Try `/today` in the vault session. `library/setup-next-steps.md` in the vault lists what is left for each tool.
+The install, opening the vault in Obsidian and the first session in it are in the README: [Use Control Tower](../README.md#part-1-use-control-tower). In the vault session, `library/setup-next-steps.md` lists what is left for each tool, and "check my setup" says what needs your attention.
 
 ## For developers: answers files
 

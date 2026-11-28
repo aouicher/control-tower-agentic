@@ -59,7 +59,12 @@ Then write `answers.json` in `<tmp>`: `language`, `packs`, `tools` (from `--matc
    - "Cancel": delete the temporary files (`rm <tmp>/tools.txt <tmp>/answers.json`, then `rmdir <tmp>`) and stop.
 3. On "Install", run `python3 <kit>/installer/install.py --answers <file>`, adding `--apply-schedule` when the user answered "Yes, at the usual times" (that answer was the yes to loading the schedule). The installer saves the answers in the vault: delete the temporary files as for "Cancel".
 4. Run `python3 <kit>/installer/doctor.py --vault <vault> --ct-home <ct_home>` and report in plain words. Fix nothing silently: explain each warning.
-5. Ask "Open the vault in Obsidian now?". On yes, run `open -a Obsidian '<vault>'` on macOS (`xdg-open '<vault>'` elsewhere), with `vault` from the install report, quoted as in the ground rules; if Obsidian is not installed, give https://obsidian.md/download. Then explain the Tasks plugin in two clicks: Settings, Community plugins, Browse, "Tasks", Install, then Enable.
+5. Ask "Open the vault in Obsidian now?". On yes, run `open -a Obsidian` (macOS; elsewhere ask the user to open Obsidian); if Obsidian is not installed, give https://obsidian.md/download and wait. Obsidian does not open a folder it does not know as a vault by itself, so guide the user, one step at a time, and wait for each:
+   - if Obsidian opens on another vault, click its name at the bottom left, then "Manage vaults";
+   - choose "Open folder as vault", select the vault folder (its name and where it is, from `vault` in the install report), then "Open";
+   - turn on the Tasks plugin, which the dashboards need: Settings (gear icon, bottom left), Community plugins, "Turn on community plugins", Browse, search "Tasks", Install, then Enable;
+   - open "cockpit" in the file list: it is the home page.
+   Obsidian then keeps the vault in its list. Never say the vault is open in Obsidian unless the user says so.
 
 ## 4. Cloud routines (optional, offered last)
 
