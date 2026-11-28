@@ -61,8 +61,7 @@ def build_table(vocab_files, answers):
     for key in SCALARS:
         if key in answers or key in DEFAULTS:
             table[key] = str(answers.get(key, DEFAULTS.get(key)))
-    table['cockpit_pages'] = ''  # the installer fills it with the chosen packs' pages, never the answers
-    return table
+    return {**table, 'cockpit_pages': ''}  # the installer fills cockpit_pages with the chosen packs' pages, never the answers
 
 
 def render_text(text, table, rel, errors):

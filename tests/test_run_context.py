@@ -91,6 +91,16 @@ class NoDateOrLsInJobsTests(unittest.TestCase):
                 with self.subTest(prompt=os.path.relpath(path, ROOT), line=n):
                     self.assertNotRegex(line, DATE_OR_LS)
 
+    def test_jobs_read_the_vault_with_tools_never_the_shell(self):
+        for path in shipped('packs/*/jobs/*/prompt.md.tmpl') + shipped('core/jobs/*/prompt.md.tmpl'):
+            with self.subTest(prompt=os.path.relpath(path, ROOT)):  # the guard refuses a shell command that touches .claude/
+                self.assertIn('only with the Read, Grep and Glob tools', open(path, encoding='utf-8').readline())
+        reader = re.compile(r'(^|`)\s*(ls|cat|grep|head|tail|find|rg|wc|sed|awk) ', re.M)  # inline code or a code block line
+        for path in (shipped('core/vault/.claude/skills/*/SKILL.md') + shipped('packs/*/vault/.claude/skills/*/SKILL.md*')
+                     + shipped('core/vault/CLAUDE.md.tmpl') + shipped('packs/*/routines/*.md')):
+            with self.subTest(path=os.path.relpath(path, ROOT)):  # a job follows them: a shell reader there would be refused
+                self.assertNotRegex(open(path, encoding='utf-8').read(), reader)
+
     def test_every_skill_that_runs_date_says_to_use_the_run_context_first(self):
         found = 0
         for path in shipped('core/vault/.claude/skills/*/SKILL.md') + shipped('packs/*/vault/.claude/skills/*/SKILL.md*'):

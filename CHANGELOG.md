@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Jobs read the vault with the Read, Grep and Glob tools, never with `ls`, `cat`, `grep` or `head` in the shell: every job prompt says so, and the skills, `CLAUDE.md` and routines name the tools instead of shell commands. morning-triage, debt-review, feedback-digest and weekly-digest were refused when they listed `.claude/adapters/` or read earlier reports from the shell, and feedback-digest wrote no report.
 - The cockpit shows the short glance pages of the chosen profiles, not only their names in the Pages table: it embeds each pack's `cockpit_pages` (engineering's pulse, a private pack's own), in the order of the packs, and leaves out a page whose report is off, which would stay empty. The delivery, roadmap, developer and content pages, which repeat the cockpit's tables, stay in the Pages table. `cockpit/today.md` no longer has an overdue table, since the cockpit's live list shows it, and the deadlines list shows only deadlines still to come.
 - The cockpit no longer shows today's title three times: it embeds `cockpit/today.md` without a heading of its own, and a new vault's Obsidian settings hide the file name above each page (`showInlineTitle: false`), since every page has its own title.
 - An update saves a kit file's new version in `.control-tower/updates/` only when the kit changed it. A file you edited, or a page a report or a skill rewrites (`cockpit/today.md`, `cockpit/pulse.md`), is kept without a copy when the kit's version is the one installed: every update no longer leaves a pile of identical copies to merge.

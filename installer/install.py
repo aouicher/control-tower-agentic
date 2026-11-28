@@ -489,7 +489,8 @@ def job_settings(repo, answers, job):
     extra_allow, extra_deny, network = job_rules(repo, answers, job)  # rendered and checked in Ctx.plan_jobs
     allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')] + [str(r).strip() for r in extra_allow]  # every job writes its report in the vault
     deny = list(BASE_DENY) + [str(r).strip() for r in extra_deny]
-    deny += ['Read(**/.mcp.json)', 'Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
+    deny += ['Read(**/.mcp.json)', 'Read(**/.claude/settings*.json)', 'Read(**/.claude/*.local.*)',
+             'Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
     # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
     deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
     hook = [python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault]
