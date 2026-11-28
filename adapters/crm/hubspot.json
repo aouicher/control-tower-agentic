@@ -1,6 +1,9 @@
 {
   "tool": "hubspot",
   "capability": "crm",
+  "aliases": [
+    "hub spot"
+  ],
   "access": "mcp",
   "connect": "developer",
   "setup_url": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",

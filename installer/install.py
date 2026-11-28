@@ -2,11 +2,12 @@
 """Control tower installer. Standard library only (Python 3.9+).
 
 Installs the core vault, the chosen packs, the tool adapter notes, the scheduled jobs and (optionally)
-the schedule, from an answers file or an interactive terminal wizard.
+the schedule, from an answers file. People who do not use a terminal install through Claude: the install skill
+(`/install-control-tower`) asks four questions and writes the answers file.
 
     python3 installer/install.py --answers answers.json --dry-run     # show what would happen
     python3 installer/install.py --answers answers.json               # install
-    python3 installer/install.py --interactive                        # answer questions in the terminal
+    python3 installer/install.py --match-tools "Jira, Amplitude" --packs marketing --json   # tool names to adapters
 
 Safety:
   * it never overwrites an existing file; re-running is safe (existing files are kept);
@@ -20,12 +21,12 @@ import datetime
 import hashlib
 import json
 import os
-import plistlib
 import re
 import shlex
+import pwd
 import shutil
-import subprocess
 import sys
+import unicodedata
 
 if sys.version_info < (3, 9):
     sys.exit('control tower needs Python 3.9 or newer (found %s)' % sys.version.split()[0])
@@ -34,6 +35,8 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
+from toolnames import known_tools, match_tools  # noqa: E402
+from scheduling import CRON_END, apply, cron_header, cron_line, launchd_plist, local_time, pick_scheduler, shift_days  # noqa: E402
 from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError,  # noqa: E402
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
                   eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, kit_commit, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
@@ -61,17 +64,75 @@ def list_tools(capability, repo=REPO):
 
 
 # ----------------------------------------------------------------------------- answers
-def default_answers(repo=REPO):
+def system_name():
+    """The user's full name as the computer knows it (the passwd entry's comment field), or ''."""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_gecos.split(',')[0].strip()
+    except KeyError:
+        return ''
+
+
+def system_timezone():
+    """The computer's IANA timezone ($TZ, or the zone /etc/localtime points to), else UTC."""
+    for name in (os.environ.get('TZ', '').lstrip(':'), os.path.realpath('/etc/localtime').partition('zoneinfo/')[2]):
+        try:
+            if name:
+                zoneinfo.ZoneInfo(name)
+                return name
+        except (ValueError, zoneinfo.ZoneInfoNotFoundError):
+            continue
+    return 'UTC'
+
+
+OWNER = ('owner_name', 'owner_handle', 'timezone')
+
+
+def default_answers(detect=True):
+    """The answers an answers file may leave out. With `detect`, the name, handle and timezone come from the computer; an
+    empty name is asked."""
+    name = system_name() if detect else ''
+    first = unicodedata.normalize('NFKD', name.split()[0]).encode('ascii', 'ignore').decode().lower() if name.split() else ''
+    first = re.sub(r'[^a-z0-9._-]', '', first)  # accents folded to plain letters first
     return {
-        'owner_name': 'Your Name', 'owner_handle': 'me', 'timezone': 'UTC',
+        'owner_name': name, 'owner_handle': first or 'me', 'timezone': system_timezone() if detect else 'UTC', 'language': render.DEFAULTS['language'],
         'vault_path': '~/control-tower-vault', 'ct_home': '~/.control-tower',
         'packs': [], 'tools': {}, 'jobs': {}, 'scheduler': 'auto', 'claude_bin': 'claude',
     }
 
 
+def vault_path_problems(answers, repo=REPO):
+    """Why the vault folder is refused: unattended jobs read the whole vault, so never the root, the home folder or a folder
+    above it, nor one that holds the kit or the runtime folder."""
+    if not answers.get('vault_path'):
+        return []
+    vault, home = os.path.realpath(expand(answers['vault_path'])), os.path.realpath(os.path.expanduser('~'))
+    held = [p for p in (repo, answers.get('ct_home') or '~/.control-tower') if (os.path.realpath(expand(p)) + os.sep).startswith(vault + os.sep)]
+    if vault == os.sep or (home + os.sep).startswith(vault + os.sep):
+        return [f'answers: the vault cannot be {answers["vault_path"]}: reports would read everything in it. Choose a folder of its own']
+    return [f'answers: the vault {answers["vault_path"]} would hold {held[0]}: choose a folder of its own'] if held else []
+
+
+def language_problems(answers):
+    """Why the vault's language is refused: it goes into every job prompt, so it is a name of at most three words in
+    letters ("Deutsch", "Norsk bokmal"), never a sentence."""
+    lang = answers.get('language')
+    words = re.split(r"[ '-]", lang) if isinstance(lang, str) else []
+    letters = all(w and unicodedata.category(w[0])[0] == 'L' and all(unicodedata.category(c)[0] in 'LM' for c in w) for w in words)
+    if not (1 <= len(words) <= 3 and letters and len(lang) <= 30):  # marks too: Hindi, Thai
+        return [f'answers: "language" must be the name of a language in letters, for example "Deutsch" (got {str(lang)[:40]!r})']
+    return []
+
+
+def merged_answers(answers):
+    """The answers over the defaults. An owner field left out or empty takes what the computer gives, read only then."""
+    a = default_answers(detect=not all(answers.get(k) for k in OWNER))
+    a.update({k: v for k, v in answers.items() if not (k in OWNER and v in (None, ''))})
+    return a
+
+
 def validate(answers, repo=REPO):
     errors = []
-    for key in ('owner_name', 'owner_handle', 'timezone', 'vault_path', 'packs'):
+    for key in OWNER + ('vault_path', 'packs'):
         if not answers.get(key):
             errors.append(f'answers: "{key}" is required')
     if not re.fullmatch(r'[A-Za-z0-9_.-]+', str(answers.get('owner_handle', 'x'))):
@@ -104,6 +165,7 @@ def validate(answers, repo=REPO):
         errors.append('answers: "commands" must be an object, for example {"twg": {"network": ["acme.atlassian.net"]}}')
         commands = {}
     errors += [f'answers: {p}' for name, entry in commands.items() for p in [command_problem(name, entry)] if p]
+    errors += vault_path_problems(answers, repo) + language_problems(answers)
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -141,33 +203,6 @@ def validate(answers, repo=REPO):
     if errors:
         raise InstallError('\n'.join(errors))
     return packs
-
-
-def wizard(repo=REPO, ask=input, out=print):
-    """Terminal wizard returning an answers dict. `ask` and `out` are injectable for tests."""
-    a = default_answers(repo)
-    out('Control tower installer: answer a few questions (Enter keeps the default).\n')
-    def q(prompt, default):
-        v = ask(f'{prompt} [{default}]: ').strip()
-        return v or default
-    a['owner_name'] = q('Your name', a['owner_name'])
-    a['owner_handle'] = q('Handle used on your tasks', a['owner_handle'])
-    a['timezone'] = q('Timezone (IANA name)', a['timezone'])
-    a['vault_path'] = q('Vault folder (created if needed)', a['vault_path'])
-    packs = list_packs(repo)
-    out('\nProfiles: ' + ', '.join(packs))
-    a['packs'] = [p.strip() for p in q('Profiles to install (comma separated)', packs[0] if packs else '').split(',') if p.strip()]
-    asked = set()
-    for pid in a['packs']:
-        manifest = jload(os.path.join(repo, 'packs', pid, 'pack.json'))
-        for item in manifest.get('questions', []):
-            if item['capability'] in asked:
-                continue
-            asked.add(item['capability'])
-            choices = item['choices']
-            a['tools'][item['capability']] = q(f"{item['ask']} ({', '.join(choices)})", 'none' if 'none' in choices else choices[0])
-    a['scheduler'] = q('Scheduler (auto, launchd, cron, none)', 'auto')
-    return a
 
 
 # ----------------------------------------------------------------------------- plan
@@ -419,57 +454,14 @@ def python_bin(answers):
     return answers.get('python_bin') or sys.executable or 'python3'
 
 
-def local_time(hhmm, timezone, machine_tz=None):
-    """Convert a time in the user's timezone to machine time.
-
-    Returns (HH:MM, day_shift, warning or None). day_shift is -1, 0 or +1 when the conversion crosses midnight:
-    the weekdays of the schedule must move by the same amount.
-    """
-    tz = zoneinfo.ZoneInfo(timezone)  # validated before; never fall back silently to machine time
-    h, m = map(int, hhmm.split(':'))
-    now = datetime.datetime.now(tz)
-    target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    local = target.astimezone(machine_tz)
-    shift = (local.date() - target.date()).days
-    if local.strftime('%H:%M') == hhmm and shift == 0:
-        return hhmm, 0, None
-    return local.strftime('%H:%M'), shift, (f'{hhmm} {timezone} runs at {local.strftime("%H:%M")} machine time'
-                                            + (f' ({"next" if shift > 0 else "previous"} day)' if shift else '')
-                                            + ' (today\'s offsets; re-run the installer after a daylight-saving change)')
-
-
-def shift_days(days, shift):
-    return sorted({(d + shift) % 7 for d in days}, key=lambda d: (d + 6) % 7)
-
-
-def launchd_plist(label, args, days, hhmm, log):
-    h, m = map(int, hhmm.split(':'))
-    data = {'Label': label, 'ProgramArguments': list(args),
-            'StartCalendarInterval': [{'Weekday': d, 'Hour': h, 'Minute': m} for d in days],
-            'StandardOutPath': log, 'StandardErrorPath': log, 'ProcessType': 'Background'}
-    return plistlib.dumps(data, sort_keys=False).decode('utf-8')  # escapes &, < and quotes in paths
-
-
-def cron_line(args, days, hhmm):
-    h, m = map(int, hhmm.split(':'))
-    dow = ','.join(str(d) for d in days)
-    return f'{m} {h} * * {dow} ' + ' '.join(shlex.quote(a).replace('%', '\\%') for a in args)  # cron reads % as a newline
-
-
-def pick_scheduler(choice):
-    if choice != 'auto':
-        return choice
-    return {'darwin': 'launchd', 'linux': 'cron'}.get(sys.platform, 'none')
-
-
 # ----------------------------------------------------------------------------- install
 class Ctx:
     """One install run. __init__ is the whole PLAN phase: it resolves and checks everything, and writes nothing. Steps only
     write; they add to `report` and `files` (the two accumulators) and return what the next step needs."""
 
     def __init__(self, answers, repo, dry_run, update):
-        self.packs = validate(answers, repo)
-        a = dict(default_answers(repo)); a.update(answers)
+        a = merged_answers(answers)
+        self.packs = validate(a, repo)
         a['tools'] = {c: (a.get('tools') or {}).get(c, 'none') for c in CAPABILITIES}
         self.vault, self.ct_home = expand(a['vault_path']), expand(a['ct_home'])
         a['vault_path'], a['ct_home'] = self.vault, self.ct_home
@@ -495,7 +487,7 @@ class Ctx:
         self.report = {'vault': self.vault, 'ct_home': self.ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [],
                        'warnings': [], 'schedule': None, 'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': self.stash_dir,
                        'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full',
-                       'permissions_summary': []}
+                       'permissions_summary': [], 'owner': {'name': a['owner_name'], 'handle': a['owner_handle'], 'timezone': a['timezone']}}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.seen = set()  # every kit file of the vault this run produces, written or not
         self.approved = approved_servers(self.vault, a, recorded_servers(a))  # the servers jobs may start, as approved
@@ -809,92 +801,6 @@ def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=
     return ctx.report
 
 
-LAUNCH_AGENTS = '~/Library/LaunchAgents'
-CRON_BEGIN, CRON_END = '# BEGIN control-tower', '# END control-tower'
-CRON_BLOCK = re.compile(re.escape(CRON_BEGIN) + r'.*?' + re.escape(CRON_END) + r'\n?', re.S)
-
-
-def cron_header(sched_dir):
-    """The first line of the crontab block of the install whose schedule is in `sched_dir`: one block per install."""
-    return f'{CRON_BEGIN} {os.path.dirname(sched_dir)}\n'
-
-
-def own_cron_block(block, sched_dir):
-    """Whether a crontab block is this install's: its header names the runtime folder, or names none."""
-    return block.startswith((cron_header(sched_dir), CRON_BEGIN + '\n'))
-
-
-def cron_applied(sched_dir):
-    """Whether the user's crontab holds the block of the install whose schedule is in `sched_dir`."""
-    if not shutil.which('crontab'):
-        return False
-    cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout
-    return any(own_cron_block(m.group(0), sched_dir) for m in CRON_BLOCK.finditer(cur))
-
-
-def agents_dir(launch_agents_dir=None):
-    return os.path.abspath(os.path.expanduser(launch_agents_dir or LAUNCH_AGENTS))
-
-
-def schedule_applied(kind, sched_dir, launch_agents_dir=None):
-    """Whether the install whose schedule is in `sched_dir` has its jobs loaded (its launchd agents, or the crontab block)."""
-    if kind == 'launchd':
-        return bool(own_agents(agents_dir(launch_agents_dir), sched_dir))
-    return kind == 'cron' and cron_applied(sched_dir)
-
-
-def own_agents(dest, sched_dir):
-    """The launchd agents of the install whose schedule is in `sched_dir` (links into it): another install's stay untouched."""
-    mine = os.path.realpath(sched_dir) + os.sep
-    return [f for f in sorted(os.listdir(dest)) if f.startswith('com.control-tower.')
-            and os.path.realpath(os.path.join(dest, f)).startswith(mine)] if os.path.isdir(dest) else []
-
-
-def apply(kind, plist_paths, sched_dir, launch_agents_dir, no_launchctl, report, unload=False):
-    """Load this install's schedule (launchd agents or the crontab block), or with `unload` remove all of it."""
-    plist_paths = [] if unload else plist_paths
-    if kind == 'launchd':
-        dest = agents_dir(launch_agents_dir)
-        os.makedirs(dest, exist_ok=True)
-        current = {label for label, _ in plist_paths}
-        for f in own_agents(dest, sched_dir):  # stale agents of this install (labels are per job id, one install per job)
-            label = f[:-6] if f.endswith('.plist') else f
-            if label not in current:
-                if not no_launchctl and shutil.which('launchctl'):
-                    subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'], capture_output=True)
-                os.remove(os.path.join(dest, f))
-        for label, path in plist_paths:
-            link = os.path.join(dest, label + '.plist')
-            if os.path.lexists(link):
-                os.remove(link)
-            os.symlink(path, link)
-            if not no_launchctl and shutil.which('launchctl'):
-                uid = str(os.getuid())
-                subprocess.run(['launchctl', 'bootout', f'gui/{uid}/{label}'], capture_output=True)
-                r = subprocess.run(['launchctl', 'bootstrap', f'gui/{uid}', link], capture_output=True, text=True)
-                if r.returncode != 0:
-                    report['warnings'].append(f'launchctl bootstrap {label}: {r.stderr.strip()}')
-        return True
-    if kind == 'cron':
-        if not shutil.which('crontab'):
-            report['warnings'].append('crontab is not available on this computer: the jobs are not scheduled')
-            return False
-        got = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
-        if got.returncode != 0 and 'no crontab' not in got.stderr.lower():
-            report['warnings'].append(f'could not read your crontab, nothing changed: {got.stderr.strip()}')
-            return False
-        cur = got.stdout if got.returncode == 0 else ''
-        cur = CRON_BLOCK.sub(lambda m: '' if own_cron_block(m.group(0), sched_dir) else m.group(0), cur)
-        cron_file = os.path.join(sched_dir, 'crontab.txt')
-        block = '' if unload or not os.path.exists(cron_file) else open(cron_file, encoding='utf-8').read()
-        new = cur.rstrip('\n') + ('\n' if cur.strip() else '') + block
-        r = subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)
-        if r.returncode != 0:
-            report['warnings'].append(f'could not write your crontab: {r.stderr.strip()}')
-        return r.returncode == 0
-    return False
-
-
 def print_report(report, dry_run):
     mode = 'DRY RUN: nothing was written.\n' if dry_run else ''
     print(f"\n{mode}Vault: {report['vault']}\nRuntime: {report['ct_home']}")
@@ -937,7 +843,11 @@ def print_report(report, dry_run):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--answers')
-    ap.add_argument('--interactive', action='store_true')
+    ap.add_argument('--interactive', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--match-tools', metavar='TEXT', help='the tools named in TEXT, for the capabilities of --packs (JSON)')
+    ap.add_argument('--match-tools-file', metavar='FILE', help='the same with the text in FILE: what a user typed never goes on a command line')
+    ap.add_argument('--known-tools', action='store_true', help='the tools the capabilities of --packs can use (JSON)')
+    ap.add_argument('--packs', nargs='+', default=[], help='with --match-tools or --known-tools')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--apply-schedule', action='store_true')
     ap.add_argument('--runtime-only', action='store_true', help='install only the runtime (job runner, guard, jobs, schedule) on an '
@@ -948,13 +858,23 @@ def main():
     ap.add_argument('--no-launchctl', action='store_true', help='link plists but do not load them (tests)')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
+    if args.interactive:
+        print('error: the terminal wizard is gone. Open Claude Code in the kit folder and type /install-control-tower: it asks four '
+              'questions. Or give --answers FILE (see examples/answers).', file=sys.stderr)
+        sys.exit(2)
     try:
-        if args.interactive:
-            answers = wizard()
-        elif args.answers:
-            answers = jload(args.answers)
-        else:
-            ap.error('give --answers FILE or --interactive')
+        if args.match_tools_file:
+            with open(args.match_tools_file, encoding='utf-8') as fh:
+                args.match_tools = fh.read()
+        if args.packs and args.match_tools is None and not args.known_tools:
+            ap.error('--packs goes with --match-tools, --match-tools-file or --known-tools')
+        if args.match_tools is not None or args.known_tools:
+            found = known_tools(args.packs) if args.known_tools else match_tools(args.match_tools, args.packs)
+            print(json.dumps(found, indent=2))
+            return
+        if not args.answers:
+            ap.error('give --answers FILE')
+        answers = jload(args.answers)
         if args.runtime_only:
             answers['vault_mode'] = 'runtime'
         report = install(answers, dry_run=args.dry_run, schedule='load' if args.apply_schedule else None,

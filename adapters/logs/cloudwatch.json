@@ -1,6 +1,13 @@
 {
   "tool": "cloudwatch",
   "capability": "logs",
+  "aliases": [
+    "cloud watch",
+    "aws cloudwatch",
+    "aws logs",
+    "log aws",
+    "logs aws"
+  ],
   "access": "mcp",
   "connect": "developer",
   "setup_url": "https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server",

@@ -32,6 +32,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
+import scheduling  # noqa: E402
 import update  # noqa: E402
 from plan import (ID_RE, MAX_SUBCOMMANDS, MCP_TOOL, READ_VERBS, SUBCOMMAND, bash_parts, claude_bin, command_needs, command_problem, connection_problem,  # noqa: E402
                   describe_rules, expand, fingerprint, jload, known_commands, mcp_server, my_report_name, name_words, needs_host, permission_problem,
@@ -194,7 +195,7 @@ def ct_home(data):
 
 
 def scheduler(data):
-    return install.pick_scheduler(data.get('scheduler', 'auto'))
+    return scheduling.pick_scheduler(data.get('scheduler', 'auto'))
 
 
 def reinstall(path, data, args, before, after):
@@ -249,7 +250,7 @@ def cmd_update(args):
 
 def schedule_applied(data, args):
     """Whether this install's jobs are loaded in the operating system's scheduler."""
-    return install.schedule_applied(scheduler(data), os.path.join(ct_home(data), 'schedule'), args.launch_agents_dir)
+    return scheduling.schedule_applied(scheduler(data), os.path.join(ct_home(data), 'schedule'), args.launch_agents_dir)
 
 
 def dry_run(data, fresh=()):
@@ -292,8 +293,8 @@ def cmd_show(args):
 
 def edit(new, args):
     """`set`: (new answers, message), or Refused. A builder only checks what the installer cannot; `change` runs the rest."""
-    if not any((args.add_pack, args.remove_pack, args.tool, args.job, args.schedule)):
-        raise Refused('nothing to change (give --add-pack, --remove-pack, --tool, --job or --schedule)')
+    if not any((args.add_pack, args.remove_pack, args.tool, args.job, args.schedule, args.language)):
+        raise Refused('nothing to change (give --add-pack, --remove-pack, --tool, --job, --schedule or --language)')
     timing = args.time or args.days or args.enabled
     if bool(args.job) != bool(timing or args.uses is not None):
         raise Refused('--job goes with --time, --days, --enabled or --uses, and they go with --job')
@@ -329,6 +330,8 @@ def edit(new, args):
         if args.job not in (new.get('my_jobs') or {}):
             raise Refused(f'{args.job} is not one of your own reports: only those take sources')
         new['my_jobs'][args.job]['uses'] = sorted(set(args.uses))
+    if args.language:
+        new['language'] = args.language
     if args.schedule == 'on' and new.get('scheduler') == 'none':
         new['scheduler'] = 'auto'
     if args.schedule == 'on' and scheduler(new) == 'none':
@@ -775,6 +778,7 @@ def main(argv=None):
     p.add_argument('--enabled', type=str.lower, choices=('true', 'false'))
     p.add_argument('--uses', nargs='*', help="the sources of one of your own reports: known tools' capabilities and connections")
     p.add_argument('--schedule', choices=('on', 'off'), help='load the jobs in the scheduler, or unload them all')
+    p.add_argument('--language', help='the language notes and reports are written in, for example Deutsch')
     p = sub.add_parser('fresh-copy', parents=[vault], help="the kit's version of an installed file; the user's goes to _system/archive/")
     p.add_argument('--file', required=True, help='path in the vault, for example cockpit.md')
     p = sub.add_parser('probe', parents=[vault], help='what a scheduled job sees: MCP servers and tools (saved for choices)')

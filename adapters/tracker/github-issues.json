@@ -1,6 +1,9 @@
 {
   "tool": "github-issues",
   "capability": "tracker",
+  "aliases": [
+    "gh issues"
+  ],
   "access": "cli",
   "connect": "developer",
   "setup_url": "https://cli.github.com/manual/gh_issue_list",

@@ -1,6 +1,10 @@
 {
   "tool": "google-analytics",
   "capability": "analytics",
+  "aliases": [
+    "ga",
+    "ga4"
+  ],
   "access": "mcp",
   "connect": "developer",
   "setup_url": "https://developers.google.com/analytics/devguides/MCP",

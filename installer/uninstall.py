@@ -27,6 +27,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
+import scheduling  # noqa: E402
 import update  # noqa: E402
 from plan import claude_bin, fingerprint, jload, kit_commit, vault_servers  # noqa: E402
 
@@ -53,14 +54,14 @@ def from_this_kit(home):
 
 def other_installs(sched, launch_agents_dir):
     """The runtime folders of the other installs from this kit that run automatically (launchd agents, crontab block)."""
-    dest = install.agents_dir(launch_agents_dir)
-    mine = set(install.own_agents(dest, sched))
+    dest = scheduling.agents_dir(launch_agents_dir)
+    mine = set(scheduling.own_agents(dest, sched))
     homes = {os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(os.path.join(dest, f)))))  # <home>/schedule/launchd/x.plist
              for f in (sorted(os.listdir(dest)) if os.path.isdir(dest) else []) if f.startswith('com.control-tower.') and f not in mine}
     if shutil.which('crontab'):
         cron = subprocess.run(['crontab', '-l'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30).stdout
-        homes |= {m.group(0).split('\n', 1)[0][len(install.CRON_BEGIN):].strip() for m in install.CRON_BLOCK.finditer(cron)
-                  if not install.own_cron_block(m.group(0), sched)}  # its header names its runtime folder
+        homes |= {m.group(0).split('\n', 1)[0][len(scheduling.CRON_BEGIN):].strip() for m in scheduling.CRON_BLOCK.finditer(cron)
+                  if not scheduling.own_cron_block(m.group(0), sched)}  # its header names its runtime folder
     return sorted(h for h in homes if h and from_this_kit(h))
 
 
@@ -149,8 +150,8 @@ def main():
         refuse(why)
 
     sched = os.path.join(ct, 'schedule')
-    agents = install.own_agents(install.agents_dir(args.launch_agents_dir), sched)  # another install's agents stay
-    cron = install.cron_applied(sched)
+    agents = scheduling.own_agents(scheduling.agents_dir(args.launch_agents_dir), sched)  # another install's agents stay
+    cron = scheduling.cron_applied(sched)
     plan = [('unload', f) for f in agents] + ([('crontab', 'remove the control-tower block')] if cron else [])
     loaded = (['launchd'] if agents else []) + (['cron'] if cron else [])
     remove, kept = added_connections(vault) if args.remove_connections else ([], [])
@@ -175,7 +176,8 @@ def main():
     except (ValueError, TypeError, KeyError):
         routines = []
     if routines:
-        print('cloud routines are not removed from here: delete on claude.ai the ones you created: ' + ', '.join(routines))
+        print('cloud routines are not removed from here: the kit offered ' + ', '.join(routines)
+              + '; if you created any of these on claude.ai, delete them there')
     if not plan:
         print('nothing to do')
     if not args.yes:
@@ -183,7 +185,7 @@ def main():
         return
     report = {'warnings': []}
     for kind in loaded:
-        install.apply(kind, [], sched, args.launch_agents_dir, args.no_launchctl, report, unload=True)
+        scheduling.apply(kind, [], sched, args.launch_agents_dir, args.no_launchctl, report, unload=True)
     for name in remove:  # from the vault's folder: its .mcp.json is the project scope
         try:
             r = subprocess.run([claude, 'mcp', 'remove', '--scope', 'project', '--', name], cwd=vault, stdin=subprocess.DEVNULL,

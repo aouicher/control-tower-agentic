@@ -201,7 +201,7 @@ class CloudReportTests(VaultCase):
         self.assertFalse(os.path.exists(os.path.join(self.ct, 'schedule', 'launchd', 'com.control-tower.digest.plist')))
         r = subprocess.run([sys.executable, os.path.join(ROOT, 'installer', 'uninstall.py'), '--ct-home', self.ct, '--vault', self.vault,
                             '--launch-agents-dir', self.la, '--no-launchctl'], capture_output=True, text=True)
-        self.assertIn('delete on claude.ai', r.stdout)
+        self.assertIn('if you created any of these on claude.ai, delete them there', r.stdout)
         self.assertIn('Your report digest', r.stdout)
 
     def test_a_computer_report_is_unchanged_and_sources_match_where_it_runs(self):

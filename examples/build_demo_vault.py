@@ -5,7 +5,7 @@
         [--date YYYY-MM-DD] [--force] [--tasks-plugin-dir <installed obsidian-tasks-plugin folder>]
 
 1. Runs the real installer (owner Sam Rivera, handle sam, scheduler "none": nothing is scheduled;
-   runtime folder <out>/.runtime).
+   runtime folder <out>-runtime, next to the vault: never inside it).
 2. Adds fictional notes for Acme, all dated relative to --date (default: today), so every cockpit page
    and dashboard shows realistic content.
 3. Seeds Obsidian: bookmarks the cockpit and, with --tasks-plugin-dir, enables a local copy of the Tasks
@@ -80,7 +80,7 @@ def answers_for(out, packs):
         for item in manifest.get('questions', []):
             tools.setdefault(item['capability'], next((c for c in item['choices'] if c != 'none'), 'none'))
     return {'owner_name': 'Sam Rivera', 'owner_handle': 'sam', 'timezone': 'Europe/London',
-            'vault_path': out, 'ct_home': os.path.join(out, '.runtime'), 'packs': list(packs), 'tools': tools,
+            'vault_path': out, 'ct_home': out + '-runtime', 'packs': list(packs), 'tools': tools,
             'scheduler': 'none'}
 
 
@@ -96,6 +96,8 @@ def prepare_out(out, force):
             raise DemoError(f'{out} is not empty and is not a control tower vault (no .control-tower/manifest.json): '
                             'refusing to delete it')
         shutil.rmtree(out)
+        if os.path.isfile(os.path.join(out + '-runtime', 'install.json')):  # its runtime, made by the installer
+            shutil.rmtree(out + '-runtime')
 
 
 # ----------------------------------------------------------------------------- the demo content

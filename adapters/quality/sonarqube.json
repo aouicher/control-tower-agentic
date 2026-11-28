@@ -1,6 +1,9 @@
 {
   "tool": "sonarqube",
   "capability": "quality",
+  "aliases": [
+    "sonar"
+  ],
   "access": "mcp",
   "connect": "developer",
   "setup_url": "https://docs.sonarsource.com/sonarqube-mcp-server/",

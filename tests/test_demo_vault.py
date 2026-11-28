@@ -17,7 +17,7 @@ import doctor  # noqa: E402
 
 SCRIPT = os.path.join(ROOT, 'examples', 'build_demo_vault.py')
 DAY = datetime.date(2026, 1, 1)  # a Thursday in ISO week 2026-W01: the previous week is in 2025
-SKIP_DIRS = ('.obsidian', '.runtime', '.control-tower')
+SKIP_DIRS = ('.obsidian', '.control-tower')
 TASK = re.compile(r'^\s*- \[( |x)\] (.*)$')
 
 
@@ -46,7 +46,7 @@ class DemoVaultTests(unittest.TestCase):
         return [f for f in self.md if not f.startswith('.claude/') and f != 'CLAUDE.md']
 
     def test_doctor_has_no_failure(self):
-        result = doctor.check(self.vault, os.path.join(self.vault, '.runtime'), 'python3')
+        result = doctor.check(self.vault, self.vault + '-runtime', 'python3')
         self.assertEqual([i for i in result.items if i['level'] == 'FAIL'], [])
 
     def test_wikilinks_resolve(self):

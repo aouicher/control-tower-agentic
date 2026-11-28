@@ -38,6 +38,7 @@ Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the c
    - move a report: `--job <id> --time HH:MM` and/or `--days mon-fri` (also `weekdays`, `daily`, `mon,wed`);
    - stop or restart a report: `--job <id> --enabled false` or `--enabled true`;
    - turn automatic runs on or off on this computer: `--schedule on` or `--schedule off`;
+   - write notes and reports in another language: `--language <its name in letters>` (for example `--language Deutsch`);
    - the sources of one of the user's own reports (`my_jobs` in `show`): `--job <id> --uses <its sources>`, the known tools' capabilities and connection ids it reads, the whole list each time. To forget such a report entirely, the change is `python3 <repo>/installer/configure.py remove-job --vault <this vault> --id <id>` instead of `set`.
    If the request needs several changes, do them one after the other, each with its own yes. If it is none of these, say what can be changed here and stop.
 2. Apply it (see Ground rules).
@@ -127,7 +128,7 @@ The command below is `python3 <repo>/installer/uninstall.py --ct-home <ct_home> 
 5. Ask "Also delete the kit's own folder (<repo>)?" with "Keep it" (recommended) and "Delete it".
 6. Run the command with `--remove-vault-files`, adding `--remove-connections` if the user chose "Remove them" and `--remove-kit` if they chose "Delete it": it lists everything that would go, the kit's folder last. If it refuses because of the kit's folder (a developer's work in it, or another vault installed from it that runs automatically), say why in plain words, say the folder stays, and run it again without `--remove-kit`.
 7. Ask "Remove now?" with "Remove" and "Cancel". On "Remove", run the same command with `--yes`.
-8. Say what was removed, then relay the warnings in plain words. If it lists cloud routines, say "These reports still run on claude.ai until you delete them there: <names>." Only the user can delete them.
+8. Say what was removed, then relay the warnings in plain words. If it lists cloud routines, they are the ones the kit offered, not necessarily created: say "If you created any of these reports on claude.ai (<names>), they keep running there until you delete them on claude.ai." Only the user can delete them.
 
 ## Fix a blocked job
 

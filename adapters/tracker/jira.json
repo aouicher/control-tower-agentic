@@ -1,6 +1,9 @@
 {
   "tool": "jira",
   "capability": "tracker",
+  "aliases": [
+    "jira software"
+  ],
   "access": "mcp",
   "connect": "sign-in",
   "setup_url": "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
