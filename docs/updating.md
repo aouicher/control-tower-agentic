@@ -19,6 +19,10 @@ In Claude, in your vault, say "update the kit" (or type `/control-tower` and ask
 
 Claude then checks the setup, offers for each kit file you had edited to merge the new parts into your version, and names the cloud routines whose prompt changed (they are not updated automatically). When you say "Not now" to new access, nothing was written and the kit's folder goes back to the version it was on. When the refresh fails after it started writing, the kit stays on the new version and the next check shows the update as "pending", as it does for a kit moved without being installed (a developer's `git pull` alone).
 
+### Knowing when to update
+
+"hello control tower" and "check my setup" say in one line when a new version is ready. With automatic reports, a notification says it too, once a week (Mondays 09:00): "A new version of the control tower is ready. Open Claude on your <vault> folder and say: update the kit." ([Scheduling](scheduling.md)). Nothing changes until you say yes.
+
 ## Update with three commands (developers)
 
 ```bash

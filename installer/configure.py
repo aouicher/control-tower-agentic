@@ -868,6 +868,7 @@ def main(argv=None):
     p.add_argument('--accept-access', action='store_true', help='the user said yes to the new access this version gives jobs')
     p.add_argument('--apply', action='store_true', help="move the kit's folder to --to, then refresh the vault and the runtime")
     p.add_argument('--to', help='the commit the check showed (`to`)')
+    p.add_argument('--notify', action='store_true', help='the weekly check: a notification when there is something to update; prints only why a check could not run')
     sub.add_parser('refresh', parents=[vault], help='apply the same answers with this version of the kit (after an update)')
     p = sub.add_parser('translate', parents=[vault], help="the vault in its language: the texts to translate, or a file of translations to add")
     which = p.add_mutually_exclusive_group(required=True)

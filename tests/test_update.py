@@ -228,6 +228,38 @@ class UpdateTests(unittest.TestCase):
         out = self.check()
         self.assertEqual((out['behind'], out['pending']), (0, False))
 
+    def test_the_weekly_check_says_when_a_new_version_is_ready(self):
+        self.install()
+        with open(os.path.join(self.ct, 'schedule', 'launchd', 'com.control-tower.kit.update.plist')) as fh:
+            self.assertIn('<string>--notify</string>', fh.read(), 'installed with the schedule')
+        fake, said = os.path.join(self._tmp.name, 'fake'), os.path.join(self._tmp.name, 'said')
+        os.makedirs(fake)
+        for name in ('osascript', 'notify-send'):
+            with open(os.path.join(fake, name), 'w') as fh:
+                fh.write(f'#!/bin/sh\necho "$@" >> "{said}"\n')
+            os.chmod(os.path.join(fake, name), 0o755)
+        env = dict(os.environ, PATH=fake + os.pathsep + os.environ['PATH'])
+        weekly = lambda: subprocess.run([sys.executable, os.path.join(self.kit, 'installer', 'configure.py'), 'update', '--vault', self.vault,
+                                         '--notify'], capture_output=True, text=True, env=env)
+        self.upstream()
+        self.assertEqual((weekly().returncode, os.path.exists(said)), (0, False), 'an origin that is not https is never fetched on a schedule')
+        git(self.kit, 'config', 'remote.origin.url', 'https://example.invalid/kit')
+        git(self.kit, 'config', f'url.{self.origin}.insteadOf', 'https://example.invalid/kit')
+        r = weekly()
+        self.assertEqual((r.returncode, r.stdout), (0, ''))
+        with open(said) as fh:
+            self.assertIn('Open Claude on your vault folder and say: update the kit.', fh.read())
+        os.remove(said)
+        git(self.kit, 'pull', '-q', '--ff-only')
+        self.assertEqual((weekly().returncode, os.path.exists(said)), (0, True), 'the kit moved, the vault not refreshed yet: pending')
+        os.remove(said)
+        self.install('--update')
+        self.assertEqual((weekly().returncode, os.path.exists(said)), (0, False), 'up to date: no notification')
+        self.commit('README.md', lambda t: t + '\nMore.\n', 'more')
+        with open(os.path.join(self.kit, 'README.md'), 'a') as fh:
+            fh.write('A developer\'s line.\n')
+        self.assertEqual((weekly().returncode, os.path.exists(said)), (0, False), 'a developer\'s kit: never a notification')
+
     def test_nothing_to_update_and_no_dry_run(self):
         self.install()
         self.assertEqual(self.check()['behind'], 0)

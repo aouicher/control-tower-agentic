@@ -34,6 +34,8 @@ A report can run on claude.ai instead (`add-job --runs-on cloud`, `"runs_on": "c
 
 Files are generated but **not loaded** until you run `python3 installer/install.py --answers <vault>/.control-tower/answers.json --apply-schedule` (the installer saved your answers there) (symlinks plists into `~/Library/LaunchAgents` and loads them, or installs the crontab block). `uninstall.py` reverses both. Times in `job.json` use your timezone; the generated schedule uses the machine's local time.
 
+With the reports, the schedule holds a weekly look for a new version of the kit (`com.control-tower.kit.update`, Mondays 09:00): `configure.py update --vault <vault> --notify` fetches the kit's origin, only when it is a public https address (never a prompt for a key or a password), and shows a notification when an update is waiting: "A new version of the control tower is ready. Open Claude on your <vault> folder and say: update the kit." It runs the kit folder's own code, without credentials and without asking anything (a fetch that would need a key or a password fails, and its log says why); it changes nothing, and the update itself always waits for the user's yes in the vault.
+
 A laptop that is asleep misses its run. If that matters, use a cloud routine.
 
 ## Cloud routines
