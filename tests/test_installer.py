@@ -185,6 +185,8 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(daily['folder'], 'journal/daily')
             obs = os.path.join(a['vault_path'], '.obsidian')
             self.assertFalse(json.load(open(os.path.join(obs, 'app.json')))['readableLineLength'], 'would override the width snippet')
+            self.assertFalse(json.load(open(os.path.join(obs, 'app.json')))['showInlineTitle'], 'pages carry their own title: no file name above it')
+            self.assertNotIn('## 📅 Today\n![[today]]', open(os.path.join(a['vault_path'], 'cockpit.md'), encoding='utf-8').read(), 'the embedded page has its title')
             self.assertIn('wide-pages', json.load(open(os.path.join(obs, 'appearance.json')))['enabledCssSnippets'])
             self.assertTrue(os.path.isfile(os.path.join(obs, 'snippets', 'wide-pages.css')))
 

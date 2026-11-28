@@ -415,8 +415,9 @@ def obsidian_seed(vault):
     files = {
         'app.json': {'attachmentFolderPath': '_system/attachments', 'newFileLocation': 'folder', 'newFileFolderPath': '_inbox',
                      'alwaysUpdateLinks': True, 'userIgnoreFilters': ['_system/attachments/', '_system/archive/', '.claude/'],
-                     # dashboards and report tables need width: Obsidian's readable line length would override the snippet below
-                     'readableLineLength': False},
+                     # dashboards and report tables need width: Obsidian's readable line length would override the snippet below;
+                     # every page carries its own title, so no file name ("today") is shown above it
+                     'readableLineLength': False, 'showInlineTitle': False},
         'appearance.json': {'enabledCssSnippets': ['wide-pages']},
         'daily-notes.json': {'folder': 'journal/daily', 'format': 'YYYY/YYYY-MM-DD', 'template': '_system/templates/daily'},
         'templates.json': {'folder': '_system/templates'},
