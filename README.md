@@ -4,6 +4,12 @@ A personal **control tower** for knowledge work: an [Obsidian](https://obsidian.
 
 It is built for people who lead, build, plan or promote things: engineering leaders, developers, product managers, marketers. You pick the profiles (called **packs**) and the tools you already use (called **adapters**); an assistant installs everything for you.
 
+**Install it in one sentence.** In the [Claude desktop app](https://claude.com/download), open the **Code** tab, choose any folder (your home folder is fine) and paste:
+
+> Install the Control Tower kit from https://github.com/aouicher/control-tower-agentic into ~/control-tower-kit and follow its install skill.
+
+Claude asks before downloading the kit, then asks four questions (your work, your tools, where the vault goes, whether reports run on their own) and shows what it will install before it does. You need [Obsidian](https://obsidian.md) to read the vault. Developers: see [Quick start](#quick-start).
+
 ![The cockpit: priorities of the day, agenda and overdue tasks](docs/images/cockpit-today.png)
 
 ## What you get
@@ -47,13 +53,7 @@ cd control-tower-agentic
 claude
 ```
 
-Then type `/install-control-tower` and answer the questions. Prefer a terminal wizard?
-
-```bash
-python3 installer/install.py --interactive
-```
-
-Or script it with an answers file (see [examples/answers](examples/answers)):
+Then type `/install-control-tower` and answer the questions. Or script it with an answers file (see [examples/answers](examples/answers)):
 
 ```bash
 python3 installer/install.py --answers examples/answers/developer.json --dry-run
@@ -84,7 +84,7 @@ python3 installer/doctor.py --vault ~/control-tower-developer   # the vault_path
 core/        neutral vault shared by every pack
 packs/       one folder per profile: vault overlay, vocabulary, jobs, routines
 adapters/    one contract per capability, one note and manifest per tool
-installer/   install.py, configure.py, update.py, uninstall.py, doctor.py, and their modules (plan, render, scheduling)
+installer/   install.py, configure.py, update.py, uninstall.py, doctor.py, and their modules (plan, render, scheduling, toolnames)
 scheduler/   run_job.py (job runner) and guard.py (safety hook)
 examples/    answers files and a fictional "Acme" sample
 tests/       standard-library unit tests

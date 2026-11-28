@@ -197,13 +197,6 @@ class InstallTests(unittest.TestCase):
             self.assertIn('Tasks', note)
             self.assertIn('read-only', note.lower())
 
-    def test_wizard_builds_valid_answers(self):
-        scripted = iter(['Sam', 'sam', 'UTC', '/tmp/ct-wizard-vault', 'developer', 'github', 'none', 'none', 'none', 'none'])
-        a = install.wizard(ask=lambda prompt: next(scripted, ''), out=lambda *x: None)
-        self.assertEqual(a['packs'], ['developer'])
-        self.assertEqual(a['tools'].get('code'), 'github')
-        install.validate(a)
-
     def test_cli_dry_run_and_error_exit_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             a = answers_for(tmp, ['developer'])

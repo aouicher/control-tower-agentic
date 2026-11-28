@@ -17,7 +17,7 @@ Jobs and skills ask for a **capability**, not a product. You choose the tool for
 
 - `adapters/<capability>/contract.md` defines the inputs a job gives and the records it expects back, so every tool answers in the same shape.
 - `adapters/<capability>/<tool>.md` explains the tool: how to connect, what to verify.
-- `adapters/<capability>/<tool>.json` is the machine-readable manifest: how it is connected (`connect`: `sign-in` when the user does it alone from the vault, `developer` when it needs a key, a secret or an address filled in), install commands, environment variables, `permissions_allow` / `permissions_deny`, whether the tool is `read_only`, and a `read_only_mitigation` when it is not.
+- `adapters/<capability>/<tool>.json` is the machine-readable manifest: other names people give the tool (`aliases`, lowercase, for example `ga4`; the guided install matches the tools the user names against them and the tool id), how it is connected (`connect`: `sign-in` when the user does it alone from the vault, `developer` when it needs a key, a secret or an address filled in), install commands, environment variables, `permissions_allow` / `permissions_deny`, whether the tool is `read_only`, and a `read_only_mitigation` when it is not.
 
 The installer renders the notes into `<vault>/.claude/adapters/` and writes the exact commands to `<vault>/library/setup-next-steps.md`. **It does not run them.**
 

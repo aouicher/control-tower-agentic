@@ -2,11 +2,12 @@
 """Control tower installer. Standard library only (Python 3.9+).
 
 Installs the core vault, the chosen packs, the tool adapter notes, the scheduled jobs and (optionally)
-the schedule, from an answers file or an interactive terminal wizard.
+the schedule, from an answers file. People who do not use a terminal install through Claude: the install skill
+(`/install-control-tower`) asks four questions and writes the answers file.
 
     python3 installer/install.py --answers answers.json --dry-run     # show what would happen
     python3 installer/install.py --answers answers.json               # install
-    python3 installer/install.py --interactive                        # answer questions in the terminal
+    python3 installer/install.py --match-tools "Jira, Amplitude" --packs marketing --json   # tool names to adapters
 
 Safety:
   * it never overwrites an existing file; re-running is safe (existing files are kept);
@@ -22,8 +23,10 @@ import json
 import os
 import re
 import shlex
+import pwd
 import shutil
 import sys
+import unicodedata
 
 if sys.version_info < (3, 9):
     sys.exit('control tower needs Python 3.9 or newer (found %s)' % sys.version.split()[0])
@@ -32,6 +35,7 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
+from toolnames import known_tools, match_tools  # noqa: E402
 from scheduling import CRON_END, apply, cron_header, cron_line, launchd_plist, local_time, pick_scheduler, shift_days  # noqa: E402
 from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError,  # noqa: E402
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
@@ -60,17 +64,64 @@ def list_tools(capability, repo=REPO):
 
 
 # ----------------------------------------------------------------------------- answers
-def default_answers(repo=REPO):
+def system_name():
+    """The user's full name as the computer knows it (the passwd entry's comment field), or ''."""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_gecos.split(',')[0].strip()
+    except KeyError:
+        return ''
+
+
+def system_timezone():
+    """The computer's IANA timezone ($TZ, or the zone /etc/localtime points to), else UTC."""
+    for name in (os.environ.get('TZ', '').lstrip(':'), os.path.realpath('/etc/localtime').partition('zoneinfo/')[2]):
+        try:
+            if name:
+                zoneinfo.ZoneInfo(name)
+                return name
+        except (ValueError, zoneinfo.ZoneInfoNotFoundError):
+            continue
+    return 'UTC'
+
+
+OWNER = ('owner_name', 'owner_handle', 'timezone')
+
+
+def default_answers(detect=True):
+    """The answers an answers file may leave out. With `detect`, the name, handle and timezone come from the computer; an
+    empty name is asked."""
+    name = system_name() if detect else ''
+    first = unicodedata.normalize('NFKD', name.split()[0]).encode('ascii', 'ignore').decode().lower() if name.split() else ''
+    first = re.sub(r'[^a-z0-9._-]', '', first)  # accents folded to plain letters first
     return {
-        'owner_name': 'Your Name', 'owner_handle': 'me', 'timezone': 'UTC',
+        'owner_name': name, 'owner_handle': first or 'me', 'timezone': system_timezone() if detect else 'UTC',
         'vault_path': '~/control-tower-vault', 'ct_home': '~/.control-tower',
         'packs': [], 'tools': {}, 'jobs': {}, 'scheduler': 'auto', 'claude_bin': 'claude',
     }
 
 
+def vault_path_problems(answers, repo=REPO):
+    """Why the vault folder is refused: unattended jobs read the whole vault, so never the root, the home folder or a folder
+    above it, nor one that holds the kit or the runtime folder."""
+    if not answers.get('vault_path'):
+        return []
+    vault, home = os.path.realpath(expand(answers['vault_path'])), os.path.realpath(os.path.expanduser('~'))
+    held = [p for p in (repo, answers.get('ct_home') or '~/.control-tower') if (os.path.realpath(expand(p)) + os.sep).startswith(vault + os.sep)]
+    if vault == os.sep or (home + os.sep).startswith(vault + os.sep):
+        return [f'answers: the vault cannot be {answers["vault_path"]}: reports would read everything in it. Choose a folder of its own']
+    return [f'answers: the vault {answers["vault_path"]} would hold {held[0]}: choose a folder of its own'] if held else []
+
+
+def merged_answers(answers):
+    """The answers over the defaults. An owner field left out or empty takes what the computer gives, read only then."""
+    a = default_answers(detect=not all(answers.get(k) for k in OWNER))
+    a.update({k: v for k, v in answers.items() if not (k in OWNER and v in (None, ''))})
+    return a
+
+
 def validate(answers, repo=REPO):
     errors = []
-    for key in ('owner_name', 'owner_handle', 'timezone', 'vault_path', 'packs'):
+    for key in OWNER + ('vault_path', 'packs'):
         if not answers.get(key):
             errors.append(f'answers: "{key}" is required')
     if not re.fullmatch(r'[A-Za-z0-9_.-]+', str(answers.get('owner_handle', 'x'))):
@@ -103,6 +154,7 @@ def validate(answers, repo=REPO):
         errors.append('answers: "commands" must be an object, for example {"twg": {"network": ["acme.atlassian.net"]}}')
         commands = {}
     errors += [f'answers: {p}' for name, entry in commands.items() for p in [command_problem(name, entry)] if p]
+    errors += vault_path_problems(answers, repo)
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -140,33 +192,6 @@ def validate(answers, repo=REPO):
     if errors:
         raise InstallError('\n'.join(errors))
     return packs
-
-
-def wizard(repo=REPO, ask=input, out=print):
-    """Terminal wizard returning an answers dict. `ask` and `out` are injectable for tests."""
-    a = default_answers(repo)
-    out('Control tower installer: answer a few questions (Enter keeps the default).\n')
-    def q(prompt, default):
-        v = ask(f'{prompt} [{default}]: ').strip()
-        return v or default
-    a['owner_name'] = q('Your name', a['owner_name'])
-    a['owner_handle'] = q('Handle used on your tasks', a['owner_handle'])
-    a['timezone'] = q('Timezone (IANA name)', a['timezone'])
-    a['vault_path'] = q('Vault folder (created if needed)', a['vault_path'])
-    packs = list_packs(repo)
-    out('\nProfiles: ' + ', '.join(packs))
-    a['packs'] = [p.strip() for p in q('Profiles to install (comma separated)', packs[0] if packs else '').split(',') if p.strip()]
-    asked = set()
-    for pid in a['packs']:
-        manifest = jload(os.path.join(repo, 'packs', pid, 'pack.json'))
-        for item in manifest.get('questions', []):
-            if item['capability'] in asked:
-                continue
-            asked.add(item['capability'])
-            choices = item['choices']
-            a['tools'][item['capability']] = q(f"{item['ask']} ({', '.join(choices)})", 'none' if 'none' in choices else choices[0])
-    a['scheduler'] = q('Scheduler (auto, launchd, cron, none)', 'auto')
-    return a
 
 
 # ----------------------------------------------------------------------------- plan
@@ -424,8 +449,8 @@ class Ctx:
     write; they add to `report` and `files` (the two accumulators) and return what the next step needs."""
 
     def __init__(self, answers, repo, dry_run, update):
-        self.packs = validate(answers, repo)
-        a = dict(default_answers(repo)); a.update(answers)
+        a = merged_answers(answers)
+        self.packs = validate(a, repo)
         a['tools'] = {c: (a.get('tools') or {}).get(c, 'none') for c in CAPABILITIES}
         self.vault, self.ct_home = expand(a['vault_path']), expand(a['ct_home'])
         a['vault_path'], a['ct_home'] = self.vault, self.ct_home
@@ -451,7 +476,7 @@ class Ctx:
         self.report = {'vault': self.vault, 'ct_home': self.ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [],
                        'warnings': [], 'schedule': None, 'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': self.stash_dir,
                        'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full',
-                       'permissions_summary': []}
+                       'permissions_summary': [], 'owner': {'name': a['owner_name'], 'handle': a['owner_handle'], 'timezone': a['timezone']}}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.seen = set()  # every kit file of the vault this run produces, written or not
         self.approved = approved_servers(self.vault, a, recorded_servers(a))  # the servers jobs may start, as approved
@@ -807,7 +832,11 @@ def print_report(report, dry_run):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--answers')
-    ap.add_argument('--interactive', action='store_true')
+    ap.add_argument('--interactive', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--match-tools', metavar='TEXT', help='the tools named in TEXT, for the capabilities of --packs (JSON)')
+    ap.add_argument('--match-tools-file', metavar='FILE', help='the same with the text in FILE: what a user typed never goes on a command line')
+    ap.add_argument('--known-tools', action='store_true', help='the tools the capabilities of --packs can use (JSON)')
+    ap.add_argument('--packs', nargs='+', default=[], help='with --match-tools or --known-tools')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--apply-schedule', action='store_true')
     ap.add_argument('--runtime-only', action='store_true', help='install only the runtime (job runner, guard, jobs, schedule) on an '
@@ -818,13 +847,23 @@ def main():
     ap.add_argument('--no-launchctl', action='store_true', help='link plists but do not load them (tests)')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
+    if args.interactive:
+        print('error: the terminal wizard is gone. Open Claude Code in the kit folder and type /install-control-tower: it asks four '
+              'questions. Or give --answers FILE (see examples/answers).', file=sys.stderr)
+        sys.exit(2)
     try:
-        if args.interactive:
-            answers = wizard()
-        elif args.answers:
-            answers = jload(args.answers)
-        else:
-            ap.error('give --answers FILE or --interactive')
+        if args.match_tools_file:
+            with open(args.match_tools_file, encoding='utf-8') as fh:
+                args.match_tools = fh.read()
+        if args.packs and args.match_tools is None and not args.known_tools:
+            ap.error('--packs goes with --match-tools, --match-tools-file or --known-tools')
+        if args.match_tools is not None or args.known_tools:
+            found = known_tools(args.packs) if args.known_tools else match_tools(args.match_tools, args.packs)
+            print(json.dumps(found, indent=2))
+            return
+        if not args.answers:
+            ap.error('give --answers FILE')
+        answers = jload(args.answers)
         if args.runtime_only:
             answers['vault_mode'] = 'runtime'
         report = install(answers, dry_run=args.dry_run, schedule='load' if args.apply_schedule else None,

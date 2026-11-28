@@ -1,6 +1,10 @@
 {
   "tool": "google-calendar",
   "capability": "calendar",
+  "aliases": [
+    "gcal",
+    "google agenda"
+  ],
   "access": "mcp",
   "connect": "sign-in",
   "setup_url": "https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server",

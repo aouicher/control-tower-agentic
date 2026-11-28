@@ -1,6 +1,9 @@
 {
   "tool": "github",
   "capability": "code",
+  "aliases": [
+    "gh"
+  ],
   "access": "cli",
   "connect": "developer",
   "setup_url": "https://cli.github.com/manual/gh_pr_list",
