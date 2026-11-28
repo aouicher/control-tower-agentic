@@ -20,7 +20,9 @@ Scheduled jobs run unattended, so they are locked down by design.
 | Git writes, `sudo`, recursive delete, `curl | sh`, `chmod`, environment dumps | guard hook (Bash) |
 | Writes on GitHub, AWS, kubectl, Terraform, Docker, databases | guard hook plus allow-lists |
 
-The guard (`scheduler/guard.py`) is a defence in depth, not a sandbox: it blocks known dangerous patterns, and the allow-list (`dontAsk`) is the primary control. For stronger isolation run jobs under a dedicated OS user or in a container.
+The guard (`scheduler/guard.py`) is a defence in depth, not a sandbox: it blocks known dangerous patterns, and the allow-list (`dontAsk`) is the primary control. For stronger isolation, turn on strict mode (`"strict": true`: Claude Code's sandbox around every shell command, see [permissions](permissions.md#strict-mode-optional)), or run jobs under a dedicated OS user or in a container.
+
+What a job may use beyond the vault (a command, an MCP tool, a web site) is listed in plain words at install time and granted only when the user says yes; some rules can never be granted, whoever asks. See [permissions](permissions.md).
 
 ## Symlinks
 

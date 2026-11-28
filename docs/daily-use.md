@@ -183,5 +183,6 @@ Templates you will use: `content-piece`, `launch-plan`, `campaign-retro` (in Obs
 | A report is missing this morning | The computer was asleep at the job's time. For a cloud routine, the vault was not pushed or pulled. Run it by hand: `python3 ~/.control-tower/bin/run_job.py --job <id> --ct-home ~/.control-tower`. |
 | The same task shows twice | It was copied into two notes. Keep one; `/weekly-review` lists duplicates. |
 | A report says "not verified" | A tool was not reachable. Check the connection (see [adapters](adapters.md)). |
+| A job is blocked, or its log says `denied: N` | It needed something it is not allowed to use yet. In Claude Code, in the vault, type `/job-permissions` and answer the questions (see [permissions](permissions.md)). |
 
 More in [troubleshooting](troubleshooting.md).

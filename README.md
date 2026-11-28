@@ -72,6 +72,7 @@ python3 installer/doctor.py --vault ~/control-tower-developer   # the vault_path
 - [Adapters](docs/adapters.md): connecting your tools, read-only
 - [Scheduling](docs/scheduling.md): local jobs and cloud routines
 - [Security and privacy](docs/security.md): what jobs can and cannot do
+- [What your jobs may do](docs/permissions.md): allowing access by answering questions, `/job-permissions` when a job is blocked
 - [Troubleshooting](docs/troubleshooting.md)
 - [Testing](docs/testing.md): unit, end-to-end and clean-container tests
 - Design specs for contributors: [core](docs/design/core-spec.md), [packs](docs/design/pack-spec.md)

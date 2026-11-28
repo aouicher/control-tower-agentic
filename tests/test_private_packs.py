@@ -132,7 +132,7 @@ class PermissionPolicyTests(unittest.TestCase):
     def test_a_job_can_reread_only_its_own_saved_tool_output(self):
         guard = plan.guard_rules
         home = os.path.expanduser('~/.claude/projects/-tmp-ct-test')
-        sid, other = 'aaaaaaaa-1111-2222-3333-444444444444', 'bbbbbbbb-1111-2222-3333-444444444444'
+        sid, other = 'aaaaaaaa-1111-2222-3333-4444444444aa', 'bbbbbbbb-1111-2222-3333-4444444444bb'
         mine = os.path.join(home, sid, 'tool-results', 'out.txt')
         theirs = os.path.join(home, other, 'tool-results', 'out.txt')
         with tempfile.TemporaryDirectory() as v:
