@@ -273,6 +273,8 @@ def check_pack(pk):
     for r in pk.manifest.get('routines', []):
         check_id(f'routine (pack {pk.id})', r)
     shipped = vault_files(os.path.join(pk.dir, 'vault'))
+    if not isinstance(pages := pk.manifest.get('cockpit_pages', []), list) or not all(isinstance(c, str) and ID_RE.match(c) and f'cockpit/{c}.md' in shipped for c in pages):
+        raise InstallError(f'pack "{pk.id}": cockpit_pages must be a list of the pages it ships as vault/cockpit/<name>.md')
     for rel in shipped:
         if forbidden_pack_file(rel):
             raise InstallError(f'pack "{pk.id}" may not ship {rel}: installer state, git, editor, Obsidian and Claude settings are off limits')

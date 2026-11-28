@@ -190,6 +190,24 @@ class InstallTests(unittest.TestCase):
             self.assertIn('wide-pages', json.load(open(os.path.join(obs, 'appearance.json')))['enabledCssSnippets'])
             self.assertTrue(os.path.isfile(os.path.join(obs, 'snippets', 'wide-pages.css')))
 
+    def test_the_cockpit_shows_the_pages_of_the_chosen_profiles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers_for(tmp, ['engineering', 'product'], scheduler='none')
+            install.install(a, log=lambda *x: None)
+            home = open(os.path.join(a['vault_path'], 'cockpit.md'), encoding='utf-8').read()
+            self.assertLess(home.index('![[pulse]]'), home.index('![[delivery]]'))
+            self.assertLess(home.index('![[delivery]]'), home.index('![[roadmap]]'), 'in the order of the profiles')
+            install.install(dict(a, jobs={'service-health': {'enabled': False}}), update=True, log=lambda *x: None)
+            home = open(os.path.join(a['vault_path'], 'cockpit.md'), encoding='utf-8').read()
+            self.assertNotIn('![[pulse]]', home, 'its report is off: the page would stay empty')
+            self.assertIn('![[delivery]]', home)
+            sys.path.insert(0, os.path.join(ROOT, 'tests'))
+            from test_private_packs import private_pack
+            for bad in (['missing'], ['x]]\n## Mine'], 'pulse'):
+                with self.subTest(bad), self.assertRaises(install.InstallError):
+                    pd = private_pack(os.path.join(tmp, 'p' + str(len(str(bad)))), cockpit_pages=bad)
+                    install.install(dict(a, packs=a['packs'] + ['acme-private'], pack_dirs=[pd]), dry_run=True, log=lambda *x: None)
+
     def test_next_steps_note_lists_the_commands_but_installer_runs_none(self):
         with tempfile.TemporaryDirectory() as tmp:
             a = answers_for(tmp, ['engineering'])
