@@ -12,7 +12,7 @@ Accounts for the tools you want to connect are optional (see [adapters](adapters
 
 ## Install and first steps
 
-The install, opening the vault in Obsidian and the first session in it are in the README: [Use Control Tower](../README.md#part-1-use-control-tower). In the vault session, `library/setup-next-steps.md` lists what is left for each tool, and "check my setup" says what needs your attention.
+The install, opening the vault in Obsidian and the first session in it are in the README: [Use Control Tower](../README.md#use-control-tower). In the vault session, `library/setup-next-steps.md` lists what is left for each tool, and "check my setup" says what needs your attention.
 
 ## For developers: answers files
 

@@ -4,11 +4,11 @@ A personal **control tower** for knowledge work: an [Obsidian](https://obsidian.
 
 It is built for people who lead, build, plan or promote things: engineering leaders, developers, product managers, marketers. You pick the profiles that fit your work and name the tools you already use; Claude installs everything for you, by asking questions. You never type a command.
 
-This page has two parts: **[Use Control Tower](#part-1-use-control-tower)**, for everyone, and **[Develop the kit](#part-2-develop-the-kit)**, for people who work on this repository.
+This page has two parts: **[Use Control Tower](#use-control-tower)**, for everyone, and **[Develop the kit](#develop-the-kit)**, for people who work on this repository.
 
 ![The cockpit: priorities of the day, agenda and overdue tasks](docs/images/cockpit-today.png)
 
-# Part 1: Use Control Tower
+# Use Control Tower
 
 ## What you need
 
@@ -95,7 +95,7 @@ Day-to-day commands such as `/today`, `/inbox`, `/weekly-review` and `/meeting` 
 
 More: [Security and privacy](docs/security.md), [What your reports may do](docs/permissions.md), [Troubleshooting](docs/troubleshooting.md).
 
-# Part 2: Develop the kit
+# Develop the kit
 
 This part is for people who work on the kit itself or install it from a terminal. It needs Python 3.9+, git and the [Claude Code](https://claude.com/claude-code) CLI; everything is standard-library Python.
 
