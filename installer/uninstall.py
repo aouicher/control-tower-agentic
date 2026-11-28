@@ -13,10 +13,11 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import shutil
-import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import install  # noqa: E402
 
 
 def sha(path):
@@ -50,14 +51,11 @@ def main():
             sys.exit(2)
 
     # scheduled jobs
-    la = os.path.abspath(os.path.expanduser(args.launch_agents_dir or '~/Library/LaunchAgents'))
-    plists = [os.path.join(la, f) for f in sorted(os.listdir(la)) if f.startswith('com.control-tower.')] if os.path.isdir(la) else []
-    for p in plists:
-        plan.append(('unload', p))
-    if shutil.which('crontab'):
-        cur = subprocess.run(['crontab', '-l'], capture_output=True, text=True).stdout  # empty when there is none
-        if '# BEGIN control-tower' in cur:
-            plan.append(('crontab', 'remove the control-tower block'))
+    sched = os.path.join(ct, 'schedule')
+    agents = install.own_agents(install.agents_dir(args.launch_agents_dir), sched)  # another install's agents stay
+    cron = install.cron_applied(sched)
+    plan += [('unload', f) for f in agents] + ([('crontab', 'remove the control-tower block')] if cron else [])
+    loaded = (['launchd'] if agents else []) + (['cron'] if cron else [])
     if os.path.isdir(ct):
         plan.append(('rmtree', ct))
 
@@ -84,21 +82,13 @@ def main():
     if not args.yes:
         print('\nDry run. Add --yes to apply.')
         return
+    report = {'warnings': []}
+    for kind in loaded:
+        install.apply(kind, [], sched, args.launch_agents_dir, args.no_launchctl, report, unload=True)
+    for w in report['warnings']:
+        print(f'warning: {w}', file=sys.stderr)
     for kind, what in plan:
-        if kind == 'unload':
-            if not args.no_launchctl and shutil.which('launchctl'):
-                label = os.path.basename(what)[:-6]
-                subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'], capture_output=True)
-            os.remove(what)
-        elif kind == 'crontab':
-            got = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
-            if got.returncode != 0:
-                print(f'could not read the crontab, left unchanged: {got.stderr.strip()}', file=sys.stderr)
-                continue
-            cur = got.stdout
-            new = re.sub(r'# BEGIN control-tower.*?# END control-tower\n?', '', cur, flags=re.S)
-            subprocess.run(['crontab', '-'], input=new, capture_output=True, text=True)
-        elif kind == 'rmtree':
+        if kind == 'rmtree':
             shutil.rmtree(what)
     if removable:
         vault = os.path.abspath(os.path.expanduser(args.vault))

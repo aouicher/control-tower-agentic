@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import install  # noqa: E402
 from plan import REPO, CorePolicy, core_files, risky_settings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
@@ -203,10 +204,9 @@ def check_runtime(r, vault, ct_home):
         for f in sorted(os.listdir(os.path.join(sched, 'launchd'))):
             rc = subprocess.run(['plutil', '-lint', os.path.join(sched, 'launchd', f)], capture_output=True).returncode
             r.add('ok' if rc == 0 else 'FAIL', f'launchd file {f}')
-    applied = os.path.isdir(os.path.expanduser('~/Library/LaunchAgents')) and any(
-        f.startswith('com.control-tower.') for f in os.listdir(os.path.expanduser('~/Library/LaunchAgents')))
     if os.path.isdir(sched):
-        r.add('ok' if applied or os.path.isfile(os.path.join(sched, 'crontab.txt')) else 'warn', 'schedule generated',
+        applied = install.schedule_applied('cron' if os.path.isfile(os.path.join(sched, 'crontab.txt')) else 'launchd', sched)
+        r.add('ok' if applied else 'warn', 'schedule generated',
               'jobs run on schedule only after --apply-schedule' if not applied else 'applied')
     return r
 

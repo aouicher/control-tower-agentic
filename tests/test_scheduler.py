@@ -396,7 +396,7 @@ class ScheduleTests(unittest.TestCase):
         try:
             for rel in ('.git/hooks/post-commit', '.git/config', '.github/workflows/x.yml'):
                 self.assertIsNotNone(g.tool('Write', os.path.join(g.vault, rel)), rel)
-            # date and ls are no longer allowed to any job (the allow-list refuses them): the guard has no date parser left
+            # date and ls are refused by every job's allow-list: the guard has no date parser
             for cmd in ('cat ~/.claude/.credentials.json', 'cat ~/.kube/config', 'date -d "$(cat ~/.ssh/id_rsa)"',
                         'git log -1 --format=x --output=journal/CLAUDE.md', 'git diff --output journal/x.md',
                         'git log --outp=notes/CLAUDE.md', 'git log --o=a/b', 'git log "--output"=notes/x.md', "git log '--output' 'a/b.md'"):

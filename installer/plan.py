@@ -39,7 +39,13 @@ class InstallError(Exception):
     pass
 
 
-def jload(path):
+_REQUIRED = object()
+
+
+def jload(path, default=_REQUIRED):
+    """A JSON file; with `default`, that value when the file does not exist."""
+    if default is not _REQUIRED and not os.path.isfile(path):
+        return default
     with open(path, encoding='utf-8') as fh:
         return json.load(fh)
 
