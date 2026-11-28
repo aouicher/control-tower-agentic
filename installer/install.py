@@ -34,9 +34,10 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError, check_permissions, check_rendered,  # noqa: E402
-                  adapter_allow, command_needs, command_problem, describe_rules, job_adapters, job_capabilities, unreachable_servers, expand, guard_rules, jload, list_packs, permission_problem,
-                  resolve_packs, vault_files)
+from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError,  # noqa: E402
+                  adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
+                  guard_rules, job_adapters, job_capabilities, jload, list_packs, mcp_file_findings, mcp_server, on_server, permission_problem,
+                  resolve_packs, server_answer_problems, unreachable_servers, vault_files)
 
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
@@ -98,6 +99,7 @@ def validate(answers, repo=REPO):
             errors.append(f'answers: job_permissions "{jid}" must be a list of rules')
             continue
         errors += [f'answers: job_permissions "{jid}": "{r}": {p}' for r in rules for p in [permission_problem(r)] if p]
+    errors += [f'answers: {p}' for p in server_answer_problems(answers, CAPABILITIES)]
     commands = answers.get('commands') or {}
     if not isinstance(commands, dict):
         errors.append('answers: "commands" must be an object, for example {"twg": {"network": ["acme.atlassian.net"]}}')
@@ -263,7 +265,7 @@ def allow_hint(answers):
     if answers.get('vault_mode') == 'runtime':
         return (f'run `python3 {REPO}/installer/configure.py denials --vault {answers["vault_path"]}` after a scheduled run, then '
                 '`configure.py grant --vault <vault> --job <id> --rule <rule>` for each read tool to allow')
-    return 'after a scheduled run, in Claude, in your vault, say "fix my job"'
+    return 'in Claude, in your vault, say "connect" and the name of the tool'
 
 
 def next_steps(repo, answers, jobs_on, jobs_off, routines=(), mcp_blocked=()):
@@ -286,14 +288,20 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=(), mcp_blocked=()):
         lines += [f'### {cap}: {tool}', '', f"Official documentation: {man['setup_url']}", '']
         if man.get('setup_steps'):  # steps that are not shell commands (for example a connector made in the tool's own UI)
             lines += ['Steps:', ''] + [f'{i}. {step}' for i, step in enumerate(man['setup_steps'], 1)] + ['']
-        if man.get('install'):
-            lines += ['Run once in a terminal:', '', '```bash'] + man['install'] + ['```', '']
+        if man.get('connect') == 'sign-in':
+            lines += [f'In Claude, in your vault, say: connect {tool}. Claude adds it to this vault, and you sign in in your browser.', '']
+        else:
+            if man.get('install'):
+                lines += ['Set up once by someone comfortable with the terminal, from the vault folder (a key stays in the environment):',
+                          '', '```bash'] + man['install'] + ['```', '']
+            if man.get('access') == 'mcp':
+                lines += [f'Once it is set up, in Claude, in your vault, say: connect {tool}.', '']
         if man.get('env'):
             lines += ['Environment variables to set: ' + ', '.join(f'`{e}`' for e in man['env']), '']
         if not man.get('read_only', True):
             lines += [f"> Read-only caution: {man.get('read_only_mitigation', '')}", '']
         if (cap, tool) in mcp_blocked:
-            lines += [f'> Unattended jobs refuse every tool that is not allowed, and this tool has no read tool allowed yet: {allow_hint(answers)}.', '']
+            lines += [f'> Scheduled reports cannot use this tool until it is connected with read tools allowed: {allow_hint(answers)}.', '']
         lines += [f"Check the connection: {man['verify']}", '']
     if not any_tool:
         lines += ['No external tool was selected: the vault works on its own.', '']
@@ -373,7 +381,7 @@ def job_rules(repo, answers, job):
     network = list(meta.get('network', []))
     for cap, (_, man) in job_adapters(repo, answers, meta).items():
         allow += adapter_allow(answers, cap, man)
-        deny += man.get('permissions_deny', [])
+        deny += on_server(man.get('permissions_deny', []), (answers.get('servers') or {}).get(cap))
         network += man.get('network', [])
     allow += list((answers.get('job_permissions') or {}).get(job['id'], []))
     return allow, deny, network + command_needs(repo, answers, allow)[0]
@@ -402,7 +410,7 @@ def job_settings(repo, answers, job):
     extra_allow, extra_deny, network = job_rules(repo, answers, job)  # rendered and checked in Ctx.plan_jobs
     allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')] + [str(r).strip() for r in extra_allow]  # every job writes its report in the vault
     deny = list(BASE_DENY) + [str(r).strip() for r in extra_deny]
-    deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
+    deny += ['Read(**/.mcp.json)', 'Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
     # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
     deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
     hook = [python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault]
@@ -521,7 +529,8 @@ class Ctx:
                        'permissions_summary': []}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.seen = set()  # every kit file of the vault this run produces, written or not
-        self.mcp_blocked = set()  # (capability, tool) of an MCP server no job may call yet: no read tool allowed
+        self.approved = approved_servers(self.vault, a)  # the MCP servers jobs may start, as approved at connect
+        self.mcp_blocked = set()  # (capability, tool) of an MCP server no job may call yet: not connected, or no read tool allowed
         self.jobs_on, self.jobs_off = self.plan_jobs()
 
     def plan_jobs(self):
@@ -542,7 +551,7 @@ class Ctx:
             check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []))
             allow, _, network = job_rules(self.repo, a, {'id': j['id'], 'meta': j['rendered']})
             check_permissions(f'job "{j["id"]}"', allow)  # adapters and the user's grants: the same limits
-            self.mcp_blocked |= unreachable_servers(job_adapters(self.repo, a, j['rendered']), a, allow)
+            self.mcp_blocked |= unreachable_servers(job_adapters(self.repo, a, j['rendered']), a, allow, self.approved)
             uses = describe_rules(allow, network)
             if any(uses.values()):  # what the user consents to, in plain words (the guided installer asks about it)
                 self.report['permissions_summary'].append({'job': j['id'], 'name': j['rendered'].get('name', j['id']), **uses})
@@ -552,12 +561,12 @@ class Ctx:
         if self.runtime_only and any(not self.packs[j['pack']].private for j in on):
             self.report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
                                            'check they fit your vault, or use jobs from your own private pack')
-        self.report['warnings'] += [f'{cap}/{tool}: jobs cannot call this MCP server until its read-only tools are allowed: {allow_hint(a)}'
+        self.report['warnings'] += [f'{cap}/{tool}: jobs cannot call this MCP server until it is connected with read tools allowed: {allow_hint(a)}'
                                     for cap, tool in sorted(self.mcp_blocked)]
         if 'strict' in a:
             self.report['warnings'].append('"strict" in the answers is ignored: every job that may run a command now runs in the sandbox')
         if self.runtime_only:
-            self.report['warnings'] += vault_settings_warnings(self.vault)
+            self.report['warnings'] += vault_settings_warnings(self.vault, a)
         return on, off
 
     def record(self, res):
@@ -574,7 +583,7 @@ class Ctx:
                                        stash_dir=self.stash_dir, **kw))
 
 
-def vault_settings_warnings(vault):
+def vault_settings_warnings(vault, answers):
     """Jobs run in the vault and load its project settings: rules or hooks there widen every unattended job."""
     out = []
     for name in ('settings.json', 'settings.local.json'):
@@ -583,8 +592,7 @@ def vault_settings_warnings(vault):
         if risky:
             out.append(f'{p} sets {", ".join(risky)}: unattended jobs load it too, so it can widen what they do. '
                        'Keep it empty for jobs, or move those settings to your user settings')
-    if os.path.isfile(os.path.join(vault, '.mcp.json')):
-        out.append(f'{os.path.join(vault, ".mcp.json")}: MCP servers declared in the vault are available to unattended jobs too')
+    out += [f'{os.path.join(vault, ".mcp.json")}: {text}' for _, text in mcp_file_findings(vault, answers)]
     skills = os.path.join(vault, '.claude', 'skills')
     for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
         p = os.path.join(skills, name, 'SKILL.md')
@@ -669,7 +677,10 @@ def step_runtime(ctx):
         with open(os.path.join(jdir, 'prompt.md'), 'w', encoding='utf-8') as fh:  # only the prompt: nothing else from the pack
             fh.write(prompt)
         jdump(os.path.join(jdir, 'job.json'), j['rendered'])
-        jdump(os.path.join(jdir, 'settings.json'), job_settings(ctx.repo, ctx.a, {'id': j['id'], 'meta': j['rendered']}))
+        settings = job_settings(ctx.repo, ctx.a, {'id': j['id'], 'meta': j['rendered']})
+        jdump(os.path.join(jdir, 'settings.json'), settings)
+        calls = {mcp_server(r) for r in settings['permissions']['allow']}  # the runner passes only this file (--strict-mcp-config)
+        jdump(os.path.join(jdir, 'mcp.json'), {'mcpServers': {s: e for s, e in ctx.approved.items() if s in calls}})
 
 
 def step_schedule(ctx):

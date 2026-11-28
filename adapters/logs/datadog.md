@@ -7,7 +7,7 @@ Official documentation: https://docs.datadoghq.com/bits_ai/mcp_server/, setup ht
 Datadog hosts a remote MCP server. The endpoint depends on your site: `https://mcp.<site>/v1/mcp`, for example `https://mcp.datadoghq.com/v1/mcp` (US1) or `https://mcp.datadoghq.eu/v1/mcp` (EU1). Other sites are listed on the setup page; the US1-FED and US2-FED sites are not supported.
 
 ```
-claude mcp add --scope user --transport http datadog-mcp https://mcp.datadoghq.com/v1/mcp
+claude mcp add --scope project --transport http datadog-mcp https://mcp.datadoghq.com/v1/mcp
 ```
 
 The documentation also recommends the official plugin: `/plugin install datadog@claude-plugins-official`. The `toolsets` query parameter selects toolsets (default `core`, which contains the logs tools); `omit_tools` removes tools.

@@ -2,9 +2,10 @@
   "tool": "amplitude",
   "capability": "analytics",
   "access": "mcp",
+  "connect": "sign-in",
   "setup_url": "https://amplitude.com/docs/amplitude-ai/amplitude-mcp/claude-code",
   "install": [
-    "claude mcp add --transport http --scope user Amplitude https://mcp.amplitude.com/mcp"
+    "claude mcp add --transport http --scope project Amplitude https://mcp.amplitude.com/mcp"
   ],
   "env": [],
   "permissions_allow": [

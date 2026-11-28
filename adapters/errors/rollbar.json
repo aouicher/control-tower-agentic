@@ -2,9 +2,10 @@
   "tool": "rollbar",
   "capability": "errors",
   "access": "mcp",
+  "connect": "developer",
   "setup_url": "https://docs.rollbar.com/docs/mcp-server-setup",
   "install": [
-    "claude mcp add --scope user rollbar --env ROLLBAR_ACCOUNT_ACCESS_TOKEN=$ROLLBAR_ACCOUNT_ACCESS_TOKEN -- npx -y @rollbar/mcp-server@latest"
+    "claude mcp add --scope project rollbar --env 'ROLLBAR_ACCOUNT_ACCESS_TOKEN=${ROLLBAR_ACCOUNT_ACCESS_TOKEN}' -- npx -y @rollbar/mcp-server@latest"
   ],
   "env": [
     "ROLLBAR_ACCOUNT_ACCESS_TOKEN",

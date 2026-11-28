@@ -7,7 +7,7 @@ Capability: `tracker`. Official documentation: https://developers.asana.com/docs
 Official server: `https://mcp.asana.com/v2/mcp`. The client setup page documents for Claude Code:
 
 ```
-claude mcp add --scope user --transport http --client-id YOUR_CLIENT_ID --client-secret --callback-port 8080 asana https://mcp.asana.com/v2/mcp
+claude mcp add --scope project --transport http --client-id YOUR_CLIENT_ID --client-secret --callback-port 8080 asana https://mcp.asana.com/v2/mcp
 ```
 
 Leave the secret value empty: Claude Code prompts for it and stores it in the system keychain, per the page. The app's redirect URL must be exactly `http://localhost:8080/callback`. A client id and secret come from an app you create (see the developer integration guide linked from the page).

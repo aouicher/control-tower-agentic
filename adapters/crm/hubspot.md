@@ -12,7 +12,7 @@ HubSpot hosts a remote MCP server at `https://mcp.hubspot.com` (Streamable HTTP 
 4. Complete the OAuth flow (select the account, grant permissions).
 5. Run `get_user_details` to check what you can access.
 
-The exact `claude mcp add` command and options for a connector with client credentials: check the official documentation of Claude Code and HubSpot. Add the server at user scope (`--scope user`) so it is visible from the vault and from scheduled jobs.
+The exact `claude mcp add` command and options for a connector with client credentials: check the official documentation of Claude Code and HubSpot. Add the server from the vault folder at project scope (`--scope project`): scheduled reports start only servers of the vault's `.mcp.json`. Never write the client secret into that file.
 
 ## Authentication and least-privilege scopes
 

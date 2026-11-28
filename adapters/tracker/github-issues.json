@@ -2,6 +2,7 @@
   "tool": "github-issues",
   "capability": "tracker",
   "access": "cli",
+  "connect": "developer",
   "setup_url": "https://cli.github.com/manual/gh_issue_list",
   "install": [
     "gh auth login"

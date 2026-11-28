@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
-from plan import REPO, CorePolicy, core_files, risky_settings  # noqa: E402
+from plan import REPO, CorePolicy, core_files, mcp_file_findings, risky_settings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -189,8 +189,9 @@ def check_runtime(r, vault, ct_home):
         keys = risky_settings(p) if os.path.isfile(p) else []
         if keys:
             r.add('warn', f'vault file {risky}', f'sets {", ".join(keys)}: unattended jobs load it too, so it can widen what they do')
-    if os.path.isfile(os.path.join(vault, '.mcp.json')):
-        r.add('warn', 'vault file .mcp.json', 'MCP servers declared in the vault are available to unattended jobs too, review it')
+    answers = install.jload(os.path.join(vault, '.control-tower', 'answers.json'), {})
+    for level, text in mcp_file_findings(vault, answers):
+        r.add(level, 'vault file .mcp.json', text)
     outside = []
     for root, dirs, files in os.walk(vault):
         dirs[:] = [d for d in dirs if d not in ('.obsidian', '.git')]

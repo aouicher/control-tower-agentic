@@ -31,8 +31,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
-from plan import (MCP_TOOL, READ_VERBS, bash_parts, command_needs, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
-                  permission_problem)
+from plan import (MCP_TOOL, READ_VERBS, bash_parts, command_needs, command_problem, describe_rules, expand, fingerprint, jload,  # noqa: E402
+                  known_commands, mcp_server, name_words, permission_problem, vault_servers)
 
 SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
 MAX_SUBCOMMANDS = 3  # `twg jira workitem query`: enough for real tools, too short to carry a message to the reader
@@ -265,7 +265,10 @@ def edit(new, args):
         cap, sep, tool = args.tool.partition('=')
         if not sep:
             raise Refused('--tool takes capability=tool, for example tracker=linear (or tracker=none)')
-        new.setdefault('tools', {})[cap.strip()] = tool.strip()
+        cap, tool = cap.strip(), tool.strip()
+        if (new.get('tools') or {}).get(cap) != tool:
+            unbind(new, cap)
+        new.setdefault('tools', {})[cap] = tool
     if args.job:
         cfg = new.setdefault('jobs', {}).setdefault(args.job, {})
         cfg.update({k: v for k, v in (('time', args.time), ('days', args.days)) if v})
@@ -325,7 +328,8 @@ def change(args, build):
         return 2
     was, had = installed_access(data)
     given, hosts = asked(args, data)
-    added = sorted(x for x in access(report) - had - given if not (x[1] == 'web' and x[2] in hosts))
+    runs = {('jobs that call it', 'mcp server', s) for s, h in (new.get('fingerprints') or {}).items() if (data.get('fingerprints') or {}).get(s) != h}
+    added = sorted({x for x in access(report) - had - given if not (x[1] == 'web' and x[2] in hosts)} | runs)
     if args.dry_run:  # what the change would do, for the user to say yes to
         on = {j['id'] for j in report['jobs']}
         print(json.dumps({'jobs_added': sorted(on - was), 'jobs_removed': sorted(was - on), 'new_access': added}, indent=2))
@@ -386,6 +390,48 @@ def fresh_copy(data, args):
     return data, f'fresh copy of {args.file}' + (': your version is kept in _system/archive/' if kept else '')
 
 
+def unbind(data, cap):
+    """Forget a capability's server and the read tools chosen on it, and the fingerprints of servers no longer connected."""
+    for key in ('servers', 'permissions'):
+        (data.get(key) or {}).pop(cap, None)
+    if 'fingerprints' in data:
+        data['fingerprints'] = {s: h for s, h in data['fingerprints'].items() if s in (data.get('servers') or {}).values()}
+
+
+def connect(data, args):
+    """A known tool for a capability, on the MCP server a scheduled job sees (the latest probe)."""
+    _, why = probed(data, args.vault, args.server)
+    if why:
+        raise Refused(f'scheduled reports cannot see it: {why}')
+    try:
+        entry = vault_servers(args.vault).get(args.server)
+    except ValueError as exc:
+        raise Refused(f"this vault's .mcp.json cannot be read: {exc}")
+    if entry is None:
+        raise Refused(f"{args.server} is not in this vault's .mcp.json: add it there first")
+    if (data.get('tools') or {}).get(args.capability) != args.tool or (data.get('servers') or {}).get(args.capability) != args.server:
+        unbind(data, args.capability)
+    data.setdefault('tools', {})[args.capability] = args.tool
+    data.setdefault('servers', {})[args.capability] = args.server
+    data.setdefault('fingerprints', {})[args.server] = fingerprint(entry)
+    if args.added and args.server not in data.setdefault('connections_added', []):
+        data['connections_added'].append(args.server)
+    return data, f'connected: {args.tool} for {args.capability}, on {args.server}'
+
+
+def set_permissions(data, args):
+    """The read tools a capability's server gives jobs, chosen by the user (adapters that ship none: Jira, Linear...)."""
+    server, tools = (data.get('servers') or {}).get(args.capability), sorted(set(args.tools))
+    for rule in tools:
+        why = permission_problem(rule)
+        if not why and not (server and mcp_server(rule) == server):
+            why = f'not a tool of {server or "a connected server"}: connect the tool first'
+        if why:
+            raise Refused(f'{rule}: {why}')
+    data.setdefault('permissions', {})[args.capability] = tools
+    return data, f'allowed for {args.capability}: {", ".join(tools)}'
+
+
 def remove_command(data, args):
     if args.command not in (data.get('commands') or {}):
         return None, f'nothing recorded for {args.command}'
@@ -406,22 +452,30 @@ def probe_result(init):
 
 def cmd_probe(args):
     """Run Claude once in the vault the way a job runs, nothing allowed, with only the .mcp.json servers the user named (each
-    starts as a local process), and keep what it sees in <ct_home>/probe.json (choices reads it)."""
+    starts as a local process, and nothing else is loaded), and keep what it sees in <ct_home>/probe.json (choices reads it)."""
     path, data = load_answers(args.vault)
     if data is None:
         return 2
     claude = os.environ.get('CT_CLAUDE_BIN') or jload(os.path.join(ct_home(data), 'install.json'), {}).get('claude_bin', 'claude')
-    unknown = sorted(set(args.server or []) - set(jload(os.path.join(expand(args.vault), '.mcp.json'), {}).get('mcpServers', {})))
+    try:
+        declared = vault_servers(args.vault)
+    except ValueError as exc:
+        print(f"error: this vault's .mcp.json cannot be read: {exc}", file=sys.stderr)
+        return 2
+    unknown = sorted(set(args.server or []) - set(declared))
     if unknown:
         print(f'error: not in the vault\'s .mcp.json: {", ".join(unknown)}', file=sys.stderr)
         return 2
     with tempfile.TemporaryDirectory() as tmp:
-        settings = os.path.join(tmp, 'settings.json')
+        settings, servers = os.path.join(tmp, 'settings.json'), os.path.join(tmp, 'mcp.json')
         with open(settings, 'w') as fh:
-            json.dump({'permissions': {'allow': []}, 'enabledMcpjsonServers': sorted(set(args.server or []))}, fh)  # only those named
+            json.dump({'permissions': {'allow': []}}, fh)
+        with open(servers, 'w') as fh:  # only the servers named, as a job loads them: never the rest of .mcp.json
+            json.dump({'mcpServers': {s: declared[s] for s in sorted(set(args.server or []))}}, fh)
         try:
             r = subprocess.run([claude, '-p', 'Reply with the single word OK.', '--model', 'haiku', '--max-turns', '1',
                                 '--permission-mode', 'dontAsk', '--setting-sources', 'project', '--settings', settings,
+                                '--mcp-config', servers, '--strict-mcp-config',
                                 '--output-format', 'stream-json', '--verbose'],
                                cwd=expand(args.vault), stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -451,6 +505,17 @@ def pages(items, label, recommended):
     return {'multi_select': False, 'options': some + [every, 'Let me choose', 'None']}, [items[len(items) * i // k:len(items) * (i + 1) // k] for i in range(k)]
 
 
+def probed(data, vault, server):
+    """(what the probe saw, None) when it saw the server connected, else (it, why not)."""
+    seen = jload(os.path.join(ct_home(data), 'probe.json'), {})
+    status = {s.get('name'): s.get('status') for s in seen.get('servers', [])}.get(server)
+    again = shlex.join(['python3', os.path.abspath(__file__), 'probe', '--vault', vault, '--server', server])
+    if status == 'connected':
+        return seen, None
+    return seen, (f'the probe saw {server} as {status}: run {again} once it works' if status
+                  else f'the probe has not seen {server}: run {again} first')
+
+
 def cmd_choices(args):
     """The items of a list the user picks from, split into questions the question tool can show."""
     never, every = [], lambda items: [] if args.recommended == 'none' else list(items)
@@ -468,14 +533,11 @@ def cmd_choices(args):
             if not args.server:
                 print('error: --kind read-tools needs --server', file=sys.stderr)
                 return 2
-            seen = jload(os.path.join(ct_home(data), 'probe.json'), {})
-            status = {s.get('name'): s.get('status') for s in seen.get('servers', [])}.get(args.server)
-            if status != 'connected':
-                again = shlex.join(['python3', os.path.abspath(__file__), 'probe', '--vault', args.vault, '--server', args.server])
-                print(f'error: the probe saw {args.server} as {status}: run {again} once it works' if status
-                      else f'error: the probe has not seen {args.server}: run {again} first', file=sys.stderr)
+            seen, why = probed(data, args.vault, args.server)
+            if why:
+                print(f'error: {why}', file=sys.stderr)
                 return 2
-            tools = [t for t in seen.get('tools', []) if MCP_TOOL.match(t) and MCP_TOOL.match(t).group(1) == args.server]
+            tools = [t for t in seen.get('tools', []) if mcp_server(t) == args.server]
             never = [t for t in tools if permission_problem(t)]  # the same check as a grant: an action tool is never offered
             items, label = [t for t in tools if t not in never], ' read tools'
             # a plain read verb first: an odd name is offered, never ticked by default
@@ -533,6 +595,14 @@ def main(argv=None):
     p.add_argument('--host', action='append', help='an exact host name, for example acme.atlassian.net (repeatable)')
     p.add_argument('--allow-write', action='append', help='a per-user log or cache folder, for example ~/Library/Logs/x (repeatable)')
     p.add_argument('--no-network', action='store_true', help='the answer "it needs no web address"')
+    p = sub.add_parser('connect', parents=[vault], help='a known tool for a capability, on the MCP server the probe saw')
+    p.add_argument('--capability', required=True)
+    p.add_argument('--tool', required=True)
+    p.add_argument('--server', required=True)
+    p.add_argument('--added', action='store_true', help='Claude added this server to the vault for the user (recorded in connections_added)')
+    p = sub.add_parser('set-permissions', parents=[vault], help="the read tools of a capability's server that jobs may use")
+    p.add_argument('--capability', required=True)
+    p.add_argument('--tools', nargs='+', required=True)
     p = sub.add_parser('remove-command', parents=[vault], help='forget the addresses and folders recorded for a command')
     p.add_argument('--command', required=True)
     ap.set_defaults(job=None, schedule=None, accept_access=False, dry_run=False, file=None)  # flags only some changes have
@@ -540,7 +610,7 @@ def main(argv=None):
     if args.action in ('show', 'denials', 'probe', 'choices'):
         return {'show': cmd_show, 'denials': cmd_denials, 'probe': cmd_probe, 'choices': cmd_choices}[args.action](args)
     build = {'set': edit, 'grant': grant, 'revoke': revoke, 'add-command': add_command, 'remove-command': remove_command,
-             'fresh-copy': fresh_copy}[args.action]
+             'fresh-copy': fresh_copy, 'connect': connect, 'set-permissions': set_permissions}[args.action]
     return change(args, build)
 
 

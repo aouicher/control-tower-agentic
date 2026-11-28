@@ -17,17 +17,20 @@ Jobs and skills ask for a **capability**, not a product. You choose the tool for
 
 - `adapters/<capability>/contract.md` defines the inputs a job gives and the records it expects back, so every tool answers in the same shape.
 - `adapters/<capability>/<tool>.md` explains the tool: how to connect, what to verify.
-- `adapters/<capability>/<tool>.json` is the machine-readable manifest: install commands, environment variables, `permissions_allow` / `permissions_deny`, whether the tool is `read_only`, and a `read_only_mitigation` when it is not.
+- `adapters/<capability>/<tool>.json` is the machine-readable manifest: how it is connected (`connect`: `sign-in` when the user does it alone from the vault, `developer` when it needs a key, a secret or an address filled in), install commands, environment variables, `permissions_allow` / `permissions_deny`, whether the tool is `read_only`, and a `read_only_mitigation` when it is not.
 
 The installer renders the notes into `<vault>/.claude/adapters/` and writes the exact commands to `<vault>/library/setup-next-steps.md`. **It does not run them.**
 
 ## Connecting a tool
 
-1. Open `library/setup-next-steps.md`.
-2. Run the listed `claude mcp add ...` command yourself (or install the CLI the note names, for example `gh`). The commands use `--scope user`, so the server is visible from every interactive session, the vault included. Scheduled jobs do not see user-scope servers (checked with Claude Code 2.1.332, see [runtime facts](design/runtime-facts.md)): a job sees a server only when it is declared in the vault's `.mcp.json` and enabled in the job's settings, which the kit does not do yet. Until it does, jobs that rely on an MCP tool cannot reach it; command-line tools such as `gh` are not affected. A tool without a single command (HubSpot) lists its setup steps instead.
-3. Authenticate when asked (usually in `/mcp` inside Claude Code). Never paste secrets into notes or chat.
-4. Run the `verify` step from the adapter note.
-5. Re-run `doctor.py`.
+In Claude, in your vault, type `/control-tower` and say "connect" and the tool's name. Claude:
+
+1. adds the tool to the vault's own `.mcp.json` after your yes (scheduled reports only see the vault's servers, not the ones added for your user account: see [runtime facts](design/runtime-facts.md));
+2. asks you to sign in with `/mcp`;
+3. runs Claude once the way a report runs (`configure.py probe`), shows you what the server runs, and records the server name reports really see and a fingerprint of its entry (`configure.py connect`), so the adapter's read tools match it. Each report gets its own copy of the entries of the connected servers it uses, as they were when connected, and starts nothing else (`--strict-mcp-config`); jobs cannot read `.mcp.json`, and write only Markdown notes, so they cannot plant a file a server would run. If the vault's entry changes later, reports keep the approved copy until the next change of setup drops it, and the setup check asks you to connect the tool again;
+4. for a tool whose adapter lists no read tool (Jira, Linear), asks which of its read tools reports may use (`configure.py set-permissions`); tools that act are never offered.
+
+A command-line tool (`gh`), a tool that needs a secret key or a client secret (Rollbar, SonarQube, CloudWatch, Google Analytics, Asana, HubSpot) or one whose address names your own organization (Sentry) is set up once by someone comfortable with the terminal, from the adapter note, run from the vault folder. A key stays a reference read from the environment (`--env 'NAME=${NAME}'`, in single quotes), never written into the vault, so the variable must also be set where scheduled reports run (launchd or cron do not read your shell profile). Claude never asks for or handles a key. Once the server is in the vault's `.mcp.json`, anyone can say "connect" and the tool's name to finish from step 2. A claude.ai connector works when you talk to Claude, but reports on this computer cannot use it.
 
 ## Read-only
 

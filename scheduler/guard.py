@@ -73,9 +73,9 @@ def inside(path, root):
 VAULT_READABLE = ('.claude/skills', '.claude/adapters', '.claude/rules')
 # One list of secret names, judged per path segment (case-insensitive). `.config/gh` and `.config/gcloud` are two-segment names.
 SECRET_NAMES = ('.env', '.env.local', '.env.production', '.netrc', '.npmrc', '.git-credentials', 'id_rsa', 'id_ed25519',
-                'credentials', '.ssh', '.aws', '.gnupg', '.kube', '.docker', '.claude')
+                'credentials', '.ssh', '.aws', '.gnupg', '.kube', '.docker', '.claude', '.mcp.json')
 SECRET_SEGMENT = re.compile(r'^(\.env.*|\.netrc|\.npmrc|\.git-credentials|id_rsa.*|id_ed25519.*|credentials.*'
-                            r'|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude)$', re.I)
+                            r'|\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.claude|\.mcp\.json)$', re.I)  # .mcp.json: server commands and keys
 SECRET_PAIRS = (('.config', 'gh'), ('.config', 'gcloud'))
 GLOB_META = re.compile(r'[{}\[\]\\]')  # brace, bracket and backslash syntax can rebuild an escaping path: refused outright
 
@@ -127,6 +127,8 @@ def write_reason(path, vault):
         return f'jobs must not create git, Claude, editor or Obsidian files anywhere in the vault: {rel}'
     if secret_in([x for x in rel.split('/') if x]):
         return f'secret file: {path}'
+    if not rel.lower().endswith('.md'):  # nothing a tool could run: an MCP server or a command may look in the vault first
+        return f'jobs write only Markdown notes (.md): {rel}'
     return None
 
 

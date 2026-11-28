@@ -14,6 +14,7 @@ Last run: Claude Code 2.1.332, macOS, 2026-11-27.
 |---|---|---|
 | F1. A server added with `claude mcp add --scope user` is visible to a job. | **Fail** | The account's user-scope server appears with `--setting-sources user,project` and not with `--setting-sources project`. Jobs do not see user-scope servers. |
 | F1b. A server declared in the vault's `.mcp.json` and enabled in the job's settings (`enabledMcpjsonServers`) is visible to a job. | Pass | With an allow rule for `mcp__facts__get_fact`, the call runs and returns the server's answer. |
+| F1c. A server given with `--mcp-config <file> --strict-mcp-config` runs in a job, and with an empty one an enabled `.mcp.json` server does not start. | Not checked yet | The job runner relies on it: each job starts only the copy of its connected servers. `smoke_real_claude.py --facts` checks it. |
 | F2. A claude.ai connector can be used by a job. | **Fail** | Connectors load in job mode (tool names `mcp__claude_ai_<Name>__<tool>`), but `mcp__claude_ai_Context7__query-docs` is refused under `dontAsk` with its exact allow rule, while a `.mcp.json` server's tool with the same kind of rule runs (F1b). Checked by hand on the same connector: a whole-server rule `mcp__claude_ai_Context7` is refused too. Not checked: other connectors, whether a per-tool permission set on claude.ai changes this, and the launchd case. |
 | F3. `permission_denials` names a refused MCP tool in full. | Pass | `mcp__facts__get_fact`, `mcp__facts__create_fact`. |
 | F4. A rule in `.claude/settings.local.json` (where an interactive "don't ask again" goes) does not reach a job. | Pass | With `--setting-sources project`, the tool it allows is refused in the job and never runs; the runner always passes that flag. That the interactive answer is written to that file is Claude Code's documented behaviour, not checked here. |
@@ -35,12 +36,13 @@ Only the first blocked host shows: once it is allowed, a command may need more. 
 ## Not checked by the script
 
 - F2 when the job is started by launchd, outside a login shell.
+- `${NAME}` references in a `--mcp-config` file are filled from the environment, as Claude Code documents for `.mcp.json` (the adapters that need a key rely on it).
 - A6: on a Mac without developer tools, the first `git` or `python3` call opens the dialog that installs them, Python 3.9 or newer included.
 - A7: the Claude desktop app lists the vault folder in its recent folders after a session on it.
 
 ## What follows for the kit
 
-- MCP-based jobs cannot reach their tool as installed today: the adapters add servers at user scope (F1), and job settings do not enable `.mcp.json` servers. The fix is to declare a job's servers in the vault's `.mcp.json` and list them in the job's `enabledMcpjsonServers` (F1b).
+- Jobs cannot see user-scope servers (F1), so the adapters add servers to the vault's `.mcp.json` (`--scope project`). A job does not load that file: when a tool is connected, the installer copies the server's entry into the job's own `mcp.json`, and the runner passes it with `--strict-mcp-config` (F1c), so a later change to the vault's entry is never started.
 - claude.ai connectors, Gmail included, cannot be used by local jobs (F2). Scheduled use of a connector needs a cloud routine on claude.ai.
 - Interactive approvals (F4) and skills (F6) cannot widen a job.
 - A prefix rule does not cover a redirection (F5); the sandbox stays the boundary for what an allowed command does.

@@ -7,10 +7,10 @@ Official documentation: https://amplitude.com/docs/amplitude-ai/amplitude-mcp an
 Amplitude hosts a remote MCP server. US endpoint `https://mcp.amplitude.com/mcp`, EU endpoint `https://mcp.eu.amplitude.com/mcp`.
 
 ```
-claude mcp add --transport http --scope user Amplitude https://mcp.amplitude.com/mcp
+claude mcp add --transport http --scope project Amplitude https://mcp.amplitude.com/mcp
 ```
 
-`--scope user` makes it available in every session; the default `local` scope keeps it to the current project. To switch region, remove the entry, add it again with the other URL, run `/mcp` and authenticate again. Availability depends on the plan (documented: Enterprise included, Plus as an add-on, Free and Growth not included).
+Run it from the vault folder: `--scope project` adds the server to the vault's `.mcp.json`, the only servers scheduled reports can start. To switch region, remove the entry, add it again with the other URL, run `/mcp` and authenticate again. Availability depends on the plan (documented: Enterprise included, Plus as an add-on, Free and Growth not included).
 
 ## Authentication and least-privilege scopes
 

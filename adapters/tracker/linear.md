@@ -7,7 +7,7 @@ Capability: `tracker`. Official documentation: https://linear.app/docs/mcp (MCP 
 The documented Claude Code command for the standard server is:
 
 ```
-claude mcp add --scope user --transport http linear-server https://mcp.linear.app/mcp
+claude mcp add --scope project --transport http linear-server https://mcp.linear.app/mcp
 ```
 
 then run `/mcp` to complete authentication. For this adapter use the read-only endpoint the same page documents, `https://mcp.linear.app/mcp/readonly`, which exposes only read tools (the manifest uses it).
