@@ -8,7 +8,7 @@ argument-hint: "<topic>"
 
 ## Steps
 
-1. Search the vault first: `grep -ril "<keywords>" . --include=*.md --exclude-dir=_system --exclude-dir=.obsidian`. Read the relevant hits and tell the user what they already have.
+1. Search the vault first with the Grep tool (the keywords, in `*.md`, outside `_system/` and `.obsidian/`). Read the relevant hits and tell the user what they already have.
 2. Search the web for what is missing, if a web search tool is available; otherwise say so and work from the vault only. Prefer primary sources (official documentation, standards, regulators, papers, vendor docs) over blogs. Never send confidential vault content to external services: search with generic keywords.
 3. If a note on the topic already exists in `library/`, update it (append a dated section) instead of creating a duplicate.
 4. Otherwise write `library/<descriptive-hyphenated-title>.md` from `_system/templates/resource.md`:

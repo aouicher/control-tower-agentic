@@ -22,7 +22,7 @@ If the argument is `refresh`, do only this, then stop (do not run the steps belo
 
 1. Get the date with `date +%F` (or use the argument) and the year with `date +%Y`. Create the year folder if it is missing.
 2. If the daily note exists, read it and summarise it in one line. Otherwise build it from `_system/templates/daily.md`: replace the Obsidian `{{date:...}}` placeholders with real values, the heading is the weekday and full date.
-3. Collect open tasks: `grep -rn "^- \[ \]" work team` (never `journal/daily/`). Keep those due today or earlier, overdue first, as the candidates for the day. Count the tasks that carry `#to-triage`.
+3. Collect open tasks with the Grep tool (pattern `^- \[ \]`, in `work/` and `team/`, never `journal/daily/`). Keep those due today or earlier, overdue first, as the candidates for the day. Count the tasks that carry `#to-triage`.
 4. Collect priority signals from notes with `status: active`:
    - `work/` notes of type `project` or `workstream` with `rag: red|amber` or a non-empty `blocker`;
    - `work/risks/` notes with `risk_status: open` and `severity: high|critical`;

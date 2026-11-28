@@ -543,6 +543,7 @@ class ConnectTests(unittest.TestCase):
         self.assertEqual(list(self.servers('morning-prs')), ['atlassian'])
         self.assertEqual(self.servers('content-reminders'), {}, 'a job that calls no MCP server starts none')
         self.assertIn('Read(**/.mcp.json)', st['permissions']['deny'])
+        self.assertIn('Read(**/.claude/settings*.json)', st['permissions']['deny'], 'a vault-wide Grep never reads Claude settings')
 
     def test_only_servers_no_report_uses_are_flagged(self):
         self.declare(atlassian={'command': 'x'}, stray={'command': 'y'})

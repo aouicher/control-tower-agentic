@@ -11,7 +11,7 @@ A campaign is a `workstream` note in `work/workstreams/<{{ct.team}}-slug>/`.
 ## Steps
 
 1. Read the goal. If the goal, the audience or the end date is missing, ask for it in ONE short message (max 3 questions). Do not ask about anything else: leave the rest as "to define".
-2. Search the vault first: `grep -ril "<keywords>" work library --include=*.md`. Reuse what exists: past campaigns and retros, competitor notes in `library/`, existing content in `work/content/`. If a campaign note on the same goal exists, update it instead of creating another.
+2. Search the vault first with the Grep tool (the keywords, in `work/` and `library/`, `*.md`). Reuse what exists: past campaigns and retros, competitor notes in `library/`, existing content in `work/content/`. If a campaign note on the same goal exists, update it instead of creating another.
 3. Pick the {{ct.team}} folder: the {{ct.team}} the user names, else the one in the matching `team/` note, else ask. Create `work/workstreams/<{{ct.team}}-slug>/` if missing.
 4. Create `<descriptive-hyphenated-title>.md` from `_system/templates/workstream.md`. Frontmatter: `type: workstream`, `status: draft`, `group` = the {{ct.team}} slug, `team` = link to the {{ct.team}} note when it exists, `owner` = the user's handle, `rag: unknown`, `progress: 0`, `due` = the campaign end date when known, all free text in double quotes.
 5. Fill the body as described under Presentation. Mark every guess as "assumption". Never invent a budget, a KPI target or a baseline: write "to define" and say what is needed to define it.
