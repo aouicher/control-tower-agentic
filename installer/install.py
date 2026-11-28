@@ -40,8 +40,8 @@ import translate  # noqa: E402
 from toolnames import known_tools, match_tools  # noqa: E402
 from scheduling import CRON_END, apply, cron_header, cron_line, launchd_plist, local_time, pick_scheduler, shift_days  # noqa: E402
 from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError,  # noqa: E402
-                  adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
-                  eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, kit_commit, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
+                  adapter_allow, approved_servers, bash_parts, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
+                  eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, kit_commit, known_commands, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
                   on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers, vault_settings_findings,
                   EVERYWHERE_MARK, file_sha256, our_shortcut, remove_shortcut, tool_connection, user_skill_path, vault_files)
 
@@ -498,6 +498,9 @@ def job_settings(repo, answers, job):
     if any(r.startswith('Bash(') for r in allow):
         _, writable, weaker = command_needs(repo, answers, allow)
         settings['sandbox'] = sandbox_settings(vault, network, list(job['meta'].get('sandbox_allow_write', [])) + writable, weaker)
+        table = known_commands(repo)
+        env = {k: v for r in allow for p in [bash_parts(r)] if p for k, v in table.get(p[1], {}).get('env', {}).items()}
+        settings.update({'env': env} if env else {})  # switches from the kit's command table only, never from answers
     return settings
 
 

@@ -9,6 +9,7 @@
   "slackcli": {
     "network": [],
     "ask_host": "your company's Slack address, for example acme.slack.com",
-    "allow_write": ["~/Library/Logs/slackcli"]
+    "allow_write": ["~/Library/Logs/slackcli"],
+    "env": {"SLACKCLI_NO_UPDATE_NOTIFIER": "1"}
   }
 }
