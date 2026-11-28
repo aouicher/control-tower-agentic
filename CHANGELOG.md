@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Jobs never use the `Skill` tool (denied, and never granted): a skill could bring its own tools. Job prompts already read their skill file with `Read`.
 - A command granted to a job reaches, inside the sandbox, the web addresses it needs: from `adapters/commands.json` (`gh`, `twg`, `slackcli`, measured with the real CLI) and from the `commands` answers, which `/job-permissions` records after asking which address an unknown command talks to (`installer/permissions.py add-command`). The `gh` exception for macOS certificates comes from that table. Host names are exact and public, never a wildcard, an IP address or a local-only name, for `WebFetch` too; write folders are a tool's own folder under a per-user log or cache root. `remove-command` takes an address back.
 - Jobs no longer run `date` or `ls`: `Bash(date)` and `Bash(ls:*)` leave the base rules, the guard loses its `date` argument parser, and generic file readers (`date`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `tar`, `open`...) can never be granted, by a pack or by `/job-permissions`. The next update of the kit refreshes the job settings.
 - Jobs get their dates from the runner: a `## Run context` block at the top of each prompt (now, today, ISO weeks, previous working day, in the installed timezone). Job prompts no longer run `date`, `weekly-digest` finds notes with Glob instead of `ls`, and the skills jobs follow say to use the Run context first. See docs/scheduling.md.

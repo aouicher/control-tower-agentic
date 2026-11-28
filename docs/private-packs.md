@@ -66,11 +66,12 @@ A command also gets the addresses and folders of `adapters/commands.json` (known
 
 Later, a user grants a job more access by answering `/job-permissions` in the vault: the skill records the answer as `job_permissions` in `<vault>/.control-tower/answers.json` and re-runs the installer (see [permissions](permissions.md)). Nobody edits a rule by hand.
 
-The installer checks every rule on the final text (after `{{ct.*}}` tokens are filled in), before anything is written, whoever asked for it (the pack, the chosen tool adapters, the user). Well-formed rules are accepted: `Read`, `Grep`, `Glob`, `TodoWrite`, `Skill`, `Bash(<command> ...)` for a plain command name (company CLIs included), one exact `mcp__<server>__<tool>`, `WebFetch(domain:<host>)`. These are refused for everyone, always:
+The installer checks every rule on the final text (after `{{ct.*}}` tokens are filled in), before anything is written, whoever asked for it (the pack, the chosen tool adapters, the user). Well-formed rules are accepted: `Read`, `Grep`, `Glob`, `TodoWrite`, `Bash(<command> ...)` for a plain command name (company CLIs included), one exact `mcp__<server>__<tool>`, `WebFetch(domain:<host>)`. These are refused for everyone, always:
 
 | Never | Why |
 |---|---|
 | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` rules | the installer grants the vault write itself, scoped to the vault |
+| `Skill` | a skill can bring its own tools; a job reads the skill file with `Read` and follows it |
 | bare `Bash`, `Bash(*)`, bare `WebFetch`, `WebSearch` | everything at once |
 | whole MCP servers or wildcards (`mcp__x`, `mcp__*`, `mcp__x__*`) | one tool at a time |
 | MCP tools whose name says they act: send, post, create, update, delete, remove, write, edit, merge, close, publish, upload, comment, reply, react, transition, assign, invite, share, trigger, deploy, add, set, manage, move, archive, respond, approve, submit (`createIssue`, `chat.postMessage` and `send_message` alike) | jobs only read |
