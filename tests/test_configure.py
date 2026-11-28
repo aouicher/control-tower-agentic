@@ -76,6 +76,116 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(self.cli('set', '--job', 'morning-prs', '--enabled', 'true', '--accept-access').returncode, 0)
         self.assertTrue(self.job('morning-prs')['enabled'])
 
+    def test_set_dry_run_shows_the_effect_and_writes_nothing(self):
+        before = open(self.path, 'rb').read()
+        r = self.cli('set', '--tool', 'code=none', '--dry-run')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        effect = json.loads(r.stdout)
+        self.assertEqual(effect['jobs_removed'], ['morning-prs', 'weekly-wrap'])
+        self.assertEqual(effect['jobs_added'], [])
+        self.assertEqual(open(self.path, 'rb').read(), before)
+        self.cli('set', '--tool', 'code=none')
+        effect = json.loads(self.cli('set', '--tool', 'code=github', '--dry-run').stdout)
+        self.assertEqual(effect['jobs_added'], ['morning-prs', 'weekly-wrap'])
+        self.assertIn(['morning-prs', 'web', 'api.github.com'], effect['new_access'])
+
+    def test_fresh_copy_keeps_the_user_version_in_the_archive(self):
+        rel = 'cockpit.md'
+        target = os.path.join(self.vault, rel)
+        kit = open(target).read()
+        open(target, 'w').write('my own cockpit\n')
+        r = self.cli('fresh-copy', '--file', rel)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(open(target).read(), kit)
+        archived = [os.path.join(d, f) for d, _, fs in os.walk(os.path.join(self.vault, '_system', 'archive')) for f in fs if f == rel]
+        self.assertEqual([open(p).read() for p in archived], ['my own cockpit\n'])
+        for bad in ('notes/mine.md', '../outside.md', '.control-tower/answers.json'):
+            with self.subTest(file=bad):
+                self.assertEqual(self.cli('fresh-copy', '--file', bad).returncode, 2)
+
+    def test_access_is_compared_with_what_the_jobs_can_use_today(self):
+        sp = os.path.join(self.a['ct_home'], 'jobs', 'morning-prs', 'settings.json')
+        st = json.load(open(sp))
+        st['permissions']['allow'] = [r for r in st['permissions']['allow'] if not r.startswith('Bash(gh pr list')]
+        json.dump(st, open(sp, 'w'))  # as if the kit was updated with a rule the installed job does not have yet
+        effect = json.loads(self.cli('set', '--job', 'morning-prs', '--time', '09:00', '--dry-run').stdout)
+        self.assertIn(['morning-prs', 'commands', 'gh pr list'], effect['new_access'])
+        self.assertEqual(self.cli('set', '--job', 'morning-prs', '--time', '09:00').returncode, 2)
+        for change in (['fresh-copy', '--file', 'cockpit.md'], ['grant', '--job', 'weekly-wrap', '--rule', 'mcp__acme__get_issues']):
+            with self.subTest(change=change[0]):
+                r = self.cli(*change)
+                self.assertEqual(r.returncode, 2, 'every change shows access the user has not seen yet')
+                self.assertIn('gh pr list', r.stderr)
+                self.assertNotIn('get issues', r.stderr, 'what the user just granted is not asked again')
+        self.assertEqual(self.cli('fresh-copy', '--file', 'cockpit.md', '--accept-access').returncode, 0)
+        self.assertEqual(self.cli('grant', '--job', 'weekly-wrap', '--rule', 'mcp__acme__get_issues').returncode, 0)
+
+    def test_a_failed_fresh_copy_puts_the_user_version_back(self):
+        from unittest import mock
+        target = os.path.join(self.vault, 'cockpit.md')
+        open(target, 'w').write('my own cockpit\n')
+        with mock.patch.object(install, 'step_runtime', side_effect=OSError('disk full')), self.assertRaises(OSError):
+            install.install(dict(self.saved(), claude_bin='claude'), update=True, fresh=['cockpit.md'], log=lambda *a: None)
+        self.assertEqual(open(target).read(), 'my own cockpit\n')
+
+    def test_fresh_copy_of_a_deleted_file_says_nothing_was_archived(self):
+        os.remove(os.path.join(self.vault, 'cockpit.md'))
+        r = self.cli('fresh-copy', '--file', 'cockpit.md')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn('archive', r.stdout)
+        self.assertTrue(os.path.isfile(os.path.join(self.vault, 'cockpit.md')))
+
+    def test_fresh_copy_of_the_next_steps_note_and_not_of_obsidian_settings(self):
+        note = os.path.join(self.vault, 'library', 'setup-next-steps.md')
+        kit = open(note).read()
+        open(note, 'w').write('my notes\n')
+        self.assertEqual(self.cli('fresh-copy', '--file', 'library/setup-next-steps.md').returncode, 0)
+        self.assertEqual(open(note).read(), kit)
+        r = self.cli('fresh-copy', '--file', '.obsidian/app.json')
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('Obsidian', r.stderr)
+
+    def test_fresh_copy_refuses_a_file_the_kit_no_longer_writes(self):
+        self.assertEqual(self.cli('set', '--tool', 'code=none').returncode, 0)
+        note = os.path.join(self.vault, '.claude', 'adapters', 'code.md')
+        self.assertTrue(os.path.isfile(note), 'an adapter note stays after its tool is dropped')
+        r = self.cli('fresh-copy', '--file', '.claude/adapters/code.md')
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn('no longer', r.stderr)
+        self.assertTrue(os.path.isfile(note), 'nothing was moved')
+
+    def test_a_granted_read_tool_clears_the_unreachable_tool_warning(self):
+        self.assertEqual(self.cli('set', '--tool', 'tracker=jira').returncode, 0)
+        report = lambda: install.install(dict(self.saved(), claude_bin='claude'), dry_run=True, log=lambda *a: None)
+        self.assertTrue([w for w in report()['warnings'] if w.startswith('tracker/jira')])
+        for job in ('morning-prs', 'weekly-wrap'):  # every job that uses the tracker
+            self.assertEqual(self.cli('grant', '--job', job, '--rule', 'mcp__atlassian__search').returncode, 0)
+        self.assertFalse([w for w in report()['warnings'] if w.startswith('tracker/jira')])
+
+    def test_another_adapter_s_rules_do_not_make_a_server_reachable(self):
+        a = answers(self._tmp.name, ['engineering'], tools={'code': 'github', 'errors': 'sentry', 'quality': 'sonarqube', 'logs': 'datadog'})
+        warnings = install.install(dict(a, vault_path=os.path.join(self._tmp.name, 'v2')), dry_run=True, log=lambda *x: None)['warnings']
+        self.assertTrue([w for w in warnings if w.startswith('errors/sentry')], 'SonarQube and Datadog rules do not reach Sentry')
+        self.assertFalse([w for w in warnings if w.startswith('quality/sonarqube')])
+        b = answers(self._tmp.name, ['product'], tools={'tracker': 'jira', 'analytics': 'amplitude'},
+                    job_permissions={j: ['mcp__Amplitude__get_charts'] for j in ('product-weekly', 'feedback-digest')},
+                    vault_path=os.path.join(self._tmp.name, 'v3'))
+        warnings = install.install(b, dry_run=True, log=lambda *x: None)['warnings']
+        self.assertTrue([w for w in warnings if w.startswith('tracker/jira')], 'a grant on the Amplitude server does not reach Jira')
+
+    def test_a_runtime_only_install_gets_the_commands_not_a_vault_skill(self):
+        vault = os.path.join(self._tmp.name, 'own-vault')
+        os.makedirs(vault)
+        a = answers(self._tmp.name, ['developer'], tools={'code': 'github', 'tracker': 'jira'}, vault_path=vault, vault_mode='runtime')
+        warning = next(w for w in install.install(a, dry_run=True, log=lambda *x: None)['warnings'] if w.startswith('tracker/jira'))
+        self.assertIn('configure.py grant', warning)
+        self.assertNotIn('fix my job', warning)
+
+    def test_the_next_steps_note_names_only_unreachable_tools(self):
+        a = dict(self.saved(), tools={'code': 'github', 'tracker': 'jira'})
+        self.assertIn('no read tool allowed yet', install.next_steps(install.REPO, a, [], [], (), {('tracker', 'jira')}))
+        self.assertNotIn('no read tool allowed yet', install.next_steps(install.REPO, a, [], [], (), set()))
+
     def test_set_packs(self):
         r = self.cli('set', '--add-pack', 'product')
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -152,9 +262,8 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(self.cli('set', '--add-pack', 'product').returncode, 0)
         job = 'product-weekly'
         self.assertEqual(self.cli('set', '--job', job, '--time', '10:00').returncode, 0)
-        data = self.saved()
-        data['job_permissions'] = {job: ['Bash(twg jira:*)'], 'morning-prs': ['Bash(twg jira:*)']}
-        json.dump(data, open(self.path, 'w'))
+        for j in (job, 'morning-prs'):
+            self.assertEqual(self.cli('grant', '--job', j, '--rule', 'Bash(twg jira:*)').returncode, 0)
         self.assertEqual(self.cli('set', '--remove-pack', 'product').returncode, 0)
         data = self.saved()
         self.assertNotIn(job, data.get('jobs', {}))

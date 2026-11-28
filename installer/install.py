@@ -35,7 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
 from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError, check_permissions, check_rendered,  # noqa: E402
-                  command_needs, command_problem, describe_rules, expand, guard_rules, jload, list_packs, permission_problem,
+                  adapter_allow, command_needs, command_problem, describe_rules, job_adapters, job_capabilities, unreachable_servers, expand, guard_rules, jload, list_packs, permission_problem,
                   resolve_packs, vault_files)
 
 VERSION = '0.1.0'
@@ -198,14 +198,6 @@ def static_collisions(repo, ids, packs, policy):
     return clash
 
 
-def job_capabilities(meta):
-    """(required, optional) capabilities of a job. A plain list means every capability is required."""
-    caps = meta.get('capabilities', [])
-    if isinstance(caps, dict):
-        return list(caps.get('required', [])), list(caps.get('optional', []))
-    return list(caps), []
-
-
 def eligible_jobs(ids, packs, tools):
     """Jobs whose capabilities all have a chosen tool."""
     jobs = []
@@ -266,7 +258,15 @@ def adapter_doc(repo, capability, tool):
             f'# {capability.capitalize()} adapter: {tool}\n\n## Contract\n\n{contract}\n\n---\n\n{doc}\n')
 
 
-def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
+def allow_hint(answers):
+    """How to allow a job's read tools: the vault skill, or (runtime-only installs, no kit skill in the vault) the commands."""
+    if answers.get('vault_mode') == 'runtime':
+        return (f'run `python3 {REPO}/installer/configure.py denials --vault {answers["vault_path"]}` after a scheduled run, then '
+                '`configure.py grant --vault <vault> --job <id> --rule <rule>` for each read tool to allow')
+    return 'after a scheduled run, in Claude, in your vault, say "fix my job"'
+
+
+def next_steps(repo, answers, jobs_on, jobs_off, routines=(), mcp_blocked=()):
     lines = ['---', 'title: "Setup next steps"', f'date: {datetime.date.today().isoformat()}', 'tags: [setup]',
              'type: resource', 'status: active', '---', '', '# Setup next steps', '',
              'The installer created your vault, jobs and notes. A few things must be done by you, because they change your own '
@@ -292,9 +292,8 @@ def next_steps(repo, answers, jobs_on, jobs_off, routines=()):
             lines += ['Environment variables to set: ' + ', '.join(f'`{e}`' for e in man['env']), '']
         if not man.get('read_only', True):
             lines += [f"> Read-only caution: {man.get('read_only_mitigation', '')}", '']
-        if man.get('access') == 'mcp' and not man.get('permissions_allow'):
-            lines += ['> Unattended jobs refuse every tool that is not allowed. After connecting, run `/mcp`, review the tool list, then add the '
-                      f'READ-ONLY tool names to your answers file under `"permissions": {{"{cap}": ["mcp__<server>__<tool>"]}}` and re-run the installer.', '']
+        if (cap, tool) in mcp_blocked:
+            lines += [f'> Unattended jobs refuse every tool that is not allowed, and this tool has no read tool allowed yet: {allow_hint(answers)}.', '']
         lines += [f"Check the connection: {man['verify']}", '']
     if not any_tool:
         lines += ['No external tool was selected: the vault works on its own.', '']
@@ -369,17 +368,13 @@ def job_rules(repo, answers, job):
     """What one job may use beyond the base rules: (allow, deny, network hosts). From the pack's job.json, the chosen tools'
     adapters, the answers' per-capability `permissions`, and what the user granted this job (`job_permissions`)."""
     meta = job['meta']
-    req, opt = job_capabilities(meta)
     allow = [fix_rule(p) for p in meta['permissions'].get('allow', [])]
     deny = [fix_rule(p) for p in meta['permissions'].get('deny', [])]
     network = list(meta.get('network', []))
-    for cap in req + opt:
-        tool = answers['tools'].get(cap, 'none')
-        if tool != 'none':
-            man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
-            allow += man.get('permissions_allow', []) + list((answers.get('permissions') or {}).get(cap, []))
-            deny += man.get('permissions_deny', [])
-            network += man.get('network', [])
+    for cap, (_, man) in job_adapters(repo, answers, meta).items():
+        allow += adapter_allow(answers, cap, man)
+        deny += man.get('permissions_deny', [])
+        network += man.get('network', [])
     allow += list((answers.get('job_permissions') or {}).get(job['id'], []))
     return allow, deny, network + command_needs(repo, answers, allow)[0]
 
@@ -525,6 +520,8 @@ class Ctx:
                        'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full',
                        'permissions_summary': []}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
+        self.seen = set()  # every kit file of the vault this run produces, written or not
+        self.mcp_blocked = set()  # (capability, tool) of an MCP server no job may call yet: no read tool allowed
         self.jobs_on, self.jobs_off = self.plan_jobs()
 
     def plan_jobs(self):
@@ -545,6 +542,7 @@ class Ctx:
             check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []))
             allow, _, network = job_rules(self.repo, a, {'id': j['id'], 'meta': j['rendered']})
             check_permissions(f'job "{j["id"]}"', allow)  # adapters and the user's grants: the same limits
+            self.mcp_blocked |= unreachable_servers(job_adapters(self.repo, a, j['rendered']), a, allow)
             uses = describe_rules(allow, network)
             if any(uses.values()):  # what the user consents to, in plain words (the guided installer asks about it)
                 self.report['permissions_summary'].append({'job': j['id'], 'name': j['rendered'].get('name', j['id']), **uses})
@@ -554,7 +552,8 @@ class Ctx:
         if self.runtime_only and any(not self.packs[j['pack']].private for j in on):
             self.report['warnings'].append('runtime-only mode with public-pack jobs: their prompts expect the kit vault layout; '
                                            'check they fit your vault, or use jobs from your own private pack')
-        self.report['warnings'] += mcp_warnings(self.repo, a)
+        self.report['warnings'] += [f'{cap}/{tool}: jobs cannot call this MCP server until its read-only tools are allowed: {allow_hint(a)}'
+                                    for cap, tool in sorted(self.mcp_blocked)]
         if 'strict' in a:
             self.report['warnings'].append('"strict" in the answers is ignored: every job that may run a command now runs in the sandbox')
         if self.runtime_only:
@@ -568,6 +567,7 @@ class Ctx:
             self.report[key] += res.get(key, [])
         for rel in res.get('created', []) + res.get('replaced', []) + res.get('updated', []):
             self.files[rel] = None  # stashed files keep their install-time checksum
+        self.seen.update(rel for key in ('created', 'replaced', 'kept', 'updated', 'stashed', 'skipped') for rel in res.get(key, []))
 
     def render(self, src, **kw):
         self.record(render.render_tree(src, self.vault, self.table, dry_run=self.dry_run, installed=self.installed,
@@ -593,19 +593,25 @@ def vault_settings_warnings(vault):
     return out
 
 
-def mcp_warnings(repo, a):
-    out = []
-    for cap, tool in a['tools'].items():
-        if tool == 'none':
-            continue
-        man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
-        if man.get('access') == 'mcp' and not man.get('permissions_allow') and not (a.get('permissions') or {}).get(cap):
-            out.append(f'{cap}/{tool}: jobs cannot call this MCP server until you list its read-only tools in the answers '
-                       f'("permissions": {{"{cap}": ["mcp__<server>__<tool>", ...]}}) and re-run the installer')
-    return out
-
-
 # ----------------------------------------------------------------------------- write steps
+def step_fresh(ctx, fresh):
+    """Kit files to write again (update mode): the user's version is moved to _system/archive/<time>/, then the vault step
+    writes the kit's version as for a new file."""
+    unknown = [rel for rel in fresh if rel not in (ctx.installed or {})]
+    if unknown:
+        raise InstallError(f'not a file installed by the kit: {", ".join(unknown)}')
+    if any(rel.startswith('.obsidian/') for rel in fresh):  # seeded once, when the vault has no .obsidian folder yet
+        raise InstallError("Obsidian's settings are Obsidian's after the first install: change them in Obsidian")
+    archive, moved = os.path.join(ctx.vault, '_system', 'archive', datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')), []
+    for rel in fresh:
+        if not ctx.dry_run and os.path.isfile(os.path.join(ctx.vault, rel)):
+            os.makedirs(os.path.dirname(os.path.join(archive, rel)), exist_ok=True)
+            os.replace(os.path.join(ctx.vault, rel), os.path.join(archive, rel))
+            moved.append((os.path.join(ctx.vault, rel), os.path.join(archive, rel)))
+        ctx.installed = {k: v for k, v in ctx.installed.items() if k != rel}
+    return moved
+
+
 def step_vault(ctx):
     """Core vault (minus what private packs replace or exclude), then each pack's vault files."""
     ctx.render(os.path.join(ctx.repo, 'core', 'vault'), skip=ctx.policy.skips if ctx.policy else None)
@@ -737,7 +743,7 @@ def step_routines(ctx):
 def step_next_steps(ctx, routines):
     """What the user must do next. Full install: a note in the vault, written once. Runtime-only: next to the runtime,
     rewritten every run (it is the installer's file, never the user's)."""
-    text = next_steps(ctx.repo, ctx.a, ctx.jobs_on, ctx.jobs_off, routines)
+    text = next_steps(ctx.repo, ctx.a, ctx.jobs_on, ctx.jobs_off, routines, ctx.mcp_blocked)
     if ctx.runtime_only:
         path = os.path.join(ctx.ct_home, 'setup-next-steps.md')
         if not ctx.dry_run:
@@ -747,6 +753,7 @@ def step_next_steps(ctx, routines):
     else:
         rel = 'library/setup-next-steps.md'
         path = os.path.join(ctx.vault, rel)
+        ctx.seen.add(rel)
         if not os.path.exists(path):
             ctx.record({'created': [rel]})
             if not ctx.dry_run:
@@ -774,18 +781,28 @@ def step_manifest(ctx):
     jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k not in ('claude_bin', 'strict')})
 
 
-def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=None, no_launchctl=False, log=print, update=False):
+def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=None, no_launchctl=False, log=print, update=False,
+            fresh=()):
     ctx = Ctx(answers, repo, dry_run, update)  # plan: everything is checked here, before the first write
-    if not ctx.runtime_only:                   # runtime-only: the vault is the user's own, nothing of the kit goes in it
-        step_vault(ctx)
-        step_adapters(ctx)
-    step_runtime(ctx)
-    plist_paths = step_schedule(ctx)
-    routines = step_routines(ctx)
-    step_next_steps(ctx, routines)
-    if not ctx.runtime_only:
-        step_obsidian(ctx)
-    step_manifest(ctx)                         # last: checksums every file the steps above wrote
+    moved = step_fresh(ctx, fresh)
+    try:
+        if not ctx.runtime_only:               # runtime-only: the vault is the user's own, nothing of the kit goes in it
+            step_vault(ctx)
+            step_adapters(ctx)
+        step_runtime(ctx)
+        plist_paths = step_schedule(ctx)
+        routines = step_routines(ctx)
+        step_next_steps(ctx, routines)
+        if not ctx.runtime_only:
+            step_obsidian(ctx)
+        lost = [rel for rel in fresh if rel not in ctx.seen]
+        if lost:  # a dropped tool or pack: the kit no longer writes it
+            raise InstallError(f'the kit no longer writes: {", ".join(lost)}')
+        step_manifest(ctx)                     # last: checksums every file the steps above wrote
+    except Exception:
+        for src, dest in moved:  # a refused run leaves the user's version of a fresh-copied file in place
+            os.replace(dest, src)
+        raise
     sched = ctx.report['schedule']
     if schedule and not dry_run:  # 'load' this install's jobs in the scheduler, or 'unload' them all
         if sched['kind'] == 'none':

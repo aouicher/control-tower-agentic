@@ -29,7 +29,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
-from plan import (MCP_TOOL, bash_parts, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
+from plan import (MCP_TOOL, bash_parts, command_needs, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
                   permission_problem)
 
 SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
@@ -176,11 +176,11 @@ def reinstall(path, data, args, before, after):
         old = fh.read()
     claude = jload(os.path.join(ct_home(data), 'install.json'), {}).get('claude_bin', 'claude')  # the runtime's claude executable
 
-    def run(answers, now, then):  # the installer, moving the schedule from loaded-`now` to loaded-`then`
-        return install.install(dict(answers, claude_bin=claude), update=True, schedule='load' if then else 'unload' if now else None,
+    def run(answers, now, then, fresh=()):  # the installer, moving the schedule from loaded-`now` to loaded-`then`
+        return install.install(dict(answers, claude_bin=claude), update=True, fresh=fresh, schedule='load' if then else 'unload' if now else None,
                         launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, log=lambda *a: None)
     try:
-        report = run(data, before, after)
+        report = run(data, before, after, [args.file] if args.file else [])
     except ERRORS as exc:
         with open(path, 'w', encoding='utf-8') as fh:
             fh.write(old)
@@ -213,10 +213,10 @@ def schedule_applied(data, args):
     return install.schedule_applied(scheduler(data), os.path.join(ct_home(data), 'schedule'), args.launch_agents_dir)
 
 
-def dry_run(data):
+def dry_run(data, fresh=()):
     """The installer's report for these answers, without writing anything, or the reason it refuses them."""
     try:
-        return install.install(data, dry_run=True, log=lambda *a: None), None
+        return install.install(data, dry_run=True, update=bool(fresh), fresh=fresh, log=lambda *a: None), None
     except ERRORS as exc:
         return None, str(exc)
 
@@ -282,9 +282,29 @@ def access(report):
             for kind in ('commands', 'mcp_tools', 'web') for what in p.get(kind, [])}
 
 
-def change(args, build, consent=False):
-    """Every change: load the answers, build the new ones, check them with a dry run (and, with `consent`, refuse new access
-    the user has not accepted), then apply them. A loaded schedule follows; `set --schedule` moves it."""
+def installed_access(data):
+    """(installed job ids, {(job, kind, what)}) for what the jobs may use today, read from their installed settings."""
+    jobs_dir, uses = os.path.join(ct_home(data), 'jobs'), set()
+    ids = {j for j in os.listdir(jobs_dir) if os.path.isdir(os.path.join(jobs_dir, j))} if os.path.isdir(jobs_dir) else set()
+    for job in ids:
+        st = jload(os.path.join(jobs_dir, job, 'settings.json'), {})
+        summary = describe_rules(st.get('permissions', {}).get('allow', []), ((st.get('sandbox') or {}).get('network') or {}).get('allowedDomains', []))
+        uses |= {(job, kind, what) for kind, items in summary.items() for what in items}
+    return ids, uses
+
+
+def asked(args, data):
+    """The access the user has just said yes to in the question that led to this change: a granted rule (with the hosts its
+    command reaches), or the addresses given to a command."""
+    if args.action == 'grant':
+        uses = describe_rules([args.rule.strip()], command_needs(install.REPO, data, [args.rule.strip()])[0])
+        return {(args.job, kind, what) for kind, items in uses.items() for what in items}, set()
+    return set(), set(args.host or []) if args.action == 'add-command' else set()
+
+
+def change(args, build):
+    """Every change: load the answers, build the new ones, check them with a dry run, refuse access the jobs do not have
+    today and the user has not seen (unless --accept-access), then apply them. A loaded schedule follows; `set --schedule` moves it."""
     path, data = load_answers(args.vault)
     if data is None:
         return 2
@@ -293,7 +313,7 @@ def change(args, build, consent=False):
         if new is None:  # nothing to change
             print(message)
             return 0
-        report, why = dry_run(new)
+        report, why = dry_run(new, [args.file] if args.file else [])
         if not why and args.job and args.job not in {j['id'] for j in report['jobs'] + report['jobs_skipped']}:
             why = f'no job "{args.job}" in the installed packs'
         if why:
@@ -301,8 +321,14 @@ def change(args, build, consent=False):
     except Refused as exc:
         print(f'error: refused, nothing was changed: {exc}', file=sys.stderr)
         return 2
-    added = sorted(access(report) - access(dry_run(data)[0])) if consent else []
-    if added and not args.accept_access:  # a job turned back on, a pack or a tool added: the user sees the new access first
+    was, had = installed_access(data)
+    given, hosts = asked(args, data)
+    added = sorted(x for x in access(report) - had - given if not (x[1] == 'web' and x[2] in hosts))
+    if args.dry_run:  # what the change would do, for the user to say yes to
+        on = {j['id'] for j in report['jobs']}
+        print(json.dumps({'jobs_added': sorted(on - was), 'jobs_removed': sorted(was - on), 'new_access': added}, indent=2))
+        return 0
+    if added and not args.accept_access:  # more than the user asked for (a job back on, a tool, a kit update): show it first
         print('needs consent, nothing was changed: this change lets jobs use more. Show it to the user in plain words and run '
               'the same change with --accept-access after a yes:\n' + '\n'.join(f'  {j}: {kind} {what}' for j, kind, what in added),
               file=sys.stderr)
@@ -352,6 +378,12 @@ def add_command(data, args):
                         + (f' and write in {", ".join(entry["allow_write"])}' if entry.get('allow_write') else ''))
 
 
+def fresh_copy(data, args):
+    """The kit's version of one installed file; the user's version is kept in _system/archive/ (the installer checks the file)."""
+    kept = os.path.isfile(os.path.join(expand(args.vault), args.file))
+    return data, f'fresh copy of {args.file}' + (': your version is kept in _system/archive/' if kept else '')
+
+
 def remove_command(data, args):
     if args.command not in (data.get('commands') or {}):
         return None, f'nothing recorded for {args.command}'
@@ -368,6 +400,8 @@ def main(argv=None):
     vault.add_argument('--vault', required=True)
     vault.add_argument('--launch-agents-dir', help='where the launchd agents are (default ~/Library/LaunchAgents; tests)')
     vault.add_argument('--no-launchctl', action='store_true', help='link agents without loading them (tests)')
+    vault.add_argument('--dry-run', action='store_true', help='print what the change would do (jobs added or removed, new access), write nothing')
+    vault.add_argument('--accept-access', action='store_true', help='the user said yes to the new access this change gives jobs')
     sub.add_parser('show', parents=[vault], help='packs, tools, jobs with their days, time and state, the schedule, as JSON')
     p = sub.add_parser('set', parents=[vault], help='one change of the setup, checked, applied by the installer, rolled back if refused')
     p.add_argument('--add-pack')
@@ -378,7 +412,8 @@ def main(argv=None):
     p.add_argument('--days', help='mon-fri, mon,wed, weekdays, daily...')
     p.add_argument('--enabled', type=str.lower, choices=('true', 'false'))
     p.add_argument('--schedule', choices=('on', 'off'), help='load the jobs in the scheduler, or unload them all')
-    p.add_argument('--accept-access', action='store_true', help='the user said yes to the new access this change gives jobs')
+    p = sub.add_parser('fresh-copy', parents=[vault], help="the kit's version of an installed file; the user's goes to _system/archive/")
+    p.add_argument('--file', required=True, help='path in the vault, for example cockpit.md')
     p = sub.add_parser('denials', help='refusals of the latest run of every job, explained, with a proposed rule')
     p.add_argument('--ct-home', default='~/.control-tower')
     p.add_argument('--vault')
@@ -393,12 +428,13 @@ def main(argv=None):
     p.add_argument('--no-network', action='store_true', help='the answer "it needs no web address"')
     p = sub.add_parser('remove-command', parents=[vault], help='forget the addresses and folders recorded for a command')
     p.add_argument('--command', required=True)
-    ap.set_defaults(job=None, schedule=None, accept_access=False)  # flags only some changes have
+    ap.set_defaults(job=None, schedule=None, accept_access=False, dry_run=False, file=None)  # flags only some changes have
     args = ap.parse_args(argv)
     if args.action in ('show', 'denials'):
         return {'show': cmd_show, 'denials': cmd_denials}[args.action](args)
-    build = {'set': edit, 'grant': grant, 'revoke': revoke, 'add-command': add_command, 'remove-command': remove_command}[args.action]
-    return change(args, build, consent=args.action == 'set')
+    build = {'set': edit, 'grant': grant, 'revoke': revoke, 'add-command': add_command, 'remove-command': remove_command,
+             'fresh-copy': fresh_copy}[args.action]
+    return change(args, build)
 
 
 if __name__ == '__main__':

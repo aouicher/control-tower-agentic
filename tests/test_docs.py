@@ -27,6 +27,35 @@ class DocTests(unittest.TestCase):
                 with self.subTest(doc=os.path.relpath(doc, ROOT), link=target):
                     self.assertTrue(os.path.exists(path), f'broken link {target}')
 
+    def test_nothing_tells_the_user_to_edit_the_answers(self):
+        # every change goes through /control-tower or /job-permissions (installer/configure.py): never a hand edit
+        import glob
+        import re
+        bad = re.compile(r'edit (your|the) answers|answers file under|add .* to your answers|edit [^.\n]*answers\.json'
+                         r'|(list|add|set|put) [^.\n]* in (your|the) answers', re.I)
+        files = (glob.glob(os.path.join(ROOT, 'docs', '**', '*.md'), recursive=True) + glob.glob(os.path.join(ROOT, 'installer', '*.py'))
+                 + glob.glob(os.path.join(ROOT, 'core', '**', '*.md*'), recursive=True)
+                 + glob.glob(os.path.join(ROOT, 'packs', '**', '*.md*'), recursive=True)
+                 + glob.glob(os.path.join(ROOT, '.claude', 'skills', '**', '*.md'), recursive=True) + [os.path.join(ROOT, 'README.md')])
+        for path in files:
+            for n, line in enumerate(open(path, encoding='utf-8'), 1):
+                with self.subTest(file=os.path.relpath(path, ROOT), line=n):
+                    self.assertIsNone(bad.search(line))
+
+    def test_the_control_tower_hub_skill(self):
+        import re
+        text = open(os.path.join(ROOT, 'core', 'vault', '.claude', 'skills', 'control-tower', 'SKILL.md'), encoding='utf-8').read()
+        m = re.match(r'---\n(.*?)\n---\n', text, re.S)
+        self.assertIsNotNone(m)
+        self.assertIn('name: control-tower', m.group(1))
+        self.assertIn('description:', m.group(1))
+        self.assertNotIn('allowed-tools', text)
+        for needle in ('doctor.py', 'configure.py show', 'configure.py set', '--dry-run', '--accept-access', '/job-permissions',
+                       'configure.py fresh-copy', 'never edit'):
+            self.assertIn(needle.lower(), text.lower(), f'the hub must mention: {needle}')
+        for route in ('connect', 'automate', 'update', 'uninstall'):  # only what works today is offered
+            self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
+
     def test_docs_are_english(self):
         for doc in DOCS:
             text = open(doc, encoding='utf-8').read()

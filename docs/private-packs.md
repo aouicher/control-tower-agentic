@@ -9,7 +9,7 @@ They work together: a private pack for your jobs and conventions, installed runt
 
 ## Private packs
 
-A private pack is a folder with the same shape as a public pack (see [pack-spec](design/pack-spec.md)): `pack.json`, an optional `vocabulary.json`, `vault/`, `jobs/`, `routines/`. List it in your answers file:
+A private pack is a folder with the same shape as a public pack (see [pack-spec](design/pack-spec.md)): `pack.json`, an optional `vocabulary.json`, `vault/`, `jobs/`, `routines/`. The developer who installs the kit with an answers file names it under `pack_dirs`:
 
 ```json
 {
