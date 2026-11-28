@@ -279,6 +279,16 @@ class CommandHostsTests(unittest.TestCase):
                         job_permissions={'acme-brief': ['Bash(slackcli conversations unread:*)']})
             install.install(a, log=lambda *x: None)
             self.assertIn('~/Library/Logs/slackcli', settings(a)['sandbox']['filesystem']['allowWrite'])
+            self.assertEqual(settings(a)['env'], {'SLACKCLI_NO_UPDATE_NOTIFIER': '1'}, 'its update check would reach a host the job may not')
+
+    def test_only_a_job_with_the_command_gets_its_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = answers(tmp, ['acme-private'], [pack_with_rules(tmp, [])], job_permissions={'acme-brief': ['Bash(twg jira:*)']},
+                        commands={'twg': {'network': ['acme.atlassian.net']}})
+            install.install(a, log=lambda *x: None)
+            self.assertNotIn('env', settings(a))
+            with self.assertRaises(install.InstallError):  # the table sets an environment, never the answers
+                install.install(dict(a, commands={'twg': {'env': {'NODE_OPTIONS': '--require x'}}}), dry_run=True)
 
     def test_bad_command_answers_are_refused_by_the_installer(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -322,7 +332,9 @@ class CommandHostsTests(unittest.TestCase):
         self.assertTrue({'gh', 'twg', 'slackcli'} <= set(table))
         for name, entry in table.items():
             with self.subTest(command=name):
-                self.assertLessEqual(set(entry), {'network', 'allow_write', 'weaker_network_isolation', 'ask_host'})
+                self.assertLessEqual(set(entry), {'network', 'allow_write', 'weaker_network_isolation', 'ask_host', 'env'})
+                self.assertTrue(all(k.isupper() and str(v).isalnum() and not plan.UNSAFE_ENV.match(k) for k, v in entry.get('env', {}).items()),
+                                'a switch, never a path, code or a variable that changes the session (HOME, GIT_DIR...)')
                 self.assertIsNone(plan.command_problem(name, {k: v for k, v in entry.items() if k in plan.COMMAND_KEYS}))
 
     def test_a_command_with_no_web_address_and_taking_one_back(self):
