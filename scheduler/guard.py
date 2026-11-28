@@ -18,7 +18,6 @@ import fnmatch
 import json
 import os
 import re
-import shlex
 import sys
 
 BASH_RULES = [
@@ -50,49 +49,6 @@ BASH_RULES = [
 PROTECTED = ('.obsidian', '_system/templates', '_system/dashboards', '.claude', '.control-tower', '.control-tower-backup', '.git', '.github', '.vscode')
 PROTECTED_FILES_CASED = ('CLAUDE.md', 'CLAUDE.local.md', '.mcp.json')
 PROTECTED_FILES = tuple(f.lower() for f in PROTECTED_FILES_CASED)  # compared lowercase: macOS and Windows file systems
-# `date` is allowed to every job, so its arguments are allow-listed after shell tokenising: display formats and date
-# arithmetic only. GNU `date -f FILE` / `-r FILE` would print a file's content or metadata, in any flag spelling.
-DATE_FLAGS = re.compile(r'^(-u|--utc|-j|-R|-I\w*|--iso-8601(=\w+)?|--rfc-3339=\w+|-v[+-]?\w+|--date=.*)$')
-
-
-def date_reason(cmd):
-    """Refuse any `date` call whose arguments are not display formats or date arithmetic. Conservative on purpose."""
-    if not re.search(r'\bdate\b', cmd):
-        return None
-    if re.search(r'[$`<>#\n\r]', cmd):  # substitution, redirection, comments, several lines: nothing a job needs around date
-        return 'date combined with substitution, redirection, a comment or several lines'
-    if re.search(r'\bdate\b[^|;&]*\s(-\w*[fr]\w*|--file|--reference)', re.sub(r'[\\\'"]', '', cmd)):  # fail-safe, quotes removed
-        return 'date reading a file'
-    try:
-        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
-        lex.whitespace_split = True
-        lex.commenters = ''
-        tokens = list(lex)
-    except ValueError:
-        return 'cannot parse a command that calls date'
-    seps = {';', '&&', '||', '|', '&', '(', ')', '$(', '`', ';;', '|&'}
-    i = 0
-    while i < len(tokens):
-        tok = tokens[i]
-        if tok != 'date' and os.path.basename(tok) != 'date' and re.search(r'\bdate\b', tok):
-            return 'date inside a quoted or nested command'  # sh -c "date ...", `date ...`, $(date...) glued to text
-        if tok == 'date' or os.path.basename(tok) == 'date':
-            i += 1
-            while i < len(tokens) and tokens[i] not in seps:
-                arg = tokens[i]
-                if arg in ('-d', '--date'):
-                    if i + 1 >= len(tokens) or tokens[i + 1] in seps or tokens[i + 1].startswith('-'):
-                        return 'date -d needs a date expression'
-                    i += 2
-                    continue
-                if not (arg.startswith('+') or DATE_FLAGS.match(arg)):
-                    return f'date is limited to formats and date arithmetic, refused argument "{arg}"'
-                i += 1
-            continue
-        i += 1
-    return None
-
-
 WRITE_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
 
 # Jobs may not create git, Claude, editor or Obsidian files anywhere in the vault (a nested .git/config runs code at the next
@@ -227,8 +183,7 @@ def check(event, vault):
         for rx, reason in BASH_RULES:
             if re.search(rx, cmd, re.I):
                 return f'{reason}: {cmd[:120]}'
-        reason = date_reason(cmd)
-        return f'{reason}: {cmd[:120]}' if reason else None
+        return None
     if tool in ('Glob', 'Grep'):
         if tool == 'Grep' and inp.get('path') and not inp.get('glob') and \
                 own_tool_result(os.path.join(event.get('cwd') or vault, os.path.expanduser(str(inp['path']))), event):

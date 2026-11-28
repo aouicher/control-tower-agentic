@@ -4,7 +4,7 @@ Scheduled jobs run unattended, so they are locked down by design.
 
 ## What a job can do
 
-- Read files inside the vault.
+- Read files inside the vault (with `Read`, `Grep` and `Glob`; no command is allowed by default, and the date comes in the prompt).
 - Edit files inside the vault, except protected areas.
 - Call the read tools of the adapters you connected, listed by exact name.
 

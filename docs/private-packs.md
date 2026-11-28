@@ -74,6 +74,7 @@ The installer checks every rule on the final text (after `{{ct.*}}` tokens are f
 | MCP tools whose name says they act: send, post, create, update, delete, remove, write, edit, merge, close, publish, upload, comment, reply, react, transition, assign, invite, share, trigger, deploy, add, set, manage, move, archive, respond, approve, submit (`createIssue`, `chat.postMessage` and `send_message` alike) | jobs only read |
 | shell operators, quotes, substitutions in a `Bash` rule; a path as the command | one plain command per rule |
 | shells, interpreters and file or network tools: `sh`, `bash`, `zsh`, `python`, `node`, `perl`, `ruby`, `osascript`, `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `cp`, `mv`, `rm`, `dd`, `tee`, `chmod`, `chown`, `sudo`, `env`, `xargs`, `eval`, `timeout`, `find`, `awk`, `sed`... | they run any code or move files by themselves |
+| generic file readers: `date`, `ls`, `cat`, `head`, `tail`, `less`, `more`, `grep`, `rg`, `strings`, `od`, `xxd`, `base64`, `tar`, `zip`, `unzip`, `open`, and their variants (`gdate`, `ggrep`, `zcat`, `egrep`, `bat`...) | jobs read files with `Read`, `Grep` and `Glob`, which stay in the vault; dates are in the prompt's Run context |
 | `git` other than `log`, `show`, `diff`, `status`, `rev-parse`, `shortlog`, `blame`, `ls-files`, `describe` | read history only |
 | `VAR=value` prefixes for `PATH`, `PAGER`, `EDITOR`, `HOME`, `SHELL`, `ENV`, `BASH_ENV`, `GIT_*`, `GH_*`, `LD_*`, `DYLD_*`, `*PROXY*`... | they change which program runs |
 

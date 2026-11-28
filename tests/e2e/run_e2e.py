@@ -75,6 +75,22 @@ def scenario(packs):
             st = json.load(open(os.path.join(ct, 'jobs', jobs[0], 'settings.json')))
             step('a granted rule reaches the job settings', r.returncode == 0 and 'Bash(acme-cli tickets list:*)' in st['permissions']['allow'],
                  (r.stderr or r.stdout)[-300:])
+        if 'weekly-digest' in jobs:  # the job follows its skill with the Run context and Glob: nothing refused, no date, no ls
+            follow = [{'tool_name': 'Read', 'tool_input': {'file_path': os.path.join(vault, '.claude', 'skills', 'weekly-digest', 'SKILL.md')}},
+                      {'tool_name': 'Glob', 'tool_input': {'pattern': 'work/workstreams/*/*.md'}},
+                      {'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(vault, 'journal', 'reports', 'delivery-2026-W48.md')}}]
+            dp = os.path.join(ct, 'logs', 'weekly-digest.denials.json')
+            r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'weekly-digest', '--ct-home', ct],
+                    dict(env, FAKE_CLAUDE_CALLS=json.dumps(follow)))
+            step('weekly-digest follows its skill with the Run context and Glob, nothing refused',
+                 r.returncode == 0 and json.load(open(dp)) == [], (r.stdout + r.stderr)[-300:])
+            r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'weekly-digest', '--ct-home', ct],
+                    dict(env, FAKE_CLAUDE_CALLS=json.dumps([{'tool_name': 'Bash', 'tool_input': {'command': 'date +%F'}}])))
+            step('the run that tries date still ends normally', r.returncode == 0, (r.stdout + r.stderr)[-300:])
+            r = run([PY, os.path.join(ROOT, 'installer', 'permissions.py'), 'list', '--ct-home', ct], env)
+            item = next((i for i in json.loads(r.stdout)['denials'] if i['job'] == 'weekly-digest'), {}) if r.returncode == 0 else {}
+            step('a job that still runs date is refused, and date can never be allowed',
+                 item.get('rule') == 'Bash(date:*)' and item.get('verdict') == 'never', str(item)[-300:])
         calls = [json.loads(x) for x in open(env['FAKE_CLAUDE_LOG'])] if os.path.exists(env['FAKE_CLAUDE_LOG']) else []
         step('jobs ran in the vault with dontAsk', bool(calls) and all(c['mode'] == 'dontAsk' and os.path.realpath(c['cwd']) == os.path.realpath(vault) for c in calls))
         idx = os.path.join(ct, 'routines', 'routines.json')
