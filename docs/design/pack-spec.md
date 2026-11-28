@@ -63,7 +63,7 @@ Routine prompts follow the job prompt rules of section 3, plus: name connectors 
 - New folders under `work/` or `library/` (for example `work/content/`), never a rename or removal of a core folder.
 - New note types (for example `type: content`) with their properties, documented in the pack rules file `.claude/rules/<id>.md.tmpl`; the pack dashboards filter on them. A pack never changes the meaning of a core type or property.
 - New templates, dashboards, cockpit pages and skills, with names that do not collide with the core ones (the installer refuses a collision).
-- Cockpit pages go in `cockpit/` with `type: hub`. The core `cockpit.md` lists every such page through the `pages.base` dashboard (section *Pages*), so a pack page is reachable without editing a core file and without unresolved links. The pages a pack names in `cockpit_pages` are also embedded on the cockpit itself, in the order of the chosen packs, unless the report that writes the page is off (it would stay empty).
+- Cockpit pages go in `cockpit/` with `type: hub`. The core `cockpit.md` lists every such page through the `pages.base` dashboard (section *Pages*), so a pack page is reachable without editing a core file and without unresolved links. The pages a pack names in `cockpit_pages` are also embedded on the cockpit itself, in the order of the chosen packs, unless the report that writes the page is off (it would stay empty): name only short glance pages there (a status per service, a headline), never a page that repeats the cockpit's tables or lists.
 - It never edits `CLAUDE.md`: pack rules live in `.claude/rules/<id>.md.tmpl`.
 
 ## 3. Jobs

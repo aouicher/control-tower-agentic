@@ -7,7 +7,7 @@
   "skills": ["weekly-digest", "postmortem", "adr", "questionnaire-answer"],
   "templates": [],
   "dashboards": ["delivery"],
-  "cockpit_pages": ["pulse", "delivery"],
+  "cockpit_pages": ["pulse"],
   "jobs": ["morning-triage", "service-health", "debt-review", "weekly-digest"],
   "routines": ["daily-note", "weekly-review", "morning-brief", "overnight-health"],
   "capabilities": {

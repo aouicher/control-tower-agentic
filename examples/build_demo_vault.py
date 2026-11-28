@@ -1258,13 +1258,6 @@ Method: **RICE** = reach x impact x confidence / effort.
 | 14:00 | Database upgrade window review | [[database-upgrade-window]]: choose A or B |
 | 16:00 | Product review | [[onboarding-checklist]] scope |
 
-## 🔴 Overdue
-
-| Task | Note | Due |
-|---|---|---|
-| Chase the hosting vendor for the signed agreement | [[eu-data-residency]] | {self.day(-2).isoformat()} |
-| Send the revised launch plan to support | [[checkout-revamp]] | {self.day(-1).isoformat()} |
-
 📥 {triage} tasks to triage: see [[my-work]].
 """)
 

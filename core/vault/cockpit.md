@@ -41,6 +41,7 @@ limit 8
 ```tasks
 not done
 tags include #deadline
+due after today
 sort by due
 limit 6
 ```

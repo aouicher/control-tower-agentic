@@ -7,7 +7,7 @@
   "skills": ["campaign-brief", "content-calendar", "weekly-metrics", "competitor-watch"],
   "templates": ["content-piece", "launch-plan", "campaign-retro"],
   "dashboards": ["content-pipeline"],
-  "cockpit_pages": ["content-calendar"],
+  "cockpit_pages": [],
   "jobs": ["weekly-metrics", "content-reminders"],
   "routines": ["daily-note", "weekly-review", "morning-brief"],
   "capabilities": {
