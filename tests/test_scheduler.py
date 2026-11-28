@@ -204,6 +204,8 @@ if mode == "noresult":
 if mode == "authfail":
     sys.stderr.write("x" * 3000 + " MCP server Amplitude: authentication required (401)")
     sys.exit(1)
+if mode == "needsauth":  # as Claude Code 2.1.332 reports a server that needs a sign-in: the run itself succeeds
+    print(json.dumps({"type": "system", "subtype": "init", "mcp_servers": [{"name": "Amplitude", "status": "needs-auth", "source": "dynamic"}]}))
 out = {"type": "result", "result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
 if mode == "denied":  # as Claude Code 2.1.332 reports a guard refusal: an is_error tool result and a permission denial
     blocked = "PreToolUse:Bash hook error: [python3 guard.py --vault '/notes [work]']: BLOCKED by control-tower guard: git write operation: git push"
@@ -271,7 +273,7 @@ class RunJobTests(unittest.TestCase):
         def record():
             with open(os.path.join(self.home, 'logs', 'demo.run.json')) as fh:
                 return json.load(fh)
-        for mode, want in (('ok', 'ok'), ('denied', 'refused'), ('authfail', 'auth'), ('fail', 'failed'), ('noresult', 'failed')):
+        for mode, want in (('ok', 'ok'), ('denied', 'refused'), ('authfail', 'auth'), ('needsauth', 'auth'), ('fail', 'failed'), ('noresult', 'failed')):
             with self.subTest(mode):
                 self.run_job(mode)
                 self.assertEqual(record()['outcome'], want)

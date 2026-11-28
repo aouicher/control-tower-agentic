@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import select
 import shlex
 import shutil
 import subprocess
@@ -27,7 +28,8 @@ sys.path.insert(0, os.path.join(ROOT, 'installer'))
 sys.path.insert(0, os.path.join(ROOT, 'scheduler'))
 import install  # noqa: E402
 import plan  # noqa: E402
-from run_job import blocked_hosts, init_of, messages, result_of, tool_output, tool_results, denials as run_job_denials  # noqa: E402  the runner's own stream parser
+from run_job import (blocked_hosts, init_of, messages, result_of, tool_output, tool_results,  # noqa: E402  the runner's own parser
+                     denials as run_job_denials, notice as run_job_notice, outcome as run_job_outcome)
 
 PROBE = """You are a test probe. Never ask questions. Do exactly these steps, then stop:
 0. Read the file .claude/adapters/code.md with the Read tool and note its first heading.
@@ -70,6 +72,7 @@ def smoke():
 
 # ----------------------------------------------------------------------------- runtime facts
 FACTS_SERVER = os.path.join(ROOT, 'tests', 'e2e', 'facts_mcp_server.py')
+AUTH_SERVER = os.path.join(ROOT, 'tests', 'e2e', 'auth_mcp_server.py')
 COST = []  # USD per claude run
 FACT_VALUE = 'fact-value-7f3a'  # what the server's get_fact answers: seen in a tool result only if the call really ran
 SAY_OK = 'Reply with the single word OK.'
@@ -241,6 +244,21 @@ def facts(save_init=None):
         out.append(('F10', bool(labeled) or (False if where else None),
                     'the guard\'s refusal reaches ' + (' and '.join(where) or 'neither stderr nor the tool results')
                     + (', and the runner labels it: ' + labeled[0]['reason'][:60] if labeled else ', and the runner does NOT label it')))
+        server = subprocess.Popen([sys.executable, AUTH_SERVER, os.path.join(tmp, 'auth-requests.log')], stdout=subprocess.PIPE, text=True)
+        try:
+            ready = select.select([server.stdout], [], [], 10)[0]  # its port, or nothing if it did not start
+            port = server.stdout.readline().strip() if ready else ''
+            r11 = claude(empty, SAY_OK, {}, turns=1, mcp={'signin': {'type': 'http', 'url': f'http://127.0.0.1:{port}/mcp'}})
+        finally:
+            server.terminate()
+            server.wait(timeout=10)
+        status = next((s.get('status') for s in init_of(r11).get('mcp_servers') or [] if s.get('name') == 'signin'), None)
+        failed = bool(result_of(r11).get('is_error'))
+        down = [{'name': 'signin', 'status': str(status)}]
+        said = run_job_notice('job', empty, run_job_outcome(0, failed, [], down, [], ''), down)
+        out.append(('F11', None if status is None else (status == 'needs-auth' and bool(said)),
+                    f'a server that needs a sign-in shows as {status!r}; the run itself ' + ('fails' if failed else 'succeeds')
+                    + ('; the runner reports it: ' + said[:60] if said else '; the runner says NOTHING')))
         out.append(('hosts:gh', bool(blocked_hosts(r8)) or None, ', '.join(blocked_hosts(r8)) or 'none blocked'))
         tries = {'twg': ('TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql "created >= -1d"',
                          ['Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query:*)', 'Bash(twg jira workitem query:*)'], {}),

@@ -18,9 +18,10 @@ What it does:
     (anything not explicitly allowed is refused) and a time limit (default 30 minutes)
   * appends the cost, turns and the final answer to <ct-home>/logs/<id>.log, errors to <id>.stderr.log
   * reads Claude Code's stream-json output and writes what was refused during the run to <ct-home>/logs/<id>.denials.json,
-    and the run's outcome (ok, refused, auth, timeout, network, failed), the MCP servers that did not start and the hosts the
+    and the run's outcome (ok, refused, auth, server, timeout, network, failed), the MCP servers that did not start and the hosts the
     sandbox blocked to <ct-home>/logs/<id>.run.json (the /job-permissions skill reads both)
-  * when a job was refused something or failed, sends a desktop notification that says what to type in the vault (best effort)
+  * when a run's outcome is not ok, sends a desktop notification that says what happened and what to type in the vault
+    (best effort)
 Set CT_CLAUDE_BIN to use another executable (used by the tests).
 """
 import argparse
@@ -175,9 +176,16 @@ def notify(title, message):
         pass
 
 
-def notice(name, vault, blocked):
-    """What the notification says: what happened, and the words that start the fix in the vault."""
-    return f'{name} {"was blocked" if blocked else "failed"}. Open Claude on your {os.path.basename(os.path.normpath(vault))} folder and say: fix my job.'
+def notice(name, vault, result, servers=()):
+    """What the notification says about a run of outcome `result`, or None when all went well: what happened, and the words
+    that start the fix in the vault. A server that needs a sign-in or did not start does not make the run fail, so it is
+    named here."""
+    def named(status):
+        names = [s['name'][:40] for s in servers if s['status'] == status]
+        return names[0] + (f' and {len(names) - 1} more' if len(names) > 1 else '') if names else 'a tool'
+    what = {'refused': 'was blocked', 'network': 'was blocked', 'timeout': 'ran out of time', 'failed': 'failed',
+            'auth': f'could not reach {named("needs-auth")}: sign in again', 'server': f'could not start {named("failed")}'}.get(result)
+    return f'{name} {what}. Open Claude on your {os.path.basename(os.path.normpath(vault))} folder and say: fix my job.' if what else None
 
 
 def messages(text):
@@ -245,6 +253,8 @@ def outcome(rc, failed, refused, servers, hosts, error):
         return 'network'
     if any(s['status'] == 'needs-auth' for s in servers) or (failed and AUTH.search(error)):
         return 'auth'
+    if any(s['status'] == 'failed' for s in servers):  # a connection that did not start: the run may still succeed without it
+        return 'server'
     return 'failed' if failed else 'ok'
 
 
@@ -342,8 +352,9 @@ def main():
     hosts = sorted({h for r in tool_results(msgs, 'Bash', failed=True) for h in blocked_hosts(r)})
     why = str(data.get('result', '')) if data.get('is_error') else errtxt or ('' if data else 'no result from Claude Code')
     error = redact(why, tail=True) if failed else ''  # its end says why
+    result = outcome(rc, failed, refused, servers, hosts, error)
     with open(os.path.join(logs, f'{args.job}.run.json'), 'w', encoding='utf-8') as fh:  # the latest run, for the diagnosis
-        json.dump({'at': started, 'rc': rc, 'outcome': outcome(rc, failed, refused, servers, hosts, error), 'servers': servers,
+        json.dump({'at': started, 'rc': rc, 'outcome': result, 'servers': servers,
                    'blocked_hosts': hosts, 'error': error}, fh, indent=2, ensure_ascii=False)
     with open(os.path.join(logs, f'{args.job}.denials.json'), 'w', encoding='utf-8') as fh:  # the latest run only
         json.dump(refused, fh, indent=2, ensure_ascii=False)
@@ -355,8 +366,9 @@ def main():
     if errtxt:
         with open(err, 'a', encoding='utf-8') as fh:
             fh.write(f'=== {started} {args.job}\n{errtxt}\n')
-    if failed or refused:
-        notify('Control tower', notice(job.get('name', args.job), vault, bool(refused)))
+    message = notice(job.get('name', args.job), vault, result, servers)
+    if message:
+        notify('Control tower', message)
     return rc
 
 
