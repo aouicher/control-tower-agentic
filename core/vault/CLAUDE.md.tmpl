@@ -39,7 +39,7 @@ status: draft | active | archived
 - `type` is one of: `project`, `area`, `workstream`, `decision`, `risk`, `team`, `person`, `daily`, `weekly`, `report`, `meeting`, `resource`, `hub`. Profile packs add their own types (for example `content`, `opportunity`), described in `.claude/rules/`.
 - Properties by type: project (`owner`, `team`, `rag`, `blocker`, `next_step`, `due`); area (`owner`, `team`); workstream (`group`, `team`, `owner`, `rag`, `progress`, `blocker`, `next_step`, `due`, `tracker`); decision (`decision_status`: to-decide, proposed, made; `owner`, `team`, `due`); risk (`severity`: low, medium, high, critical; `risk_status`: open, mitigated, closed; `team`); team (`lead`, `rag`, `tracker`, `members`); person (`role`, `team`, `signal`, `rag`, `last_one_to_one`); report (`report_kind`); meeting (`meeting_type`).
 - `rag` is `red | amber | green | unknown`. Automations may propose it in text; only I write `rag`.
-- File names are descriptive phrases (`website-redesign.md`), never `untitled-12.md`.
+- File names are descriptive phrases (`website-redesign.md`), never `untitled-12.md`. A dated note (meeting, report) starts with its date, so folders sort by date: `2026-03-02-1-1-sam-rivera.md`, `2026-03-02-triage.md`; a weekly report's date is the Monday of the week it covers (`<Monday YYYY-MM-DD>`).
 
 ## Page style
 - Only long pages (over about 40 lines) and generated reports open with ONE `> [!summary] Summary` callout (3 bullets max). Short pages get none.

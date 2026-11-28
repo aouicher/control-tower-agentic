@@ -11,7 +11,7 @@ Data window: the previous 7 full days (Monday 00:00 to Sunday 23:59, {{ct.timezo
 6. Never copy customer names, emails, account ids or other personal data into the report: describe segments and use pseudonyms.
 
 ## Output
-Write `journal/reports/feedback-digest-<YYYY-Www>.md` (`<YYYY-Www>` = the week covered, from step 1) with frontmatter `title` (double-quoted), `date` (today, `YYYY-MM-DD`), `type: report`, `report_kind: "feedback-digest"`, `tags: [report]`, `status: active`, then:
+Write `journal/reports/<Monday YYYY-MM-DD>-feedback-digest.md` (`<Monday YYYY-MM-DD>` = the Monday of the week covered, from step 1) with frontmatter `title` (double-quoted), `date` (today, `YYYY-MM-DD`), `type: report`, `report_kind: "feedback-digest"`, `tags: [report]`, `status: active`, then:
 - `# Title` and `🕐 Generated on DD/MM/YYYY at HH:MM`
 - `> [!summary] Summary` (3 bullets: top theme, biggest metric change, what to do)
 - `## 💬 Feedback themes`: `| Theme | Segment | Volume | Example (anonymised) | Opportunity |`

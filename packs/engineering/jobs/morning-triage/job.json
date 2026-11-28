@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/triage-YYYY-MM-DD.md"
+    "journal/reports/YYYY-MM-DD-triage.md"
   ],
   "permissions": {
     "allow": [],

@@ -71,7 +71,7 @@ class MyJobTests(VaultCase):
         self.assertEqual(self.saved()['jobs']['digest'], {'days': 'mon', 'time': '07:30'}, 'when it runs is where every job keeps it')
         prompt = open(self.job_file('digest', 'prompt.md'), encoding='utf-8').read()
         self.assertIn('.claude/skills/digest/SKILL.md', prompt)
-        self.assertIn('journal/reports/my-digest-YYYY-MM-DD.md', prompt)
+        self.assertIn('journal/reports/YYYY-MM-DD-my-digest.md', prompt)
         self.assertNotIn('{{', prompt)
         self.assertEqual(self.cli('add-job', '--skill', 'digest', '--id', 'plain', '--accept-access').returncode, 0)
         self.assertEqual(self.allow('digest') - self.allow('plain'), {'mcp__mailbox__search_threads'},
@@ -155,7 +155,7 @@ class MyJobTests(VaultCase):
         pd = private_pack(os.path.join(self._tmp.name, 'outside'))
         job = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
         meta = json.load(open(job))
-        meta['outputs'] = ['journal/reports/my-digest-YYYY-MM-DD.md']
+        meta['outputs'] = ['journal/reports/YYYY-MM-DD-my-digest.md']
         with open(job, 'w') as fh:
             json.dump(meta, fh)
         with self.assertRaises(install.InstallError):
@@ -163,7 +163,7 @@ class MyJobTests(VaultCase):
                             dry_run=True, log=lambda *x: None)
         for path in __import__('glob').glob(os.path.join(ROOT, 'packs', '*', 'jobs', '*', '*')):
             with self.subTest(path=os.path.relpath(path, ROOT)):
-                self.assertNotIn('journal/reports/my-', open(path, encoding='utf-8').read())
+                self.assertNotRegex(open(path, encoding='utf-8').read(), r'journal/reports/([^/`\s]*-)?my-')
 
     def test_the_installer_refuses_a_bad_record(self):
         good = {'skill': 'digest', 'uses': []}
@@ -193,7 +193,7 @@ class CloudReportTests(VaultCase):
         self.assertEqual((entry['days'], entry['time'], entry['vault']), ('mon', '07:00', 'write'))
         prompt = open(entry['prompt_file'], encoding='utf-8').read()
         self.assertIn('.claude/skills/digest/SKILL.md', prompt)
-        self.assertIn('journal/reports/my-digest-YYYY-MM-DD.md', prompt)
+        self.assertIn('journal/reports/YYYY-MM-DD-my-digest.md', prompt)
         self.assertIn('git add -- ', prompt, 'a routine on a vault repository commits its note only, then pushes it')
         self.assertNotIn('Run context', prompt, 'no runner on claude.ai writes one')
         self.assertNotIn('{{', prompt)

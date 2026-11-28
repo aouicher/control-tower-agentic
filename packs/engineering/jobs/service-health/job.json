@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/health-YYYY-MM-DD.md",
+    "journal/reports/YYYY-MM-DD-health.md",
     "cockpit/pulse.md"
   ],
   "permissions": {

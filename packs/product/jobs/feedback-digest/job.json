@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/feedback-digest-YYYY-Www.md"
+    "journal/reports/YYYY-MM-DD-feedback-digest.md"
   ],
   "permissions": {
     "allow": [],

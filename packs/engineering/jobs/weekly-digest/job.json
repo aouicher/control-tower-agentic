@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/delivery-YYYY-Www.md",
+    "journal/reports/YYYY-MM-DD-delivery.md",
     "cockpit/delivery.md"
   ],
   "permissions": {

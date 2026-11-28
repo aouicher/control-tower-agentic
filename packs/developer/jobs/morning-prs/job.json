@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/dev-morning-YYYY-MM-DD.md"
+    "journal/reports/YYYY-MM-DD-dev-morning.md"
   ],
   "permissions": {
     "allow": [],

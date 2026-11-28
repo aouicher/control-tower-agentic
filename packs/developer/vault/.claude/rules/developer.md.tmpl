@@ -24,7 +24,7 @@ Debug journals are `type: resource` notes in `library/` tagged `debug-journal`.
 A pull request note is optional: create one for a change that needs follow-up, by hand from the `pull-request-notes` template or by accepting the offer of `/review-queue`. After creation, properties are written by the user; automations may propose changes in text.
 
 ## What automations may write
-- Reports in `journal/reports/` (`dev-morning-YYYY-MM-DD.md` from the job, `dev-brief-YYYY-MM-DD.md` from the routine, `dev-weekly-wrap-YYYY-Www.md`).
+- Reports in `journal/reports/` (`YYYY-MM-DD-dev-morning.md` from the job, `YYYY-MM-DD-dev-brief.md` from the routine, `<Monday YYYY-MM-DD>-dev-weekly-wrap.md`).
 - The `## 🧍 Standup` section of today's daily note (`standup` skill). Never `cockpit/today.md`: only the `today` skill writes it.
 - Dated lines appended to the daily note (`worklog` skill) and new notes in `library/` (`debug-journal` skill).
 - Tasks, only as `- [ ] text @{{ct.owner_handle}} #to-triage`, never plain, and only for new important findings.

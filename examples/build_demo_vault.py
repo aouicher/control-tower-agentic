@@ -182,7 +182,7 @@ class Demo:
               ('Morale', '🟠', 'On-call load is high since the last incident')],
              ['[[eu-data-residency]] (project)', '[[database-upgrade]] and [[ci-speedup]]'],
              [], ['[[single-region-database]]'],
-             ['Last sync: [[team-sync-' + self.day(-2).isoformat() + ']].', 'Three engineers besides the people above, one open role.']),
+             ['Last sync: [[' + self.day(-2).isoformat() + '-team-sync]].', 'Three engineers besides the people above, one open role.']),
             ('growth', 'Growth', 'green', 'harper-lane', 'GRW', ['harper-lane'],
              'Grow activation and referrals: onboarding, partner API, referral programme.',
              [('Overall', '🟢', 'On track'), ('Delivery', '🟢', '11 of 14 sprint items done'), ('Morale', '🟢', 'Good energy after the partner pilot')],
@@ -193,7 +193,7 @@ class Demo:
         people = {
             'casey-doe': ('Casey Doe', 'Engineering manager', 'checkout', 'green', self.day(-1), 'Steady; wants to grow a tech lead',
                           ['Calm under pressure', 'Clear written plans'], ['Delegating incident follow-ups'],
-                          [], [f'1-1 notes: [[1-1-casey-doe-{self.day(-1).isoformat()}]].']),
+                          [], [f'1-1 notes: [[{self.day(-1).isoformat()}-1-1-casey-doe]].']),
             'avery-quinn': ('Avery Quinn', 'Senior engineer', 'checkout', 'green', self.day(-8), 'Ready for a tech lead role',
                             ['Payments domain', 'Mentoring'], ['Writing design docs earlier'],
                             [self.task('Share the tech lead feedback summary with [[avery-quinn]]', d, ['committed'])],
@@ -402,7 +402,7 @@ class Demo:
 | Date | Event |
 |---|---|
 | {self.day(-18).isoformat()} | Raised in the architecture review |
-| {self.day(-2).isoformat()} | Discussed in [[team-sync-{self.day(-2).isoformat()}]] |
+| {self.day(-2).isoformat()} | Discussed in [[{self.day(-2).isoformat()}-team-sync]] |
 
 ## 🔎 Cause
 
@@ -451,7 +451,7 @@ class Demo:
     def journal(self):
         w, d = self.w, self.d
         y = d.strftime('%Y')
-        eng_note = f'- Morning triage: refund timeouts on payment-api, see [[triage-{d.isoformat()}]].' if self.eng else '- Quiet morning.'
+        eng_note = f'- Morning triage: refund timeouts on payment-api, see [[{d.isoformat()}-triage]].' if self.eng else '- Quiet morning.'
         self.note(f'journal/daily/{y}/{d.isoformat()}.md', self.base(d.isoformat(), d, 'daily', ['daily']), f"""
 # {long_date(d)}
 
@@ -495,7 +495,7 @@ Only tasks that are for today and nowhere else. Everything else belongs in its p
 |  |  |  |
 """)
         yd = self.day(-1)
-        one = f'1-1-casey-doe-{yd.isoformat()}'
+        one = f'{yd.isoformat()}-1-1-casey-doe'
         self.note(f"journal/daily/{yd.strftime('%Y')}/{yd.isoformat()}.md", self.base(yd.isoformat(), yd, 'daily', ['daily']), f"""
 # {long_date(yd)}
 
@@ -511,7 +511,7 @@ Only tasks that are for today and nowhere else. Everything else belongs in its p
 
 1. Prepare the 1-1 with Casey: [[casey-doe]]
 2. Review the fraud rules numbers: [[fraud-rules-v2]]
-3. Read the platform sync notes: [[team-sync-{self.day(-2).isoformat()}]]
+3. Read the platform sync notes: [[{self.day(-2).isoformat()}-team-sync]]
 
 ## ✅ Tasks
 
@@ -578,7 +578,7 @@ Each action lives in the note it belongs to: this table only points to it.
 - None.
 """)
         sd = self.day(-2)
-        self.note(f'journal/meetings/team-sync/team-sync-{sd.isoformat()}.md',
+        self.note(f'journal/meetings/team-sync/{sd.isoformat()}-team-sync.md',
                   self.base(f'Meeting team-sync {sd.isoformat()}', sd, 'meeting', ['meeting', 'team-sync']) + [('meeting_type', 'team-sync')], f"""
 # Meeting team-sync {sd.isoformat()}
 
@@ -663,7 +663,7 @@ Each action lives in the note it belongs to: this table only points to it.
 ## 📎 Annexes
 
 > [!note]- Sources
-> - [[{d.isoformat()}]], [[{yd.isoformat()}]], [[{one}]], [[team-sync-{sd.isoformat()}]]
+> - [[{d.isoformat()}]], [[{yd.isoformat()}]], [[{one}]], [[{sd.isoformat()}-team-sync]]
 """)
 
     def inbox(self):
@@ -722,7 +722,7 @@ Criticality `critical` means a silent service or a new error signature is red. C
 """)
         # morning triage
         t = d.isoformat()
-        self.note(f'journal/reports/triage-{t}.md', self.base(f'Triage {t}', d, 'report', ['report', 'triage'], 'draft') + [
+        self.note(f'journal/reports/{t}-triage.md', self.base(f'Triage {t}', d, 'report', ['report', 'triage'], 'draft') + [
             ('report_kind', 'triage')], f"""
 # 🩺 Triage {t}
 
@@ -768,7 +768,7 @@ Criticality `critical` means a silent service or a new error signature is red. C
 > - checkout-web: signature `TypeError address.postcode`, item 4807, first seen {self.day(-1).isoformat()} 17:12.
 """)
         # service health
-        self.note(f'journal/reports/health-{t}.md', self.base(f'Service health {t}', d, 'report', ['report', 'health'], 'draft') + [
+        self.note(f'journal/reports/{t}-health.md', self.base(f'Service health {t}', d, 'report', ['report', 'health'], 'draft') + [
             ('report_kind', 'health')], f"""
 # 🩺 Service health {t}
 
@@ -783,7 +783,7 @@ Criticality `critical` means a silent service or a new error signature is red. C
 
 | Severity | Service | Finding | Volume and start | Likely impact | Next step |
 |---|---|---|---|---|---|
-| 🟠 | payment-api | Provider timeouts on refunds | 214 errors from 02:40 | Refunds delayed | Already in [[triage-{t}]] |
+| 🟠 | payment-api | Provider timeouts on refunds | 214 errors from 02:40 | Refunds delayed | Already in [[{t}-triage]] |
 | ⚪ | search-indexer | No log records overnight | 0 records | Unknown: coverage gap | Check the log group name |
 
 ## ⚪ Dropped
@@ -818,7 +818,7 @@ Criticality `critical` means a silent service or a new error signature is red. C
         out = []
         for slug, line, bullets in blocks:
             out.append('\n'.join([f'<!-- service:{slug} -->', f'🕐 Updated on {dmy(d)} at 08:14', line] + [f'- {b}' for b in bullets]
-                                 + [f'[[health-{t}]]', f'<!-- /service:{slug} -->']))
+                                 + [f'[[{t}-health]]', f'<!-- /service:{slug} -->']))
         self.write('cockpit/pulse.md', rx.sub(lambda m: '\n\n'.join(out), pulse, count=1))
         # delivery digests
         for wk, when, merged, rows, signal, stale in (
@@ -830,7 +830,7 @@ Criticality `critical` means a silent service or a new error signature is red. C
             actions = '- None this week.'
             if stale:
                 actions = '- None new: the platform blockers are already tracked in [[database-upgrade]].'
-            self.note(f'journal/reports/delivery-{wk}.md', self.base(f'Delivery digest {wk}', when, 'report', ['report', 'delivery']) + [
+            self.note(f'journal/reports/{(when - datetime.timedelta(days=when.weekday())).isoformat()}-delivery.md', self.base(f'Delivery digest {wk}', when, 'report', ['report', 'delivery']) + [
                 ('report_kind', 'delivery')], f"""
 # 🚧 Delivery digest {wk}
 
@@ -892,11 +892,11 @@ PR counts do not measure value.
 - [[checkout]]: 18 merged, sprint 21/26 done, 1 blocked
 - [[platform]]: 9 merged, sprint 7/16 done, 4 blocked
 - [[growth]]: 12 merged, sprint 11/14 done, 0 blocked
-- Report: [[delivery-{prev_wk}]]
+- Report: [[{(fri - datetime.timedelta(days=fri.weekday())).isoformat()}-delivery]]
 """)
         # debt review and its area note
         dt = fri.isoformat()
-        self.note(f'journal/reports/debt-{dt}.md', self.base(f'Debt review {dt}', fri, 'report', ['report', 'debt'], 'draft') + [
+        self.note(f'journal/reports/{dt}-debt.md', self.base(f'Debt review {dt}', fri, 'report', ['report', 'debt'], 'draft') + [
             ('report_kind', 'debt')], f"""
 # 🧱 Debt review {dt}
 
@@ -963,7 +963,7 @@ PR counts do not measure value.
 - Duplicated validation code (checkout-web)
 - Deprecated token library (auth-service)
 
-[[debt-{dt}]]
+[[{dt}-debt]]
 <!-- /debt-review -->
 """)
 
@@ -1170,7 +1170,7 @@ Method: **RICE** = reach x impact x confidence / effort.
         # product weekly: written on Monday for the previous ISO week
         mon = self.day(-d.weekday())
         pw = iso_week(mon - datetime.timedelta(days=1))
-        self.note(f'journal/reports/product-weekly-{pw}.md', self.base(f'Product weekly {pw}', mon, 'report', ['report']) + [
+        self.note(f'journal/reports/{(mon - datetime.timedelta(days=7)).isoformat()}-product-weekly.md', self.base(f'Product weekly {pw}', mon, 'report', ['report']) + [
             ('report_kind', 'product-weekly')], f"""
 # 📦 Product weekly {pw}
 

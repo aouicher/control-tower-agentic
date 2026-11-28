@@ -21,6 +21,7 @@ import datetime
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shlex
 import pwd
@@ -557,9 +558,9 @@ class Ctx:
         clash = sorted({j['id'] for j in mine} & {j['id'] for j in pack_jobs})
         if clash:
             raise InstallError(f'your report {", ".join(clash)} has the id of a pack job: choose another id')
-        taken = sorted(j['id'] for j in pack_jobs if any(str(o).startswith(MY_REPORTS) for o in j['meta'].get('outputs', [])))
-        if taken:  # a pack job may not declare an output under journal/reports/my-..., kept for the user's reports
-            raise InstallError(f'pack job {", ".join(taken)} declares an output under {MY_REPORTS}..., kept for your own reports')
+        taken = sorted(j['id'] for j in pack_jobs if any(MY_REPORTS.match(posixpath.normpath(str(o))) for o in j['meta'].get('outputs', [])))
+        if taken:  # a report named ...-my-<id> is the user's own
+            raise InstallError(f'pack job {", ".join(taken)} declares a report named like your own (journal/reports/<date>-my-...)')
         known = set((a.get('servers') or {}).values())
         for j in pack_jobs + mine:
             cfg = (a.get('jobs') or {}).get(j['id'], {})

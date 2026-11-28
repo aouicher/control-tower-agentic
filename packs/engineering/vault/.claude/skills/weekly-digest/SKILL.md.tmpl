@@ -6,7 +6,7 @@ argument-hint: "[YYYY-Www]"
 
 # Weekly digest
 
-Output: `journal/reports/delivery-<YYYY-Www>.md`, a refreshed `cockpit/delivery.md`, and refreshed {{ct.workstream}} notes. Read `.claude/rules/engineering.md` first: its counting rules are binding.
+Output: `journal/reports/<Monday YYYY-MM-DD>-delivery.md`, a refreshed `cockpit/delivery.md`, and refreshed {{ct.workstream}} notes. Read `.claude/rules/engineering.md` first: its counting rules are binding.
 
 ## Steps
 
@@ -23,7 +23,7 @@ If the prompt has a `## Run context`, take dates and times from it and do not ru
 9. Write the report and the cockpit block (layout below). If a source fails, write the exact error in the annex and continue: a failed source is "not verified", never zero.
 10. Propose at most 3 `#to-triage` tasks, for new important findings only (for example a PR stuck for two weeks, {{ct.a_team}} with half its sprint blocked), in the report's `## ✅ Actions` section, naming the {{ct.team}} or {{ct.workstream}} concerned with a wikilink. Before proposing a task, Grep the vault for open `#to-triage` tasks and other open tasks with the same action, and skip duplicates. Also skip findings already raised in the previous report.
 
-## Report layout (`journal/reports/delivery-<YYYY-Www>.md`)
+## Report layout (`journal/reports/<Monday YYYY-MM-DD>-delivery.md`)
 
 Frontmatter: `title: "Delivery digest <YYYY-Www>"`, `date: <today, YYYY-MM-DD>`, `type: report`, `report_kind: delivery`, `tags: [report, delivery]`, `status: active`.
 

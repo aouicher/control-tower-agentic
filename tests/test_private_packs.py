@@ -38,7 +38,7 @@ def private_pack(base, pid='acme-private', **extra):
     write(os.path.join(d, 'jobs', 'acme-brief', 'job.json'), json.dumps({
         'id': 'acme-brief', 'name': 'Acme brief', 'description': 'Private job', 'schedule': {'days': 'mon-fri', 'time': '08:15'},
         'model': 'sonnet', 'capabilities': {'required': [], 'optional': []}, 'vault_only': True,
-        'outputs': ['journal/reports/acme-YYYY-MM-DD.md'], 'permissions': {'allow': [], 'deny': []}}))
+        'outputs': ['journal/reports/YYYY-MM-DD-acme.md'], 'permissions': {'allow': [], 'deny': []}}))
     write(os.path.join(d, 'jobs', 'acme-brief', 'prompt.md.tmpl'), 'Unattended job for {{ct.owner_name}}. Never ask, never wait.\n')
     return d
 

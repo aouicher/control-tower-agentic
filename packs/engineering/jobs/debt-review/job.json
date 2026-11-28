@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/debt-YYYY-MM-DD.md",
+    "journal/reports/YYYY-MM-DD-debt.md",
     "work/areas/technical-debt.md"
   ],
   "permissions": {
