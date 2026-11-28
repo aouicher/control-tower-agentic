@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import install  # noqa: E402
 import scheduling  # noqa: E402
-from plan import REPO, CorePolicy, core_files, mcp_file_findings, skill_problem, vault_settings_findings  # noqa: E402
+from plan import REPO, CorePolicy, core_files, mcp_file_findings, skill_problem, tool_connection, vault_settings_findings  # noqa: E402
 
 LAYOUT = ['_inbox', 'cockpit', 'work/projects', 'work/areas', 'work/workstreams', 'work/decisions', 'work/risks', 'team',
           'journal/daily', 'journal/meetings', 'journal/reports', 'library', '_system/templates', '_system/dashboards',
@@ -136,6 +136,9 @@ def check(vault, ct_home, claude_bin='claude'):
                 ok = os.path.isfile(os.path.join(vault, '.claude', 'adapters', f'{cap}.md'))
                 r.add('ok' if ok else 'FAIL', f'adapter note {cap} ({tool})',
                       'installed; the connection itself is not checked: follow library/setup-next-steps.md' if ok else 'missing')
+            if tool_connection(manifest, cap) and not os.path.isfile(os.path.join(vault, '.claude', 'adapters', f'{cap}-guide.md')):
+                r.add('warn', f'{cap} guide', f'.claude/adapters/{cap}-guide.md is missing: reports that need {cap} will not know how to '
+                      'query your connection. In Claude, in this vault, say: connect a tool for ' + cap)
     # obsidian
     obs = os.path.join(vault, '.obsidian')
     if os.path.isdir(obs):

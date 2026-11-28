@@ -53,3 +53,7 @@ A job that runs a command runs it in Claude Code's sandbox, which reaches only t
 ## Adding an adapter
 
 Copy a sibling manifest, keep to the capability contract, and run the tests. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Your own tool for a capability
+
+A capability can be served by a tool you already have instead of one of the kit's: `"tools": {"logs": "connection:<id>"}`, where `<id>` is one of your connections to an MCP server or a command (`configure.py add-connection`; a claude.ai connector cannot serve reports on this computer). The kit's reports that need the capability then get that connection's read tools and server, and `.claude/adapters/<capability>.md` points them to `.claude/adapters/<capability>-guide.md`, your vault's guide to querying it, which `/control-tower` writes with you ("Use one of your connections for a capability") from a skill, a note or a document you already have. Without the guide, a report queries nothing and says so; the setup check warns. Cloud routines never count on it: only this computer reaches the connection. Set it with `configure.py set --tool logs=connection:<id>`: the change shows the reports that start using it and needs your yes.
