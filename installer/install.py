@@ -35,6 +35,7 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
+import translate  # noqa: E402
 from toolnames import known_tools, match_tools  # noqa: E402
 from scheduling import CRON_END, apply, cron_header, cron_line, launchd_plist, local_time, pick_scheduler, shift_days  # noqa: E402
 from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError,  # noqa: E402
@@ -231,6 +232,16 @@ def vocab_files(repo, ids, packs):
         if packs[p].manifest.get('vocabulary'):
             files.append(os.path.join(packs[p].dir, packs[p].manifest['vocabulary']))
     return files
+
+
+def kit_texts(repo, ids, packs):
+    """The text of each Markdown file and template of the core and the chosen packs: skills, rules, job prompts, routines."""
+    for top in [os.path.join(repo, 'core')] + [packs[p].dir for p in ids]:
+        for root, _, names in os.walk(top):
+            for n in names:
+                if n.endswith(('.md', '.tmpl')):
+                    with open(os.path.join(root, n), encoding='utf-8', errors='replace') as fh:
+                        yield fh.read()
 
 
 def static_collisions(repo, ids, packs, policy):
@@ -516,6 +527,9 @@ class Ctx:
         if clash:
             raise InstallError('these files would be written by two packs or by a pack and the core: ' + '; '.join(clash))
         self.table = render.build_table(vocab_files(repo, a['packs'], self.packs), a)
+        self.translation = translate.load(self.vault, a['language'], a.get('translation_file'))
+        self.named = translate.named_headings(render.render_text(text, self.table, 'kit', []) for text in kit_texts(repo, a['packs'], self.packs))
+        self.collect = []  # the vault's texts, gathered while rendering: only their translation is kept
         for p in a['packs']:  # skills and notes as they will be written (a vocabulary word could otherwise build a forbidden key)
             check_rendered(self.packs[p], lambda text, rel: render.render_text(text, self.table, rel, []))
         self.installed, self.stash_dir = None, None
@@ -593,7 +607,12 @@ class Ctx:
 
     def render(self, src, **kw):
         self.record(render.render_tree(src, self.vault, self.table, dry_run=self.dry_run, installed=self.installed,
-                                       stash_dir=self.stash_dir, **kw))
+                                       stash_dir=self.stash_dir, transform=self.translated, **kw))
+
+    def translated(self, rel, content):
+        """A vault file in the vault's language; its texts are gathered first."""
+        self.collect.extend(translate.segments(rel, content, self.named))
+        return translate.apply(rel, content, self.translation, self.named)
 
 
 def vault_settings_warnings(vault, answers):
@@ -877,13 +896,17 @@ def step_manifest(ctx):
     jdump(ctx.manifest_path, {'version': VERSION, 'installed_at': datetime.datetime.now().isoformat(timespec='seconds'),
                               'packs': ctx.a['packs'], 'tools': ctx.a['tools'], 'ct_home': ctx.ct_home, 'files': files,
                               'vault_mode': ctx.report['vault_mode'], 'repo': ctx.repo, **ctx.policy.to_json()})
-    jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k not in ('claude_bin', 'strict')})
+    jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k not in ('claude_bin', 'strict', 'translation_file')})
+    seen = set(ctx.collect)
+    texts = {k: v for k, v in ctx.translation.items() if k in seen}  # the vault's own texts, nothing else
+    if texts:  # kept in the vault: every later write puts it back
+        jdump(os.path.join(ctx.vault, '.control-tower', 'translation.json'), {'language': ctx.a['language'], 'texts': texts})
     runtime = os.path.join(ctx.ct_home, 'install.json')
     jdump(runtime, dict(jload(runtime), kit_commit=kit_commit(ctx.repo)))
 
 
 def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=None, no_launchctl=False, log=print, update=False,
-            fresh=()):
+            fresh=(), strings=False):
     ctx = Ctx(answers, repo, dry_run, update)  # plan: everything is checked here, before the first write
     moved = step_fresh(ctx, fresh)
     try:
@@ -905,6 +928,8 @@ def install(answers, repo=REPO, dry_run=False, schedule=None, launch_agents_dir=
         for src, dest in moved:  # a refused run leaves the user's version of a fresh-copied file in place
             os.replace(dest, src)
         raise
+    if strings:  # the vault's texts, once each, in the order the installer met them
+        ctx.report['strings'] = list(dict.fromkeys(ctx.collect))
     sched = ctx.report['schedule']
     if schedule and not dry_run:  # 'load' this install's jobs in the scheduler, or 'unload' them all
         if sched['kind'] == 'none':
@@ -974,6 +999,7 @@ def main():
     ap.add_argument('--launch-agents-dir', help='where to link launchd plists (default ~/Library/LaunchAgents)')
     ap.add_argument('--no-launchctl', action='store_true', help='link plists but do not load them (tests)')
     ap.add_argument('--json', action='store_true')
+    ap.add_argument('--strings', action='store_true', help='with --answers: the vault\'s texts to translate, as JSON (nothing is written)')
     args = ap.parse_args()
     if args.interactive:
         print('error: the terminal wizard is gone. Open Claude Code in the kit folder and type /install-control-tower: it asks four '
@@ -994,6 +1020,9 @@ def main():
         answers = jload(args.answers)
         if args.runtime_only:
             answers['vault_mode'] = 'runtime'
+        if args.strings:
+            print(json.dumps(install(answers, dry_run=True, strings=True, log=lambda *x: None)['strings'], indent=1, ensure_ascii=False))
+            return
         report = install(answers, dry_run=args.dry_run, schedule='load' if args.apply_schedule else None,
                          launch_agents_dir=args.launch_agents_dir, no_launchctl=args.no_launchctl, update=args.update)
     except (InstallError, render.RenderError) as exc:

@@ -95,11 +95,13 @@ def update_action(target, out_rel, content, src, installed):
     return 'stashed'
 
 
-def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None, installed=None, stash_dir=None, skip=None):
+def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=False, rename=None, installed=None, stash_dir=None, skip=None,
+                transform=None):
     """Render src into dst. Returns {'created': [...], 'replaced': [...], 'kept': [...]} (relative paths).
 
     `rename` is an optional function(relative_output_path) -> relative_output_path, used by the installer
-    to place files (for example prompt.md.tmpl -> prompt.md).
+    to place files (for example prompt.md.tmpl -> prompt.md). `transform` is an optional function(relative_output_path,
+    content) -> content applied to each rendered text file (the installer's translation of the vault).
 
     Update mode (`installed` = {relative path: sha256 at install time}, from the vault manifest):
       * a file the user never edited (same checksum as installed) is replaced by the new version -> 'updated';
@@ -124,6 +126,7 @@ def render_tree(src, dst, table, dry_run=False, force=False, fail_on_collision=F
                 try:
                     with open(s, encoding='utf-8') as fh:
                         content = render_text(fh.read(), table, rel, errors)
+                    content = transform(out_rel, content) if transform else content
                 except UnicodeDecodeError:
                     content = None
             plan.append((s, os.path.join(dst, out_rel), out_rel, content))
