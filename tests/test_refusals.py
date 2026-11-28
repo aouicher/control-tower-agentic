@@ -106,11 +106,21 @@ class RefusalTests(unittest.TestCase):
 
 class RunnerRecordTests(unittest.TestCase):
     def test_the_notification_says_what_to_type(self):
-        text = run_job.notice('Weekly marketing metrics', os.path.join('notes', 'acme-vault'), blocked=True)
+        text = run_job.notice('Weekly marketing metrics', os.path.join('notes', 'acme-vault'), 'refused')
         self.assertIn('Weekly marketing metrics was blocked', text)
         self.assertIn('acme-vault', text)
         self.assertIn('fix my job', text)
-        self.assertIn('failed', run_job.notice('X', os.path.join('v', 'acme-vault'), blocked=False))
+        self.assertIn('failed', run_job.notice('X', os.path.join('v', 'acme-vault'), 'failed'))
+        down = [{'name': 'Amplitude', 'status': 'needs-auth'}, {'name': 'other', 'status': 'failed'}]
+        text = run_job.notice('Weekly marketing metrics', os.path.join('v', 'acme-vault'), 'auth', down)
+        self.assertIn('Amplitude', text, 'a run that only lost a signed-out server still succeeds: the user must hear of it')
+        self.assertIn('sign in', text)
+        self.assertNotIn('other', text)
+        self.assertIn('could not reach Amplitude and 1 more', run_job.notice('X', 'v', 'auth', down + [{'name': 'gmail', 'status': 'needs-auth'}]))
+        self.assertIn('was blocked', run_job.notice('X', 'v', 'network'), 'a blocked host is said even when the run did not fail')
+        self.assertIn('ran out of time', run_job.notice('X', 'v', 'timeout'))
+        self.assertIn('could not start other', run_job.notice('X', 'v', 'server', down))
+        self.assertIsNone(run_job.notice('X', os.path.join('v', 'acme-vault'), 'ok'), 'nothing to say')
 
     def test_a_secret_cut_at_the_edge_is_still_hidden(self):
         # the last 300 characters start inside "token=": cutting first would leave the value with no name to hide it by
@@ -122,7 +132,8 @@ class RunnerRecordTests(unittest.TestCase):
         down = [{'name': 'Amplitude', 'status': 'needs-auth'}]
         cases = {'timeout': (124, True, [], [], [], ''), 'network': (0, False, [], [], ['acme.atlassian.net'], ''),
                  'auth': (1, True, [], down, [], ''), 'refused': (0, False, [{'tool': 'x'}], [], ['a.example.com'], ''),
-                 'failed': (0, True, [], [], [], 'no result from Claude Code'), 'ok': (0, False, [], [], [], '')}
+                 'failed': (0, True, [], [], [], 'no result from Claude Code'), 'ok': (0, False, [], [], [], ''),
+                 'server': (0, False, [], [{'name': 'facts', 'status': 'failed'}], [], '')}
         for want, args in cases.items():
             with self.subTest(want):
                 self.assertEqual(run_job.outcome(*args), want)

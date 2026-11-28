@@ -8,7 +8,7 @@ CT_REAL_CLAUDE=1 python3 tests/e2e/smoke_real_claude.py --facts --save-init test
 
 Each check runs in a temporary folder with Haiku, `claude -p --permission-mode dontAsk --setting-sources project`, the mode the job runner uses. It adds no server and changes no setting (Claude Code keeps its usual session transcripts). The last run made 16 calls for $0.07. `tests/e2e/facts_mcp_server.py` is a local test MCP server with one read tool and one action tool.
 
-Last run: Claude Code 2.1.332, macOS, 2026-11-27.
+Last run: Claude Code 2.1.332, macOS, 2026-11-28.
 
 | Fact | Result | What was observed |
 |---|---|---|
@@ -24,6 +24,7 @@ Last run: Claude Code 2.1.332, macOS, 2026-11-27.
 | F8b. The result of a command the sandbox stopped is marked `is_error` and ends with its `<sandbox_violations>` block. | Pass | The runner reads blocked hosts only from such results. |
 | F9. A `${NAME}` in the `env` of a server given with `--mcp-config` is filled from the environment of the run. | Pass | The test server answers the value of a variable set only in the environment of `claude`. The adapters that need a key rely on it. |
 | F10. Under `--output-format stream-json`, a refusal of the guard hook reaches the runner. | Pass, not on stderr | The call is a permission denial, and its tool result is an error that starts with `PreToolUse:<tool> hook error: [<hook command>]: BLOCKED by control-tower guard: <reason>`; stderr holds nothing. The runner labels the denial of that id as the guard's, with its reason. |
+| F11. An MCP server that needs a sign-in shows in the init message, and the runner tells the user. | Pass, `needs-auth` | Checked with a local server that answers 401 with OAuth metadata (`tests/e2e/auth_mcp_server.py`): `mcp_servers` lists it as `{"status": "needs-auth"}` with no tools, and the run itself succeeds without it. The runner records the outcome `auth` and sends a notification naming the server, since nothing fails. |
 | F8. When the sandbox blocks a command's network access, the blocked host is visible. | Pass | The command's tool result, in the tool results of `--output-format stream-json` (which the runner reads), starts with `Exit code 1` and ends with `<sandbox_violations> deny network-outbound api.github.com:443 (user denied) </sandbox_violations>`. |
 
 Hosts the known command-line tools tried first, each run in the sandbox with no host allowed: the host is the one named in the sandbox's refusal (`deny network-outbound <host>:443`).
@@ -39,7 +40,6 @@ Only the first blocked host shows: once it is allowed, a command may need more. 
 ## Not checked by the script
 
 - F2 when the job is started by launchd, outside a login shell.
-- How an MCP server that needs a sign-in shows in the init message (`needs-auth` is assumed; without it, the diagnosis falls back to the error text).
 - A6: on a Mac without developer tools, the first `git` or `python3` call opens the dialog that installs them, Python 3.9 or newer included.
 - A7: the Claude desktop app lists the vault folder in its recent folders after a session on it.
 

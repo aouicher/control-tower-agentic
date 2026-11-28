@@ -14,12 +14,12 @@ The guided installer (`/install-control-tower`) asks you one question: "Do you a
 
 ## My job is blocked: what do I do?
 
-A job that was refused something, or that failed, sends a notification: "Weekly marketing metrics was blocked. Open Claude on your <vault folder> folder and say: fix my job." To fix it:
+A job that was refused something, that failed, that could not reach a tool you must sign in to again, or whose connection did not start sends a notification: "Weekly marketing metrics was blocked. Open Claude on your <vault folder> folder and say: fix my job." (or "... could not reach Amplitude: sign in again. ..."). A run whose tool needs a new sign-in, or whose connection did not start, does not fail: it runs without that tool's data, so this notification is the only sign. To fix it:
 
 1. Open Claude Code in your vault.
 2. Say "fix my job" (or type `/job-permissions`).
 3. Claude groups what the job was refused by tool or site, and asks "Allow" or "Not now" once per group. A refusal outside what the job is about (a metrics report reaching for your Gmail) is flagged as unusual, every time: it may come from text the job read, so the recommended answer is "Not now". "Allow anyway" allows that one rule, never the whole tool, and `/control-tower` lists these when you check your setup.
-4. When nothing was refused but the run failed, Claude says why: a sign-in that expired (type `/mcp` and sign in again), a run that took too long, or a web address the job could not reach (allowed only if you recognise it).
+4. When nothing was refused but the run failed or lost a tool, Claude says why: a sign-in that expired (type `/mcp` and sign in again), a connection that did not start (check the setup), a run that took too long, or a web address the job could not reach (allowed only if you recognise it).
 5. For each "Allow", the job gets that access from its next run. Claude offers to run the job again right away to check.
 
 To take an access back, ask the same skill ("stop letting the morning job read Slack").
