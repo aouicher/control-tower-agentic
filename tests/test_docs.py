@@ -53,8 +53,50 @@ class DocTests(unittest.TestCase):
         for needle in ('doctor.py', 'configure.py show', 'configure.py set', '--dry-run', '--accept-access', '/job-permissions',
                        'configure.py fresh-copy', 'never edit'):
             self.assertIn(needle.lower(), text.lower(), f'the hub must mention: {needle}')
-        for route in ('automate', 'update', 'uninstall'):  # only what works today is offered
+        for route in ('update', 'uninstall'):  # only routes that exist are offered
             self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
+
+    def test_the_automate_conversation(self):
+        import re
+        text = open(os.path.join(ROOT, 'core', 'vault', '.claude', 'skills', 'control-tower', 'SKILL.md'), encoding='utf-8').read()
+        section = re.search(r'\n## Automate a report\n(.*?)(\n## |\Z)', text, re.S)
+        self.assertIsNotNone(section, 'the hub has an "Automate a report" section')
+        steps = [int(n) for n in re.findall(r'^(\d+)\. ', section.group(1), re.M)]
+        self.assertEqual(steps, list(range(1, len(steps) + 1)), 'its steps are numbered in order')
+        order = [section.group(1).index(n) for n in ('configure.py check-skill', 'Try it now?', 'configure.py add-job', 'run_job.py', '/job-permissions')]
+        self.assertEqual(order, sorted(order), 'checked, tried, scheduled, run, refusals handed over: in that order')
+        self.assertIn('Run context', section.group(1))
+        menu = re.search(r'What would you like to do\?"[^.]*', text)
+        self.assertIsNotNone(menu)
+        self.assertIn('Automate a report', menu.group(0), 'offered in the first question')
+
+    def test_every_configure_command_in_a_skill_exists_with_its_flags(self):
+        import re
+        import subprocess
+        import sys
+        skills = [os.path.join(dp, f) for dp, _, fs in os.walk(os.path.join(ROOT, 'core', 'vault', '.claude', 'skills')) for f in fs
+                  if f == 'SKILL.md'] + [os.path.join(ROOT, '.claude', 'skills', 'install-control-tower', 'SKILL.md')]
+        used, alone = {}, set()  # flags inside a `configure.py <sub> ...` span, and flags in a span of their own (`--runs-on cloud`)
+        for path in skills:
+            text = open(path, encoding='utf-8').read()
+            for span in re.findall(r'`([^`]*configure\.py [^`]*)`', text):
+                sub = re.search(r'configure\.py ([a-z][a-z-]*)', span).group(1)
+                used.setdefault(sub, set()).update(re.findall(r'(--[a-z][a-z-]*)', span))
+            if path.startswith(os.path.join(ROOT, 'core')):  # the install skill also names install.py flags
+                alone.update(re.findall(r'`(--[a-z][a-z-]*)', text))
+        self.assertIn('add-job', used)
+        helps = {}
+        for sub, flags in sorted(used.items()):
+            with self.subTest(command=sub):
+                r = subprocess.run([sys.executable, os.path.join(ROOT, 'installer', 'configure.py'), sub, '--help'],
+                                   capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, f'configure.py has no "{sub}" command')
+                helps[sub] = r.stdout
+                for flag in sorted(flags):
+                    self.assertRegex(r.stdout, rf'{flag}\b', f'configure.py {sub} has no {flag}')
+        for flag in sorted(alone - {'--help'}):  # a command's own --help, run by the skill
+            with self.subTest(flag=flag):
+                self.assertTrue(any(re.search(rf'{flag}\b', h) for h in helps.values()), f'no configure.py command has {flag}')
 
     def test_a_command_is_never_recorded_without_its_network_answer(self):
         skills = os.path.join(ROOT, 'core', 'vault', '.claude', 'skills')
