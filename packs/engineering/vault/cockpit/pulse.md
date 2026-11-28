@@ -21,5 +21,5 @@ Services come from [[services]]. A service with no block, or whose block says "n
 
 ## 📎 Annexes
 
-- Latest full report: the most recent `health-YYYY-MM-DD` note in `journal/reports/`.
-- Quality gates and new errors: the most recent `triage-YYYY-MM-DD` note in `journal/reports/`.
+- Latest full report: the most recent `YYYY-MM-DD-health` note in `journal/reports/`.
+- Quality gates and new errors: the most recent `YYYY-MM-DD-triage` note in `journal/reports/`.

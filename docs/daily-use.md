@@ -59,7 +59,7 @@ start my day
 
 | Situation | What to type in Claude Code | What you get |
 |---|---|---|
-| You leave a meeting | `/meeting 1-1 casey` then paste your notes or the transcript | A meeting note in `journal/meetings/casey/`, decisions filed, each action proposed into the project it belongs to (after you confirm) |
+| You leave a meeting | `/meeting 1-1 casey` then paste your notes or the transcript | A meeting note in `journal/meetings/1-1/casey-doe/`, named `<date>-1-1-casey-doe.md`, decisions filed, each action proposed into the project it belongs to (after you confirm) |
 | A thought, link or idea | Create a note in Obsidian (it lands in `_inbox/`), or tell Claude "note in the inbox: ask finance about Q1 budget" | Captured now, sorted later with `/inbox` (below) |
 | You need background on a topic | `/research onboarding emails best practices` | A sourced note in `library/`, vault searched first |
 | A decision was made | "record the decision: we keep the in-house flag service, because..." | A note in `work/decisions/` with context, options and outcome |
@@ -121,7 +121,7 @@ A report always says when data was missing ("not verified", "at least N (truncat
 
 ### A report of your own
 
-In Claude, in your vault, say what you want done on its own, for example "every morning, sum up my open tickets", or type `/control-tower` and choose "Automate a report". Claude asks what it should do and where the data comes from (your notes, your connected tools), writes it as a skill of your vault, lets you try it, then asks when it should run. Each run writes `journal/reports/my-<name>-<date>.md`. A report that reads a claude.ai connector (Gmail) runs on claude.ai as a cloud routine, which you create when Claude offers it. To move, stop or remove a report later, ask `/control-tower` to change your setup.
+In Claude, in your vault, say what you want done on its own, for example "every morning, sum up my open tickets", or type `/control-tower` and choose "Automate a report". Claude asks what it should do and where the data comes from (your notes, your connected tools), writes it as a skill of your vault, lets you try it, then asks when it should run. Each run writes `journal/reports/<date>-my-<name>.md`. A report that reads a claude.ai connector (Gmail) runs on claude.ai as a cloud routine, which you create when Claude offers it. To move, stop or remove a report later, ask `/control-tower` to change your setup.
 
 ## A week by profile
 
@@ -133,7 +133,7 @@ In Claude, in your vault, say what you want done on its own, for example "every 
 | New campaign | `/campaign-brief launch the spring offer to existing customers, budget 20k` | A campaign note with audience, message, channels, budget, KPIs, timeline and risks |
 | Every morning | Read the morning brief | Content going live in the next three days, yesterday's traffic against the same day last week |
 | Mid-week | `/competitor-watch Acme Rival, last 30 days` | A sourced note in `library/` with launches, pricing and campaign moves |
-| Monday (job) | `weekly-metrics` report, named after last week (`marketing-metrics-YYYY-Www`) | Traffic, conversion, draft and active campaigns, best and worst content, three observations |
+| Monday (job) | `weekly-metrics` report, named after last week (`<Monday YYYY-MM-DD>-marketing-metrics`) | Traffic, conversion, draft and active campaigns, best and worst content, three observations |
 | Friday | `/weekly-review` | Done, slipped content, next week's top 3 |
 
 Templates you will use: `content-piece`, `launch-plan`, `campaign-retro` (in Obsidian: command palette, *Templates: Insert template*).
@@ -158,7 +158,7 @@ Templates you will use: `content-piece`, `launch-plan`, `campaign-retro` (in Obs
 | While working | `/worklog decided to cache the price list for 5 min, see PR 412` | A dated line in today's note |
 | After a hard bug | `/debug-journal checkout timeout on large carts` | Symptom, hypotheses tried, root cause, fix, how to detect it next time |
 | Every morning (job) | `morning-prs` report | Reviews to do and your open pull requests |
-| Friday (job) | `weekly-wrap` report (`dev-weekly-wrap-YYYY-Www`) | Merged, closed, carried over |
+| Friday (job) | `weekly-wrap` report (`<Monday YYYY-MM-DD>-dev-weekly-wrap`) | Merged, closed, carried over |
 
 ### Engineering leader
 

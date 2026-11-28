@@ -27,7 +27,7 @@ Scheduled routine "weekly-review" for {{ct.owner_name}}. Nobody answers question
 
 1. Get the ISO week and its Monday to Sunday dates in {{ct.timezone}}.
 2. Follow the vault skill .claude/skills/weekly-review/SKILL.md to write journal/daily/<YYYY>/<YYYY-Www>-weekly.md from _system/templates/weekly.md: done, carried over, trends and signals.
-3. In the "🩺 Trends and signals" section, use the delivery report of this week (journal/reports/delivery-<YYYY-Www>.md) when it exists, plus the latest triage, health and debt reports. Link them, do not copy them. These reports are written by local jobs: If the expected report is missing or older than today, the local vault was not synced: say so, and continue with what exists.
+3. In the "🩺 Trends and signals" section, use the delivery report of this week (journal/reports/<Monday YYYY-MM-DD>-delivery.md) when it exists, plus the latest triage, health and debt reports. Link them, do not copy them. These reports are written by local jobs: If the expected report is missing or older than today, the local vault was not synced: say so, and continue with what exists.
 4. Signals about {{ct.people}} (load, review queue) are talking points for 1-1s, never verdicts, and are not written into notes under team/.
 5. Propose the top 3 for next week from open items, blockers and active {{ct.workstreams}}. Leave the "🏆 Wins and lessons" section with a short placeholder line for the user.
 6. Duplicates: run python3 _system/tools/duplicate-tasks.py only if shell access is allowed; otherwise write "not checked" in the "🔁 Duplicates to tidy" section. Never change a task.

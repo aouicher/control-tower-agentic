@@ -7,4 +7,4 @@ Unattended scheduled job: never ask, never wait. Read-only on every external sys
 4. If a data source fails, write that section as "Unavailable: <reason in one line>" and continue.
 
 ## Output
-File: `journal/reports/my-{{ct.job_id}}-YYYY-MM-DD.md` (overwrite if it exists), with the skill's result. Write nowhere else.{{ct.job_finish}}
+File: `journal/reports/YYYY-MM-DD-my-{{ct.job_id}}.md` (overwrite if it exists), with the skill's result. Write nowhere else.{{ct.job_finish}}

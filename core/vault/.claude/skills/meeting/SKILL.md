@@ -6,7 +6,7 @@ argument-hint: "<type> [date], e.g. 1-1 alex, weekly-sync, steering"
 
 # Meeting
 
-Output: ONE note from `_system/templates/meeting.md`: `journal/meetings/<type>/<type>-<YYYY-MM-DD>.md`, or for a one-to-one `journal/meetings/1-1/<person-slug>/1-1-<person-slug>-<YYYY-MM-DD>.md` (one folder per {{ct.person}}). Tasks never stay in the meeting note: they go to the note they belong to.
+Output: ONE note from `_system/templates/meeting.md`: `journal/meetings/<type>/<YYYY-MM-DD>-<type>.md`, or for a one-to-one `journal/meetings/1-1/<person-slug>/<YYYY-MM-DD>-1-1-<person-slug>.md` (one folder per {{ct.person}}). Tasks never stay in the meeting note: they go to the note they belong to.
 
 ## 1. Identify the meeting
 

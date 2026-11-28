@@ -11,7 +11,7 @@ Read `.claude/skills/product-weekly/SKILL.md` with the Read tool (skills are not
 6. If an adapter is missing or fails, say so in the report and continue with the rest.
 
 ## Output
-Write `journal/reports/product-weekly-<YYYY-Www>.md`, named after the ISO week it covers (overwrite the same week only), with frontmatter `title` (double-quoted), `date` (today, `YYYY-MM-DD`), `type: report`, `report_kind: "product-weekly"`, `tags: [report]`, `status: active`, then:
+Write `journal/reports/<Monday YYYY-MM-DD>-product-weekly.md`, named after the ISO week it covers, the current ISO week of the Run context (`<Monday YYYY-MM-DD>` is its Monday; overwrite the same week only), with frontmatter `title` (double-quoted), `date` (today, `YYYY-MM-DD`), `type: report`, `report_kind: "product-weekly"`, `tags: [report]`, `status: active`, then:
 - `# Title` and `🕐 Generated on DD/MM/YYYY at HH:MM`
 - `> [!summary] Summary` (3 bullets: shipped, main risk, decision needed)
 - `## ✅ Shipped`, `## 🚧 In progress`, `## 🚨 Blocked`: tables with {{ct.workstream}} wikilinks and tracker keys

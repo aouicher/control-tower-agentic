@@ -16,7 +16,7 @@
     ]
   },
   "outputs": [
-    "journal/reports/product-weekly-YYYY-Www.md"
+    "journal/reports/YYYY-MM-DD-product-weekly.md"
   ],
   "permissions": {
     "allow": [],

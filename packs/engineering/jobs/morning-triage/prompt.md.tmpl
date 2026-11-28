@@ -10,11 +10,11 @@ Window: the last 24 hours, or since the previous working day's report on a Monda
 - Mask personal data and secrets in everything you write.
 
 ## Steps
-1. Read the services list `library/services.md` for the error projects and environments to check, and the latest `triage-*.md` report.
+1. Read the services list `library/services.md` for the error projects and environments to check, and the latest `????-??-??-triage.md` report.
 2. Errors (capability `errors`, use the adapter configured in `.claude/adapters/errors.md`): for each production project, fetch items of level error and critical. Keep items first seen in the window, and items whose volume at least triples versus the previous report. Group by signature. If a project cannot be queried, record the exact error and continue.
 3. Quality (capability `quality`, adapter in `.claude/adapters/quality.md`): list projects with a failing quality gate, and the reason (condition and value). Note new blocker or critical issues if the adapter exposes them with a date; otherwise say the date is not available.
 4. Classify: 🔴 critical (money or data at risk, authentication, a service crash-looping or silent), 🟠 to watch (new signature with real user impact, or volume x3), ⚪ noise (known recurring, low volume: count it, do not list it).
-5. Write `journal/reports/triage-YYYY-MM-DD.md` (replace if it exists), frontmatter `title: "Triage YYYY-MM-DD"`, `date: YYYY-MM-DD` (today), `type: report`, `report_kind: triage`, `tags: [report, triage]`, `status: draft`:
+5. Write `journal/reports/YYYY-MM-DD-triage.md` (replace if it exists), frontmatter `title: "Triage YYYY-MM-DD"`, `date: YYYY-MM-DD` (today), `type: report`, `report_kind: triage`, `tags: [report, triage]`, `status: draft`:
    - `# 🩺 Triage YYYY-MM-DD`, then `🕐 Generated on DD/MM/YYYY at HH:MM`.
    - `> [!summary] Summary`: a status icon 🟢🟠🔴 and the headline (worst severity and count, or "Nothing to report"), 3 bullets max.
    - `## 🔴🟠 Findings`: ONE table `| Severity | Project | Finding | Volume and first seen | Likely impact | Next step |`, max 6 rows, one short phrase per cell. If none: "Nothing to report".

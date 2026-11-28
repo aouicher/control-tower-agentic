@@ -19,7 +19,7 @@ ISO week from the argument, else the current one (`date +%G-W%V`). Monday 00:00 
 3. **Tracker**: for each {{ct.workstream}}, list items done in the window (shipped), in progress, and blocked. Trackers return at most 100 items per page: paginate until the end, or write "at least N (truncated)". Never give a count from a partial page.
 4. **Analytics**: read the metrics named in the PRDs (primary and guardrail). Compare the week to the previous week, same segment and definition. If the data is sampled or from an export, say "sampled" next to the figure. If a metric is unavailable, say so instead of estimating.
 5. **Decisions needed**: open notes in `work/decisions/` with `decision_status: to-decide|proposed`, and blockers found in step 3.
-6. Write `journal/reports/product-weekly-<YYYY-Www>.md` (named after the week it covers) from `_system/templates/report.md`, `date: <today, YYYY-MM-DD>`, `report_kind: "product-weekly"`:
+6. Write `journal/reports/<Monday YYYY-MM-DD>-product-weekly.md` (named after the week it covers) from `_system/templates/report.md`, `date: <today, YYYY-MM-DD>`, `report_kind: "product-weekly"`:
    - `🕐 Generated on DD/MM/YYYY at HH:MM` (real time) and `> [!summary] Summary` (3 bullets: shipped, risk, decision needed);
    - `## ✅ Shipped`, `## 🚧 In progress`, `## 🚨 Blocked` (tables with {{ct.workstream}} wikilinks and tracker keys);
    - `## 📊 Metric movements`: `| Metric | This week | Previous | Change | Note |`;

@@ -22,7 +22,7 @@ If the prompt has a `## Run context`, take dates and times from it and do not ru
    - **Content**: for each content note with `stage: published` and a `publish_date` in the last 4 weeks, its views and main result if the analytics tool can attribute them to the page. Rank them: best 3 and worst 3 by the metric that fits their channel.
 4. Truncation and sampling: if a tool says its answer is sampled, limited or paginated, paginate to the end. If you cannot, report the number as "at least N" or "estimated from a sample" and state it in the report. Never present such a figure as exact.
 5. Never invent or fill a missing number. Write "not available" and the reason.
-6. Write `journal/reports/marketing-metrics-<YYYY-Www>.md` as described under Presentation, `date: <today, YYYY-MM-DD>`, `type: report`, `report_kind: "marketing-metrics"`. If the file exists, overwrite it (it is generated).
+6. Write `journal/reports/<Monday YYYY-MM-DD>-marketing-metrics.md` as described under Presentation, `date: <today, YYYY-MM-DD>`, `type: report`, `report_kind: "marketing-metrics"`. If the file exists, overwrite it (it is generated).
 7. Observations: exactly 3, each tied to a number, each with a possible reason marked as hypothesis and a suggested next step. Never write `rag` or change any existing note.
 8. Suggested actions are tasks tagged `#to-triage` in the report's `## ✅ Actions`, only for important new findings.
 9. Reply with the summary and the path.

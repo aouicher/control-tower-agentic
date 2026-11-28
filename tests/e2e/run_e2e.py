@@ -78,7 +78,7 @@ def scenario(packs):
         if 'weekly-digest' in jobs:  # the job follows its skill with the Run context and Glob: nothing refused, no date, no ls
             follow = [{'tool_name': 'Read', 'tool_input': {'file_path': os.path.join(vault, '.claude', 'skills', 'weekly-digest', 'SKILL.md')}},
                       {'tool_name': 'Glob', 'tool_input': {'pattern': 'work/workstreams/*/*.md'}},
-                      {'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(vault, 'journal', 'reports', 'delivery-2026-W48.md')}}]
+                      {'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(vault, 'journal', 'reports', '2026-11-23-delivery.md')}}]
             dp = os.path.join(ct, 'logs', 'weekly-digest.denials.json')
             r = run([PY, os.path.join(ct, 'bin', 'run_job.py'), '--job', 'weekly-digest', '--ct-home', ct],
                     dict(env, FAKE_CLAUDE_CALLS=json.dumps(follow)))

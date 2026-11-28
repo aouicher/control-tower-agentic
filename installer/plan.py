@@ -688,7 +688,7 @@ def mcp_file_findings(vault, answers):
 
 DATE_COMMAND = re.compile(r'`date( [^`]*)?`')
 MY_JOB_KEYS = {'skill', 'uses', 'model', 'runs_on'}  # when it runs is in `jobs`, as for every job
-MY_REPORTS = 'journal/reports/my-'  # where the user's reports write: core/jobs/skill-job/prompt.md.tmpl
+MY_REPORTS = re.compile(r'journal/reports/([^/]*-)?my-', re.I)  # the user's reports (core/jobs/skill-job/prompt.md.tmpl): no pack's
 MY_PACK = 'my'  # the user's cloud reports are the routines `my--<id>`: no pack may take this id
 
 
@@ -802,7 +802,7 @@ def my_jobs(answers):
         caps = [u for u in uses if u not in conns]
         meta = {'id': jid, 'name': my_report_name(jid), 'description': f'Runs the skill {cfg["skill"]}.',
                 'schedule': dict(DEFAULT_SCHEDULE), 'model': cfg.get('model', 'sonnet'),
-                'capabilities': {'required': caps, 'optional': []}, 'outputs': [f'{MY_REPORTS}{jid}-YYYY-MM-DD.md'],
+                'capabilities': {'required': caps, 'optional': []}, 'outputs': [f'journal/reports/YYYY-MM-DD-my-{jid}.md'],
                 'permissions': {'allow': [r for u in uses if u in conns for r in conns[u]['read_tools']], 'deny': []}}
         out.append({'pack': None, 'id': jid, 'meta': meta, 'dir': SKILL_JOB, 'missing': [c for c in caps if tools.get(c, 'none') == 'none'],
                     'tokens': {'job_id': jid, 'job_skill': cfg['skill'], 'job_dates': SKILL_JOB_DATES, 'job_finish': ''},

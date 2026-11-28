@@ -318,5 +318,29 @@ class AdapterTests(unittest.TestCase):
                     self.assertFalse(risky.search(perm), f'{cap}/{tool}: permission "{perm}" looks like a write permission')
 
 
+class DatedNamesTests(unittest.TestCase):
+    """A dated note's file name starts with its date, so a folder of meetings or reports sorts by date."""
+    def texts(self):
+        for top in ('core', 'packs', 'docs'):
+            for root, _, names in os.walk(os.path.join(ROOT, top)):
+                for n in names:
+                    if n.endswith(('.md', '.tmpl', '.json', '.base')):
+                        with open(os.path.join(root, n), encoding='utf-8') as fh:
+                            yield os.path.relpath(os.path.join(root, n), ROOT), fh.read()
+
+    def test_dates_come_first(self):
+        kind_first = re.compile(r'(?:journal/(?:reports|meetings)/|`)[a-z][a-z0-9-]*-\*|`\*-[a-z-]+\.md`')
+        late = re.compile(r'(journal/(reports|meetings)/[^`\s"]*[a-z>}]-(<?YYYY-(MM-DD|Www)>?|<date>)\.md)')
+        for rel, text in self.texts():
+            with self.subTest(rel):
+                self.assertEqual(late.findall(text), [], 'the date goes first: journal/reports/YYYY-MM-DD-<kind>.md')
+                self.assertEqual(kind_first.findall(text), [], 'a report is found by its date and kind: ????-??-??-<kind>.md')
+        for rel, text in self.texts():
+            if rel.endswith('job.json'):
+                for out in json.loads(text).get('outputs', []):
+                    if out.startswith('journal/reports/'):
+                        self.assertTrue(out.startswith('journal/reports/YYYY-MM-DD-'), f'{rel}: {out}')
+
+
 if __name__ == '__main__':
     unittest.main()

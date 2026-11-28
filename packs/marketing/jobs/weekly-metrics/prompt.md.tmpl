@@ -2,7 +2,7 @@ Unattended scheduled job. Never ask, never wait. Read-only on every external sys
 
 ## Data window
 
-- Report week: the last COMPLETE ISO week, Monday to Sunday, in {{ct.timezone}}. It is the "Last complete ISO week" of the Run context at the top of this prompt. `YYYY-Www` below is always this reported week, never the week of the run.
+- Report week: the last COMPLETE ISO week, Monday to Sunday, in {{ct.timezone}}. It is the "Last complete ISO week" of the Run context at the top of this prompt. `YYYY-Www` below is always this reported week, never the week of the run, and `<Monday YYYY-MM-DD>` is its Monday.
 - Comparison week: the 7 days before it ("The week before" in the Run context). Both periods have the same length and the same definitions. Compute both date ranges before reading any data.
 
 ## Steps
@@ -16,7 +16,7 @@ Unattended scheduled job. Never ask, never wait. Read-only on every external sys
 7. Write the output file below. Overwrite it if it exists.
 8. Anything to do is a task in `## ✅ Actions` tagged `#to-triage`, only for new important findings, never for minor or recurring points. Before proposing a task, Grep the vault for open `#to-triage` tasks and other open tasks with the same action, and skip duplicates. Never write `rag`, `owner`, `due` or `group` in any existing note. Create no other file.
 
-## Output: `journal/reports/marketing-metrics-YYYY-Www.md`
+## Output: `journal/reports/<Monday YYYY-MM-DD>-marketing-metrics.md`
 
 Frontmatter: `title: "Marketing metrics YYYY-Www"`, `date: YYYY-MM-DD` (today), `type: report`, `report_kind: "marketing-metrics"`, `tags: [report]`, `status: active`. Free text always in double quotes.
 
