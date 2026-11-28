@@ -23,19 +23,37 @@ def git(repo, *args):
     return r.stdout.strip()
 
 
+def kit_files():
+    """The kit's files, relative to ROOT: the ones git tracks, or, in a copy without git (the test container, whose
+    .dockerignore leaves .git out), every file but what that .dockerignore leaves out."""
+    r = subprocess.run(['git', '-C', ROOT, 'ls-files'], capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        return [rel for rel in r.stdout.split('\n') if rel]
+    out = []
+    for dp, dirs, files in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in ('.git', '__pycache__') and os.path.relpath(os.path.join(dp, d), ROOT) != os.path.join('tests', '.work')]
+        out += [os.path.relpath(os.path.join(dp, f), ROOT) for f in files if not f.endswith('.local') and not f.startswith('.env')]
+    return out
+
+
+def kit_repo(dest):
+    """A git repository at `dest` with one commit of the kit's files."""
+    os.makedirs(dest, exist_ok=True)
+    for rel in kit_files():
+        if os.path.isfile(os.path.join(ROOT, rel)):
+            os.makedirs(os.path.dirname(os.path.join(dest, rel)), exist_ok=True)
+            shutil.copy2(os.path.join(ROOT, rel), os.path.join(dest, rel))
+    git(dest, 'init', '-q', '-b', 'main')
+    git(dest, 'add', '-A')
+    git(dest, 'commit', '-q', '-m', 'kit')
+
+
 class UpdateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._seed_tmp = tempfile.TemporaryDirectory()
         cls.seed = os.path.join(cls._seed_tmp.name, 'seed')
-        tracked = subprocess.run(['git', '-C', ROOT, 'ls-files'], capture_output=True, text=True).stdout.split('\n')
-        for rel in filter(None, tracked):
-            if os.path.isfile(os.path.join(ROOT, rel)):
-                os.makedirs(os.path.dirname(os.path.join(cls.seed, rel)), exist_ok=True)
-                shutil.copy2(os.path.join(ROOT, rel), os.path.join(cls.seed, rel))
-        git(cls.seed, 'init', '-q', '-b', 'main')
-        git(cls.seed, 'add', '-A')
-        git(cls.seed, 'commit', '-q', '-m', 'kit')
+        kit_repo(cls.seed)
 
     @classmethod
     def tearDownClass(cls):
