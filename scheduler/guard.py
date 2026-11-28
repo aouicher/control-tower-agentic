@@ -205,6 +205,26 @@ def check(event, vault):
     return None
 
 
+# Unattended jobs run in the vault and load its project settings. Only these keys, with these values, cannot widen what a job
+# does; anything else (allow rules, hooks, env, additionalDirectories, apiKeyHelper, enabled MCP servers...) is risky: the
+# installer and the doctor report it, and the runner refuses to start a job.
+HARMLESS_SETTINGS = {'enabledMcpjsonServers': [], 'enableAllProjectMcpServers': False, '$schema': None}
+
+
+def risky_settings(path):
+    """Keys of a vault settings file that could widen unattended jobs ([] when harmless or absent). Unreadable counts as risky."""
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path, encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return ['(unreadable)']
+    if not isinstance(data, dict):
+        return ['(not an object)']
+    return sorted(k for k, v in data.items() if k not in HARMLESS_SETTINGS or (HARMLESS_SETTINGS[k] is not None and v != HARMLESS_SETTINGS[k]))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--vault', required=True)

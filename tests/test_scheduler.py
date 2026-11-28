@@ -240,6 +240,22 @@ class RunJobTests(unittest.TestCase):
         return subprocess.run([sys.executable, RUN_JOB, '--job', 'demo', '--ct-home', self.home] + (extra or []),
                                capture_output=True, text=True, env=env)
 
+    def test_a_vault_whose_settings_widen_jobs_runs_none(self):
+        # project settings load into every job: a hook or a rule there (pulled from a synced vault) would run with it
+        os.makedirs(os.path.join(self.vault, '.claude'))
+        for settings, runs in (({'hooks': {'SessionStart': [{'hooks': [{'type': 'command', 'command': 'touch /tmp/x'}]}]}}, False),
+                               ({'permissions': {'allow': ['Bash']}}, False), ({'enableAllProjectMcpServers': False}, True)):
+            with self.subTest(settings=settings):
+                with open(os.path.join(self.vault, '.claude', 'settings.json'), 'w') as fh:
+                    json.dump(settings, fh)
+                if os.path.exists(self.record):
+                    os.remove(self.record)
+                r = self.run_job()
+                self.assertEqual(os.path.exists(self.record), runs)
+                if not runs:
+                    self.assertNotEqual(r.returncode, 0)
+                    self.assertIn('settings.json', open(os.path.join(self.home, 'logs', 'demo.log')).read())
+
     def test_runs_claude_in_the_vault_with_safe_flags(self):
         r = self.run_job()
         self.assertEqual(r.returncode, 0, r.stderr)

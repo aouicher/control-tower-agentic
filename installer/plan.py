@@ -235,6 +235,8 @@ def check_pack(pk):
                     raise InstallError(f'pack "{pk.id}": {os.path.relpath(os.path.join(base, n), pk.dir)} is a symlink: packs may not contain symlinks')
     if pk.manifest.get('vocabulary'):
         contained(os.path.join(pk.dir, pk.manifest['vocabulary']), 'vocabulary')
+    if pk.id == MY_PACK:
+        raise InstallError(f'pack id "{MY_PACK}" is kept for your own reports: choose another')
     for j in pk.manifest.get('jobs', []):
         check_id(f'job (pack {pk.id})', j)
         jp = os.path.join(pk.dir, 'jobs', j, 'job.json')
@@ -329,21 +331,17 @@ def resolve_packs(repo, answers=None):
     return packs
 
 
-# ----------------------------------------------------------------------------- vault settings
-# Unattended jobs run in the vault and load its project settings. Only these keys, with these values, cannot widen what a job
-# does; anything else (allow rules, hooks, env, additionalDirectories, apiKeyHelper, enabled MCP servers...) is reported.
-HARMLESS_SETTINGS = {'enabledMcpjsonServers': [], 'enableAllProjectMcpServers': False, '$schema': None}
-
-
-def risky_settings(path):
-    """Keys of a vault settings file that could widen unattended jobs ([] when harmless). Unreadable counts as risky."""
-    try:
-        data = jload(path)
-    except (OSError, ValueError):
-        return ['(unreadable)']
-    if not isinstance(data, dict):
-        return ['(not an object)']
-    return sorted(k for k, v in data.items() if k not in HARMLESS_SETTINGS or (HARMLESS_SETTINGS[k] is not None and v != HARMLESS_SETTINGS[k]))
+def vault_settings_findings(vault):
+    """(file, level, text) for the vault's Claude settings that could widen jobs: the runner refuses every job while
+    .claude/settings.json does (jobs load it); .claude/settings.local.json only reaches the user's own sessions."""
+    out = []
+    for rel, level, effect in (('.claude/settings.json', 'FAIL', 'jobs load it, so none runs until it is empty; whoever added these '
+                                'settings moves them to their user settings'),
+                               ('.claude/settings.local.json', 'warn', 'keep it for your own sessions only')):
+        keys = guard_rules.risky_settings(os.path.join(expand(vault), rel))
+        if keys:
+            out.append((rel, level, f'sets {", ".join(keys)}: {effect}'))
+    return out
 
 
 # ----------------------------------------------------------------------------- core policy
@@ -549,11 +547,15 @@ def approved_servers(vault, answers, recorded):
 
 
 def connection_problem(cid, entry):
-    """Why one `connections` answer is refused: {id: {"server": s} or {"command": c}, plus "read_tools": [its read rules]}."""
+    """Why one `connections` answer is refused: {id: {"server": s} or {"command": c}, plus "read_tools": [its read rules]}, or
+    {id: {"connector": "<claude.ai connector name>"}}, whose tools are chosen on claude.ai (only cloud reports use it)."""
     if not ID_RE.match(str(cid)):
         return f'"connections": "{cid}" is not an id (lowercase letters, digits and -)'
-    if not isinstance(entry, dict) or len({'server', 'command'} & set(entry)) != 1 or set(entry) - {'server', 'command', 'read_tools'}:
-        return f'"connections" "{cid}" holds a "server" or a "command", and its "read_tools"'
+    keys = set(entry) if isinstance(entry, dict) else set()
+    if keys not in ({'server', 'read_tools'}, {'command', 'read_tools'}, {'connector'}):
+        return f'"connections" "{cid}" holds a "server" or a "command" and its "read_tools", or a claude.ai "connector" name'
+    if keys == {'connector'}:
+        return None if CONNECTOR_NAME.match(str(entry['connector'])) else f'"connections" "{cid}": "{entry["connector"]}" is not a connector name'
     rules, source = entry.get('read_tools'), entry.get('server') or entry.get('command')
     if not isinstance(rules, list) or not rules:
         return f'"connections" "{cid}": "read_tools" lists at least one tool'
@@ -592,7 +594,7 @@ def server_answer_problems(answers, capabilities):
     if not isinstance(added, list) or not all(SERVER_NAME.match(str(s)) for s in added):
         out.append('"connections_added" is a list of MCP server names')
     if not isinstance(conns, dict):
-        return out + ['"connections" maps an id to {"server" or "command", "read_tools"}']
+        return out + ['"connections" maps an id to {"server" or "command", "read_tools"} or {"connector"}']
     out += [f'"connections": "{c}" is the name of a capability: choose another id' for c in conns if c in capabilities]
     owned = list(servers.values() if isinstance(servers, dict) else [])
     owned += [c['server'] for c in conns.values() if isinstance(c, dict) and 'server' in c]
@@ -617,8 +619,21 @@ def mcp_file_findings(vault, answers):
 
 
 DATE_COMMAND = re.compile(r'`date( [^`]*)?`')
-MY_JOB_KEYS = {'skill', 'uses', 'model'}  # when it runs is in `jobs`, as for every job
+MY_JOB_KEYS = {'skill', 'uses', 'model', 'runs_on'}  # when it runs is in `jobs`, as for every job
 MY_REPORTS = 'journal/reports/my-'  # where the user's reports write: core/jobs/skill-job/prompt.md.tmpl
+MY_PACK = 'my'  # the user's cloud reports are the routines `my--<id>`: no pack may take this id
+
+
+def my_report_name(jid):
+    """A report of the user's own, as named in its job, its routine and every message about it."""
+    return f'Your report {jid}'
+DEFAULT_SCHEDULE = {'days': 'mon-fri', 'time': '08:00'}  # a report of the user's own with no `jobs.<id>` time
+CONNECTOR_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$')  # a claude.ai connector, as claude.ai shows it
+
+
+def job_schedule(default, cfg):
+    """A job's days and time: its default, with the answers' `jobs.<id>` days and time over it."""
+    return {**default, **{k: v for k, v in (cfg or {}).items() if k in ('days', 'time')}}
 
 
 def skill_problem(vault, skill):
@@ -649,12 +664,20 @@ def my_job_problems(answers, capabilities):
             out.append(f'"my_jobs": "{jid}" is not a report id with its {{"skill", "uses"}}')
             continue
         uses = cfg.get('uses', [])
+        cloud = cfg.get('runs_on') == 'cloud'  # a routine on claude.ai reaches connectors, a job here the vault's servers and commands
         out += [f'"my_jobs" "{jid}": {m}' for bad, m in (
             (bool(set(cfg) - MY_JOB_KEYS), f'only {sorted(MY_JOB_KEYS)}'),
             (not ID_RE.match(str(cfg.get('skill'))), f'"{cfg.get("skill")}" is not a skill name'),
             (cfg.get('model', 'sonnet') not in ('haiku', 'sonnet', 'opus'), 'model is haiku, sonnet or opus'),
+            (cfg.get('runs_on', 'computer') not in ('computer', 'cloud'), 'runs_on is computer or cloud'),
+            (cloud and 'model' in cfg, 'a report on claude.ai runs with the routine\'s model, set there'),
             (not isinstance(uses, list) or not all(isinstance(u, str) and (u in capabilities or u in conns) for u in uses),
              '"uses" lists known tools\' capabilities and connection ids')) if bad]
+        wrong = [u for u in (uses if isinstance(uses, list) else []) if isinstance(u, str) and isinstance(conns.get(u), dict)
+                 and ('connector' in conns[u]) != cloud]
+        if wrong:
+            out.append(f'"my_jobs" "{jid}": {", ".join(wrong)} cannot be used by a report that runs '
+                       + ('on claude.ai: only claude.ai connectors and known tools' if cloud else 'on this computer: claude.ai connectors run only in cloud reports'))
     return out
 
 
@@ -673,19 +696,48 @@ def eligible_jobs(ids, packs, tools):
     return jobs
 
 
+SKILL_JOB = os.path.join(REPO, 'core', 'jobs', 'skill-job')
+SKILL_JOB_DATES = 'Take every date and time from the Run context at the top of this prompt: never run `date` or `ls`, and find vault files with Glob.'
+SKILL_ROUTINE_DATES = "Take today's date and time in that timezone once, at the start, and find vault files with Glob."
+SKILL_ROUTINE_FINISH = (' Then, if the vault is a git repository attached to this routine, stage that file only (`git add -- <its path>`), '
+                        'commit it and push it to its default branch; if any other file changed, commit nothing and say so in your final '
+                        'answer, as you do if the push fails. On a linked computer it is written in place.')
+
+
+def my_routines(answers):
+    """The user's scheduled skills that run on claude.ai, as cloud routine entries like a pack routine's: the same skill-job
+    prompt, the connectors of the known tools and connections it uses."""
+    conns, tools, jobs, out = answers.get('connections') or {}, answers.get('tools') or {}, answers.get('jobs') or {}, []
+    prompt = None
+    for jid, cfg in sorted((answers.get('my_jobs') or {}).items()):
+        if cfg.get('runs_on') != 'cloud' or (jobs.get(jid) or {}).get('enabled') is False:
+            continue
+        if prompt is None:
+            with open(os.path.join(SKILL_JOB, 'prompt.md.tmpl'), encoding='utf-8') as fh:
+                prompt = fh.read()
+        caps = [u for u in cfg.get('uses', []) if u not in conns]
+        meta = {'name': my_report_name(jid), **job_schedule(DEFAULT_SCHEDULE, jobs.get(jid)), 'connectors_required': caps, 'vault': 'write'}
+        out.append({'pack': MY_PACK, 'id': jid, 'meta': meta, 'prompt': prompt, 'missing': [c for c in caps if tools.get(c, 'none') == 'none'],
+                    'connectors': {u: conns[u]['connector'] for u in cfg.get('uses', []) if u in conns},
+                    'tokens': {'job_id': jid, 'job_skill': cfg['skill'], 'job_dates': SKILL_ROUTINE_DATES, 'job_finish': SKILL_ROUTINE_FINISH}})
+    return out
+
+
 def my_jobs(answers):
-    """The user's scheduled skills as job entries like a pack job's: the generic skill-job prompt, the adapters of the known
-    tools it uses (no tool chosen: the job is off) and the read tools and servers of the connections it uses."""
+    """The user's scheduled skills that run on this computer, as job entries like a pack job's: the generic skill-job prompt,
+    the adapters of the known tools it uses (no tool chosen: the job is off) and the read tools and servers of its connections."""
     conns, tools, out = answers.get('connections') or {}, answers.get('tools') or {}, []
     for jid, cfg in sorted((answers.get('my_jobs') or {}).items()):
+        if cfg.get('runs_on') == 'cloud':
+            continue
         uses = cfg.get('uses', [])
         caps = [u for u in uses if u not in conns]
-        meta = {'id': jid, 'name': f'Your report {jid}', 'description': f'Runs the skill {cfg["skill"]}.',
-                'schedule': {'days': 'mon-fri', 'time': '08:00'}, 'model': cfg.get('model', 'sonnet'),
+        meta = {'id': jid, 'name': my_report_name(jid), 'description': f'Runs the skill {cfg["skill"]}.',
+                'schedule': dict(DEFAULT_SCHEDULE), 'model': cfg.get('model', 'sonnet'),
                 'capabilities': {'required': caps, 'optional': []}, 'outputs': [f'{MY_REPORTS}{jid}-YYYY-MM-DD.md'],
                 'permissions': {'allow': [r for u in uses if u in conns for r in conns[u]['read_tools']], 'deny': []}}
-        out.append({'pack': None, 'id': jid, 'meta': meta, 'dir': os.path.join(REPO, 'core', 'jobs', 'skill-job'),
-                    'missing': [c for c in caps if tools.get(c, 'none') == 'none'], 'tokens': {'job_id': jid, 'job_skill': cfg['skill']},
+        out.append({'pack': None, 'id': jid, 'meta': meta, 'dir': SKILL_JOB, 'missing': [c for c in caps if tools.get(c, 'none') == 'none'],
+                    'tokens': {'job_id': jid, 'job_skill': cfg['skill'], 'job_dates': SKILL_JOB_DATES, 'job_finish': ''},
                     'servers': {conns[u]['server'] for u in uses if 'server' in conns.get(u, {})}})
     return out
 

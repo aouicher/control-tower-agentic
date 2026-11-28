@@ -34,10 +34,10 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (ID_RE, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError,  # noqa: E402
+from plan import (ID_RE, MY_PACK, MY_REPORTS, REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError,  # noqa: E402
                   adapter_allow, approved_servers, check_permissions, check_rendered, command_needs, command_problem, describe_rules, expand,
-                  eligible_jobs, guard_rules, job_adapters, job_capabilities, jload, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs,
-                  on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers,
+                  eligible_jobs, guard_rules, job_adapters, job_capabilities, job_schedule, jload, list_packs, mcp_file_findings, mcp_server, my_job_problems, my_jobs, my_routines,
+                  on_server, parse_days, permission_problem, recorded_servers, resolve_packs, server_answer_problems, unreachable_servers, vault_settings_findings,
                   vault_files)
 
 VERSION = '0.1.0'
@@ -225,7 +225,7 @@ def eligible_routines(ids, packs, tools):
         for rid in packs[p].manifest.get('routines', []):
             meta, prompt = read_routine(os.path.join(packs[p].dir, 'routines', rid + '.md'))
             missing = [c for c in meta.get('connectors_required', []) if tools.get(c, 'none') == 'none']
-            out.append({'pack': p, 'id': rid, 'meta': meta, 'prompt': prompt, 'missing': missing})
+            out.append({'pack': p, 'id': rid, 'meta': meta, 'prompt': prompt, 'missing': missing, 'connectors': {}, 'tokens': {}})
     return out
 
 
@@ -516,7 +516,7 @@ class Ctx:
                 self.report['jobs_skipped'].append({'id': j['id'], 'missing': j['missing']})
                 continue
             meta = dict(j['meta'])
-            meta['schedule'] = {**meta['schedule'], **{k: v for k, v in cfg.items() if k in ('time', 'days')}}
+            meta['schedule'] = job_schedule(meta['schedule'], cfg)
             j['rendered'] = json.loads(render.render_text(json.dumps(meta), self.table, j['id'], []))
             # checked on the FINAL strings: a pack's vocabulary could otherwise inject text into a rule after the check
             check_permissions(f'job "{j["id"]}"', j['rendered']['permissions'].get('allow', []))
@@ -557,14 +557,8 @@ class Ctx:
 
 
 def vault_settings_warnings(vault, answers):
-    """Jobs run in the vault and load its project settings: rules or hooks there widen every unattended job."""
-    out = []
-    for name in ('settings.json', 'settings.local.json'):
-        p = os.path.join(vault, '.claude', name)
-        risky = risky_settings(p) if os.path.isfile(p) else []
-        if risky:
-            out.append(f'{p} sets {", ".join(risky)}: unattended jobs load it too, so it can widen what they do. '
-                       'Keep it empty for jobs, or move those settings to your user settings')
+    """What in the vault's settings, .mcp.json or skills could widen jobs."""
+    out = [f'{os.path.join(vault, rel)} {text}' for rel, _, text in vault_settings_findings(vault)]
     out += [f'{os.path.join(vault, ".mcp.json")}: {text}' for _, text in mcp_file_findings(vault, answers)]
     skills = os.path.join(vault, '.claude', 'skills')
     for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
@@ -693,8 +687,8 @@ def step_routines(ctx):
     """Cloud routines: rendered prompts and an index the guided installer reads to create them on request. Returns the list."""
     a, report = ctx.a, ctx.report
     index, seen_ids = [], {}
-    for r in eligible_routines(a['packs'], ctx.packs, a['tools']):
-        if r['id'] in seen_ids and not r['missing']:
+    for r in eligible_routines(a['packs'], ctx.packs, a['tools']) + my_routines(a):
+        if r['id'] in seen_ids and not r['missing'] and r['pack'] != MY_PACK:
             report['routines_skipped'].append({'id': f"{r['pack']}--{r['id']}", 'missing': [], 'duplicate_of': seen_ids[r['id']]})
             continue
         if r['missing']:
@@ -704,12 +698,12 @@ def step_routines(ctx):
         seen_ids[r['id']] = key
         meta = r['meta']
         errs = []
-        prompt = render.render_text(r['prompt'], ctx.table, key, errs)
+        prompt = render.render_text(r['prompt'], {**ctx.table, **r['tokens']}, key, errs)
         if errs:
             raise InstallError('; '.join(errs))
         entry = {'key': key, 'pack': r['pack'], 'id': r['id'], 'name': meta['name'],
                  'days': meta['days'], 'time': meta['time'], 'timezone': a['timezone'], 'cron': routine_cron(meta['days'], meta['time']),
-                 'connectors_required': {c: a['tools'][c] for c in meta.get('connectors_required', [])},
+                 'connectors_required': {**{c: a['tools'][c] for c in meta.get('connectors_required', [])}, **r['connectors']},
                  'connectors_optional': {c: a['tools'][c] for c in meta.get('connectors_optional', []) if a['tools'].get(c, 'none') != 'none'},
                  'vault': meta.get('vault', 'write'), 'after': meta.get('after', ''),
                  'prompt_file': os.path.join(ctx.ct_home, 'routines', key + '.prompt.md')}
@@ -719,8 +713,13 @@ def step_routines(ctx):
             os.makedirs(os.path.join(ctx.ct_home, 'routines'), exist_ok=True)
             with open(entry['prompt_file'], 'w', encoding='utf-8') as fh:
                 fh.write(prompt)
-    if index and not ctx.dry_run:
-        jdump(os.path.join(ctx.ct_home, 'routines', 'routines.json'), index)
+    if not ctx.dry_run:  # the index and prompts follow the answers: a report removed or moved off claude.ai leaves nothing behind
+        rdir, keys = os.path.join(ctx.ct_home, 'routines'), {e['key'] + '.prompt.md' for e in index}
+        os.makedirs(rdir, exist_ok=True)
+        for f in os.listdir(rdir):
+            if f.endswith('.prompt.md') and f not in keys:
+                os.remove(os.path.join(rdir, f))
+        jdump(os.path.join(rdir, 'routines.json'), index)
     return report['routines']
 
 
