@@ -371,7 +371,16 @@ UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYT
 # an MCP tool whose name says it acts (sends, changes, deletes...) can carry vault text out or change the user's data
 ACTION_WORDS = {'send', 'post', 'create', 'update', 'delete', 'remove', 'write', 'edit', 'merge', 'close', 'publish', 'upload',
                 'comment', 'reply', 'react', 'transition', 'assign', 'invite', 'share', 'trigger', 'deploy',
-                'add', 'set', 'manage', 'move', 'archive', 'respond', 'approve', 'submit'}
+                'add', 'set', 'manage', 'move', 'archive', 'respond', 'approve', 'submit', 'call', 'invoke', 'insert', 'upsert',
+                'put', 'patch', 'save', 'cancel', 'drop', 'navigate', 'click', 'fill', 'draft', 'destructive', 'sql', 'evaluate', 'type',
+                'press', 'kill', 'terminate', 'stop', 'start', 'restart', 'push', 'commit', 'import', 'apply', 'grant', 'revoke',
+                'reset', 'purge', 'enable', 'disable', 'rename', 'replace'}
+# not 'execute' or 'run': read queries use them (execute_log_insights_query); a tool named run_query is an accepted risk.
+# These are also nouns: after a read verb they name what is read (get_commit, list_sql_warehouses, getJiraIssueType...),
+# anywhere else they act (execute_sql, git_commit, pod_start, browser_type).
+NOUN_ACTIONS = {'commit', 'start', 'draft', 'sql', 'type'}
+# A list of action words is never complete: only a tool whose name starts with one of these is offered as recommended.
+READ_VERBS = {'get', 'list', 'search', 'describe', 'read', 'fetch', 'query', 'find', 'view', 'show', 'lookup', 'count', 'analyze'}
 
 
 def name_words(name):
@@ -417,7 +426,8 @@ def permission_problem(rule):
         m = MCP_TOOL.match(rule)
         if not m or '__' in rule.split('__', 2)[2]:
             return 'MCP access is granted one tool at a time (mcp__<server>__<tool>), never a whole server or a wildcard'
-        acts = sorted(set(name_words(m.group(2))) & ACTION_WORDS)
+        words = name_words(m.group(2))
+        acts = sorted(set(words) & ACTION_WORDS - (NOUN_ACTIONS if words[:1] and words[0] in READ_VERBS else set()))
         return f'this tool acts on your behalf ({", ".join(acts)}): jobs only read' if acts else None
     if rule in ('Bash', 'Bash()') or not rule.startswith('Bash('):
         return 'not a job permission (jobs may use Read, Grep, Glob, one command, one MCP tool or one web site)'

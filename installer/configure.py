@@ -24,12 +24,14 @@ import json
 import os
 import re
 import shlex
+import subprocess
+import tempfile
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
-from plan import (MCP_TOOL, bash_parts, command_needs, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
+from plan import (MCP_TOOL, READ_VERBS, bash_parts, command_needs, command_problem, describe_rules, expand, jload, known_commands, name_words,  # noqa: E402
                   permission_problem)
 
 SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
@@ -393,6 +395,102 @@ def remove_command(data, args):
     return data, f'removed: {args.command} reaches only the addresses of the known-command table, if any'
 
 
+def probe_result(init):
+    """Servers and MCP tools a job sees, from Claude Code's init message. claude.ai connectors are counted, not listed: a job
+    cannot use them (docs/design/runtime-facts.md, F2)."""
+    connector = lambda s: str(s).startswith(('claude.ai ', 'mcp__claude_ai_'))
+    servers = [{'name': s.get('name'), 'status': s.get('status')} for s in init.get('mcp_servers') or [] if not connector(s.get('name'))]
+    return {'servers': servers, 'tools': sorted(t for t in init.get('tools') or [] if t.startswith('mcp__') and not connector(t)),
+            'connectors': sum(1 for s in init.get('mcp_servers') or [] if connector(s.get('name')))}
+
+
+def cmd_probe(args):
+    """Run Claude once in the vault the way a job runs, nothing allowed, with only the .mcp.json servers the user named (each
+    starts as a local process), and keep what it sees in <ct_home>/probe.json (choices reads it)."""
+    path, data = load_answers(args.vault)
+    if data is None:
+        return 2
+    claude = os.environ.get('CT_CLAUDE_BIN') or jload(os.path.join(ct_home(data), 'install.json'), {}).get('claude_bin', 'claude')
+    unknown = sorted(set(args.server or []) - set(jload(os.path.join(expand(args.vault), '.mcp.json'), {}).get('mcpServers', {})))
+    if unknown:
+        print(f'error: not in the vault\'s .mcp.json: {", ".join(unknown)}', file=sys.stderr)
+        return 2
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = os.path.join(tmp, 'settings.json')
+        with open(settings, 'w') as fh:
+            json.dump({'permissions': {'allow': []}, 'enabledMcpjsonServers': sorted(set(args.server or []))}, fh)  # only those named
+        try:
+            r = subprocess.run([claude, '-p', 'Reply with the single word OK.', '--model', 'haiku', '--max-turns', '1',
+                                '--permission-mode', 'dontAsk', '--setting-sources', 'project', '--settings', settings,
+                                '--output-format', 'stream-json', '--verbose'],
+                               cwd=expand(args.vault), stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f'error: could not run {claude}: {exc}', file=sys.stderr)
+            return 1
+    init = next((m for m in (json.loads(l) for l in r.stdout.splitlines() if l.startswith('{'))
+                 if m.get('type') == 'system' and m.get('subtype') == 'init'), None)
+    if init is None:
+        print(f'error: {claude} did not report what it sees: {r.stderr.strip()[-300:]}', file=sys.stderr)
+        return 1
+    seen = probe_result(init)
+    with open(os.path.join(ct_home(data), 'probe.json'), 'w', encoding='utf-8') as fh:
+        json.dump(seen, fh, indent=2)
+    print(json.dumps(seen, indent=2))
+    return 0
+
+
+def pages(items, label, recommended):
+    """One list as questions of 2 to 4 options: one multi-select, or "All N / Let me choose / None" and even pages of 4 or fewer."""
+    if len(items) < 2:  # nothing to ask, or one item and "None"
+        return ({'multi_select': False, 'options': items + ['None'], 'recommended': recommended} if items else None), []
+    if len(items) <= 4:
+        return {'multi_select': True, 'options': items, 'recommended': recommended}, []
+    every = f'All {len(items)}{label}' + (' (recommended)' if recommended == items else '')
+    some = [f'Only the {len(recommended)} recommended{label} (recommended)'] if 0 < len(recommended) < len(items) else []
+    k = -(-len(items) // 4)  # fewest pages; even sizes, so none has a single option
+    return {'multi_select': False, 'options': some + [every, 'Let me choose', 'None']}, [items[len(items) * i // k:len(items) * (i + 1) // k] for i in range(k)]
+
+
+def cmd_choices(args):
+    """The items of a list the user picks from, split into questions the question tool can show."""
+    never, every = [], lambda items: [] if args.recommended == 'none' else list(items)
+    if args.items:
+        items, label = list(args.items), ''
+        recommended = every(items)
+    else:
+        if not args.vault or not args.kind:
+            print('error: give --items, or --vault with --kind', file=sys.stderr)
+            return 2
+        path, data = load_answers(args.vault)
+        if data is None:
+            return 2
+        if args.kind == 'read-tools':
+            if not args.server:
+                print('error: --kind read-tools needs --server', file=sys.stderr)
+                return 2
+            seen = jload(os.path.join(ct_home(data), 'probe.json'), {})
+            status = {s.get('name'): s.get('status') for s in seen.get('servers', [])}.get(args.server)
+            if status != 'connected':
+                again = shlex.join(['python3', os.path.abspath(__file__), 'probe', '--vault', args.vault, '--server', args.server])
+                print(f'error: the probe saw {args.server} as {status}: run {again} once it works' if status
+                      else f'error: the probe has not seen {args.server}: run {again} first', file=sys.stderr)
+                return 2
+            tools = [t for t in seen.get('tools', []) if MCP_TOOL.match(t) and MCP_TOOL.match(t).group(1) == args.server]
+            never = [t for t in tools if permission_problem(t)]  # the same check as a grant: an action tool is never offered
+            items, label = [t for t in tools if t not in never], ' read tools'
+            # a plain read verb first: an odd name is offered, never ticked by default
+            recommended = [t for t in items if (name_words(MCP_TOOL.match(t).group(2)) or [''])[0] in READ_VERBS]
+        elif args.kind == 'connections':
+            items = ['my notes'] + [f'{cap}: {tool}' for cap, tool in sorted((data.get('tools') or {}).items()) if tool != 'none']
+            label, recommended = ' connections', every(items)
+        else:
+            # the user's scheduled skills: pack jobs are not offered, their prompts do not know custom connections
+            items, label, recommended = sorted(data.get('my_jobs') or {}) + ['a new report'], ' reports', []
+    first, split = pages(items, label, recommended)
+    print(json.dumps({'items': items, 'recommended': recommended, 'never': never, 'first': first, 'pages': split}, indent=2))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='action', required=True)
@@ -414,6 +512,15 @@ def main(argv=None):
     p.add_argument('--schedule', choices=('on', 'off'), help='load the jobs in the scheduler, or unload them all')
     p = sub.add_parser('fresh-copy', parents=[vault], help="the kit's version of an installed file; the user's goes to _system/archive/")
     p.add_argument('--file', required=True, help='path in the vault, for example cockpit.md')
+    p = sub.add_parser('probe', parents=[vault], help='what a scheduled job sees: MCP servers and tools (saved for choices)')
+    p.add_argument('--server', action='append', help="a server of the vault's .mcp.json to start for the probe (repeatable)")
+    p = sub.add_parser('choices', help='a list as questions of at most 4 options (all / let me choose / none, then pages of 4)')
+    p.add_argument('--vault')
+    which = p.add_mutually_exclusive_group()
+    which.add_argument('--kind', choices=('read-tools', 'connections', 'reports'))
+    which.add_argument('--items', nargs='+', help='any other list, item by item')
+    p.add_argument('--server', help='with --kind read-tools: the MCP server, as probe saw it')
+    p.add_argument('--recommended', choices=('all', 'none'), default='all', help='with --items or --kind connections: whether every item is the recommended answer')
     p = sub.add_parser('denials', help='refusals of the latest run of every job, explained, with a proposed rule')
     p.add_argument('--ct-home', default='~/.control-tower')
     p.add_argument('--vault')
@@ -430,8 +537,8 @@ def main(argv=None):
     p.add_argument('--command', required=True)
     ap.set_defaults(job=None, schedule=None, accept_access=False, dry_run=False, file=None)  # flags only some changes have
     args = ap.parse_args(argv)
-    if args.action in ('show', 'denials'):
-        return {'show': cmd_show, 'denials': cmd_denials}[args.action](args)
+    if args.action in ('show', 'denials', 'probe', 'choices'):
+        return {'show': cmd_show, 'denials': cmd_denials, 'probe': cmd_probe, 'choices': cmd_choices}[args.action](args)
     build = {'set': edit, 'grant': grant, 'revoke': revoke, 'add-command': add_command, 'remove-command': remove_command,
              'fresh-copy': fresh_copy}[args.action]
     return change(args, build)

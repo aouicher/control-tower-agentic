@@ -24,7 +24,9 @@ class PolicyTests(unittest.TestCase):
                   'mcp__claude_ai_acme-assistant__sonarqube_get_issues', 'mcp__rollbar__list-projects', 'WebFetch(domain:status.acme.test)',
                   'Bash(gh pr list:*)', 'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(sort:*)',
                   'Bash(jq .items)', 'Bash(twg jira workitem query *)', 'Bash(twg jira:*)', 'Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query *)',
-                  'Bash(slackcli conversations unread *)', 'Bash(slackcli conversations:*)', 'Bash(acme-cli status:*)']
+                  'Bash(slackcli conversations unread *)', 'Bash(slackcli conversations:*)', 'Bash(acme-cli status:*)',
+                  'mcp__github__get_commit', 'mcp__jira__getJiraIssueTypeMetaWithFields', 'mcp__db__list_sql_warehouses',
+                  'mcp__mail__get_draft', 'mcp__ops__get_start_time']
     NEVER = ['Bash', 'Bash(*)', 'Bash()', 'Bash(:*)', 'Write', 'Edit', 'Edit(//etc/**)', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch',
              'WebFetch(domain:*)', 'WebFetch(domain:a b)', 'mcp__*', 'mcp__acme', 'mcp__acme__*', 'mcp__acme__x__get',
              'mcp__acme__create_issue', 'mcp__acme__createIssue', 'mcp__acme__issues.update', 'mcp__slack__chat-postMessage',
@@ -35,7 +37,12 @@ class PolicyTests(unittest.TestCase):
              'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(echo $(id))', 'Bash(PAGER=sh git log:*)',
              'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(HTTPS_PROXY=x twg x)', 'Bash(GH_HOST=x gh pr list)', 'Bash(LD_PRELOAD=x ls)',
              'Bash(git log {{ct.team}}:*)', 'Agent', 'Task', 'Bash(cat:*)', 'Bash(date)', 'Bash(date:*)', 'Bash(ls:*)',
-             'WebFetch(domain:10.0.0.1)', 'WebFetch(domain:192.168.1.1)', 'Skill', 'Skill(weekly-digest)']
+             'WebFetch(domain:10.0.0.1)', 'WebFetch(domain:192.168.1.1)', 'Skill', 'Skill(weekly-digest)',
+             'mcp__db__sql_query', 'mcp__db__execute_sql', 'mcp__db__run_sql', 'mcp__git__git_commit', 'mcp__k8s__pod_start',
+             'mcp__db__executeDestructive', 'mcp__db__insert_rows', 'mcp__ha__call_service',
+             'mcp__pw__browser_click', 'mcp__pw__browser_navigate', 'mcp__gmail__draft_email', 'mcp__gh__commit_files', 'mcp__k8s__start_pod', 'mcp__pw__type_text', 'mcp__shop__cancel_order',
+             'mcp__pw__browser_evaluate', 'mcp__pw__browser_type', 'mcp__k8s__restart_pod', 'mcp__gh__push_files', 'mcp__iam__grant_role',
+             'mcp__db__purge_table', 'mcp__ff__enable_flag', 'mcp__vm__terminate_instance']
 
     def test_acceptable_rules(self):
         for rule in self.ACCEPTABLE:
