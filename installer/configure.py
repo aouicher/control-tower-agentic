@@ -33,7 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import install  # noqa: E402
 import update  # noqa: E402
-from plan import (ID_RE, MAX_SUBCOMMANDS, MCP_TOOL, READ_VERBS, SUBCOMMAND, bash_parts, command_needs, command_problem, connection_problem,  # noqa: E402
+from plan import (ID_RE, MAX_SUBCOMMANDS, MCP_TOOL, READ_VERBS, SUBCOMMAND, bash_parts, claude_bin, command_needs, command_problem, connection_problem,  # noqa: E402
                   describe_rules, expand, fingerprint, jload, known_commands, mcp_server, my_report_name, name_words, needs_host, permission_problem,
                   recorded_servers, skill_problem, connection_key, connection_of, valid_host, vault_servers)
 
@@ -582,10 +582,6 @@ def remove_command(data, args):
     return data, f'removed: {args.command} reaches only the addresses of the known-command table, if any'
 
 
-def claude_bin(data):
-    return os.environ.get('CT_CLAUDE_BIN') or jload(os.path.join(ct_home(data), 'install.json'), {}).get('claude_bin', 'claude')
-
-
 def address_problem(name, address, declared):
     """Why an MCP address the user gave is refused: an https address on a host name, whose path is short words only (a long
     code in it is a key)."""
@@ -629,7 +625,7 @@ def cmd_add_server(args):
         print(f'error: refused: {why}', file=sys.stderr)
         return 2
     try:
-        r = subprocess.run([claude_bin(data), 'mcp', 'add', '--scope', 'project', '--transport', 'http', args.name, args.url],
+        r = subprocess.run([claude_bin(ct_home(data)), 'mcp', 'add', '--scope', 'project', '--transport', 'http', args.name, args.url],
                            cwd=expand(args.vault), stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f'error: could not run claude: {exc}', file=sys.stderr)
@@ -661,7 +657,7 @@ def cmd_probe(args):
     path, data = load_answers(args.vault)
     if data is None:
         return 2
-    claude = claude_bin(data)
+    claude = claude_bin(ct_home(data))
     try:
         declared = vault_servers(args.vault)
     except ValueError as exc:
