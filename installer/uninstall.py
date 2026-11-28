@@ -176,7 +176,8 @@ def main():
     except (ValueError, TypeError, KeyError):
         routines = []
     if routines:
-        print('cloud routines are not removed from here: delete on claude.ai the ones you created: ' + ', '.join(routines))
+        print('cloud routines are not removed from here: the kit offered ' + ', '.join(routines)
+              + '; if you created any of these on claude.ai, delete them there')
     if not plan:
         print('nothing to do')
     if not args.yes:

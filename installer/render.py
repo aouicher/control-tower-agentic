@@ -10,7 +10,7 @@ Standard library only (Python 3.9+). Idempotent and safe by default:
 
 Tokens:
   {{ct.team}} {{ct.teams}} {{ct.Team}} {{ct.Teams}}      (same for workstream, risk, person/people)
-  {{ct.owner_name}} {{ct.owner_handle}} {{ct.timezone}} {{ct.vault_path}}   (from the answers)
+  {{ct.owner_name}} {{ct.owner_handle}} {{ct.timezone}} {{ct.vault_path}} {{ct.language}}   (from the answers)
 
 Usage:
   python3 installer/render.py --src core/vault --dst ~/my-vault \
@@ -27,7 +27,8 @@ import shutil
 import sys
 
 TOKEN = re.compile(r'\{\{ct\.([A-Za-z_]+)\}\}')
-SCALARS = ('owner_name', 'owner_handle', 'timezone', 'vault_path')
+SCALARS = ('owner_name', 'owner_handle', 'timezone', 'vault_path', 'language')
+DEFAULTS = {'language': 'English'}  # an answers file may leave it out
 TEXT_EXT = {'.md', '.base', '.json', '.yml', '.yaml', '.txt', '.tmpl', '.sh', '.py', '.plist', '.canvas', ''}
 
 
@@ -58,8 +59,8 @@ def build_table(vocab_files, answers):
         table['a_' + key] = f"{article} {forms['singular']}"
         table['A_' + key] = f"{article.capitalize()} {forms['singular']}"
     for key in SCALARS:
-        if key in answers:
-            table[key] = str(answers[key])
+        if key in answers or key in DEFAULTS:
+            table[key] = str(answers.get(key, DEFAULTS.get(key)))
     return table
 
 

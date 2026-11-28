@@ -8,7 +8,7 @@ It is built for people who lead, build, plan or promote things: engineering lead
 
 > Install the Control Tower kit from https://github.com/aouicher/control-tower-agentic into ~/control-tower-kit and follow its install skill.
 
-Claude asks before downloading the kit, then asks four questions (your work, your tools, where the vault goes, whether reports run on their own) and shows what it will install before it does. You need [Obsidian](https://obsidian.md) to read the vault. Developers: see [Quick start](#quick-start).
+Claude asks before downloading the kit, then asks the language of your notes and four questions (your work, your tools, where the vault goes, whether reports run on their own) and shows what it will install before it does. You need [Obsidian](https://obsidian.md) to read the vault. Developers: see [Quick start](#quick-start).
 
 ![The cockpit: priorities of the day, agenda and overdue tasks](docs/images/cockpit-today.png)
 

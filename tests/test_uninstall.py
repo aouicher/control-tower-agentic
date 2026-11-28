@@ -92,6 +92,12 @@ class UninstallLevelTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(edited) and os.path.isfile(mine), 'notes the user edited or wrote are never removed')
         self.assertFalse(os.path.exists(self.ct))
 
+    def test_cloud_routines_are_named_as_maybe_created(self):
+        with open(os.path.join(self.ct, 'routines', 'routines.json'), 'w') as fh:
+            json.dump([{'name': 'Daily note'}], fh)
+        out = self.uninstall().stdout
+        self.assertIn('if you created any of these on claude.ai', out, 'the kit offers them; only the user knows which were created')
+
     def test_connections_stay_unless_asked_for(self):
         self.connections(['amp'])
         self.assertEqual(self.uninstall('--remove-vault-files', '--yes').returncode, 0)

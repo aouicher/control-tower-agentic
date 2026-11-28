@@ -18,7 +18,7 @@ In the Claude desktop app, open the **Code** tab, choose any folder (your home f
 
 > Install the Control Tower kit from https://github.com/aouicher/control-tower-agentic into ~/control-tower-kit and follow its install skill.
 
-Claude asks before downloading the kit, then asks four questions:
+Claude asks before downloading the kit, then which language your notes and reports should be in (the rest of the install continues in it), and four questions:
 
 1. which describes your work (one or more profiles);
 2. which tools you use at work, named in your own words ("Jira and Amplitude"); a tool you name twice for one job ("Jira, Linear") gets one more question, and a tool the kit does not know is connected later;
@@ -53,7 +53,7 @@ python3 installer/install.py --answers my-answers.json
 python3 installer/doctor.py --vault ~/control-tower-vault --ct-home ~/.control-tower
 ```
 
-Start from one of [examples/answers](../examples/answers). Fields: `owner_name`, `owner_handle`, `timezone` (all three taken from the computer when left out), `vault_path`, `ct_home`, `packs`, `tools` (capability to tool or `none`), `scheduler` (`auto`, `launchd`, `cron`, `none`), optional `jobs` overrides (`{"morning-prs": {"time": "07:15", "days": "mon,wed"}}`), `claude_bin`, `job_permissions`. `install.py --match-tools "Jira, Amplitude" --packs marketing` shows how the guided install reads tool names (adapter ids and their `aliases`). Typing `/install-control-tower <answers file>` in the kit folder runs the same install with Claude's summary and checks.
+Start from one of [examples/answers](../examples/answers). Fields: `owner_name`, `owner_handle`, `timezone` (all three taken from the computer when left out), `language` (of notes and reports, default `English`), `vault_path`, `ct_home`, `packs`, `tools` (capability to tool or `none`), `scheduler` (`auto`, `launchd`, `cron`, `none`), optional `jobs` overrides (`{"morning-prs": {"time": "07:15", "days": "mon,wed"}}`), `claude_bin`, `job_permissions`. `install.py --match-tools "Jira, Amplitude" --packs marketing` shows how the guided install reads tool names (adapter ids and their `aliases`). Typing `/install-control-tower <answers file>` in the kit folder runs the same install with Claude's summary and checks.
 
 What the installer does and does not do:
 

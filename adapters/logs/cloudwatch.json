@@ -3,7 +3,10 @@
   "capability": "logs",
   "aliases": [
     "cloud watch",
-    "aws cloudwatch"
+    "aws cloudwatch",
+    "aws logs",
+    "log aws",
+    "logs aws"
   ],
   "access": "mcp",
   "connect": "developer",

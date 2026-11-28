@@ -94,7 +94,7 @@ def default_answers(detect=True):
     first = unicodedata.normalize('NFKD', name.split()[0]).encode('ascii', 'ignore').decode().lower() if name.split() else ''
     first = re.sub(r'[^a-z0-9._-]', '', first)  # accents folded to plain letters first
     return {
-        'owner_name': name, 'owner_handle': first or 'me', 'timezone': system_timezone() if detect else 'UTC',
+        'owner_name': name, 'owner_handle': first or 'me', 'timezone': system_timezone() if detect else 'UTC', 'language': render.DEFAULTS['language'],
         'vault_path': '~/control-tower-vault', 'ct_home': '~/.control-tower',
         'packs': [], 'tools': {}, 'jobs': {}, 'scheduler': 'auto', 'claude_bin': 'claude',
     }
@@ -110,6 +110,17 @@ def vault_path_problems(answers, repo=REPO):
     if vault == os.sep or (home + os.sep).startswith(vault + os.sep):
         return [f'answers: the vault cannot be {answers["vault_path"]}: reports would read everything in it. Choose a folder of its own']
     return [f'answers: the vault {answers["vault_path"]} would hold {held[0]}: choose a folder of its own'] if held else []
+
+
+def language_problems(answers):
+    """Why the vault's language is refused: it goes into every job prompt, so it is a name of at most three words in
+    letters ("Deutsch", "Norsk bokmal"), never a sentence."""
+    lang = answers.get('language')
+    words = re.split(r"[ '-]", lang) if isinstance(lang, str) else []
+    letters = all(w and unicodedata.category(w[0])[0] == 'L' and all(unicodedata.category(c)[0] in 'LM' for c in w) for w in words)
+    if not (1 <= len(words) <= 3 and letters and len(lang) <= 30):  # marks too: Hindi, Thai
+        return [f'answers: "language" must be the name of a language in letters, for example "Deutsch" (got {str(lang)[:40]!r})']
+    return []
 
 
 def merged_answers(answers):
@@ -154,7 +165,7 @@ def validate(answers, repo=REPO):
         errors.append('answers: "commands" must be an object, for example {"twg": {"network": ["acme.atlassian.net"]}}')
         commands = {}
     errors += [f'answers: {p}' for name, entry in commands.items() for p in [command_problem(name, entry)] if p]
-    errors += vault_path_problems(answers, repo)
+    errors += vault_path_problems(answers, repo) + language_problems(answers)
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
