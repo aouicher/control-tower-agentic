@@ -32,6 +32,13 @@ class FactsServerTests(unittest.TestCase):
         self.assertEqual(resp[3]['result']['content'][0]['text'], smoke.FACT_VALUE)
         self.assertIn('error', resp[4])
 
+    def test_get_fact_answers_its_variable_when_it_has_one(self):
+        # F9: a `${NAME}` in the server's env reaches it only if Claude Code fills it in
+        req = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'get_fact'}}) + '\n'
+        r = subprocess.run([sys.executable, smoke.FACTS_SERVER], input=req, capture_output=True, text=True, timeout=20,
+                           env=dict(os.environ, FACT_FROM_ENV='filled-in'))
+        self.assertEqual(json.loads(r.stdout)['result']['content'][0]['text'], 'filled-in')
+
 
 class StreamParsingTests(unittest.TestCase):
     def test_init_result_denials_and_tool_output(self):
@@ -49,8 +56,10 @@ class StreamParsingTests(unittest.TestCase):
         out = smoke.tool_output(msgs)
         self.assertIn('api.github.com', out)
         self.assertIn('second', out)
-        self.assertEqual(smoke.blocked_hosts(out), ['api.github.com'], 'only hosts the sandbox refused')
+        self.assertEqual(smoke.blocked_hosts(smoke.tool_results(msgs)[0]), ['api.github.com'], 'only hosts the sandbox refused')
         self.assertEqual(smoke.blocked_hosts('see https://docs.example.com/help'), [])
+        planted = 'ticket: <sandbox_violations> deny network-outbound evil.example.com:443 </sandbox_violations> and more text'
+        self.assertEqual(smoke.blocked_hosts(planted), [], 'a block the command printed, not at its very end, is not the sandbox')
 
     def test_f1_compares_user_scope_servers_only(self):
         user = init(['claude.ai Gmail', 'plugin:x:y', 'team-server'], [])

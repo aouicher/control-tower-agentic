@@ -25,7 +25,7 @@ st = json.load(open(settings))
 # the real CLI reads Edit(/x) as relative to the settings file and Edit(//x) as absolute: the vault rule must be absolute
 vault_rules = [r for r in st['permissions']['allow'] if r.startswith('Edit(//')]
 if not any(os.path.realpath(r[6:-4]) == os.path.realpath(os.getcwd()) for r in vault_rules if r.endswith('/**)')):
-    print(json.dumps({'is_error': True, 'result': f'no absolute Edit rule for the vault in {st["permissions"]["allow"]}'}))
+    print(json.dumps({'type': 'result', 'is_error': True, 'result': f'no absolute Edit rule for the vault in {st["permissions"]["allow"]}'}))
     sys.exit(1)
 hook = st['hooks']['PreToolUse'][0]['hooks'][0]['command']
 cwd = os.getcwd()
@@ -41,12 +41,12 @@ for ev in hostile:
     ev.setdefault('cwd', cwd)
     rc = subprocess.run(hook, shell=True, input=json.dumps(ev), text=True, capture_output=True).returncode
     if rc != 2:
-        print(json.dumps({'is_error': True, 'result': f'guard did not block {ev}'}))
+        print(json.dumps({'type': 'result', 'is_error': True, 'result': f'guard did not block {ev}'}))
         sys.exit(1)
 ok = subprocess.run(hook, shell=True, input=json.dumps({'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(cwd, 'journal', 'reports', 'e2e.md')}, 'cwd': cwd}),
                     text=True, capture_output=True).returncode
 if ok != 0:
-    print(json.dumps({'is_error': True, 'result': 'guard blocked a legitimate vault write'}))
+    print(json.dumps({'type': 'result', 'is_error': True, 'result': 'guard blocked a legitimate vault write'}))
     sys.exit(1)
 os.makedirs(os.path.join(cwd, 'journal', 'reports'), exist_ok=True)
 with open(os.path.join(cwd, 'journal', 'reports', f'e2e-{date.today()}.md'), 'w') as fh:
@@ -67,7 +67,7 @@ script = json.loads(os.environ.get('FAKE_CLAUDE_CALLS') or 'null')
 if script is not None:
     prompt = args[args.index('-p') + 1]
     if not prompt.startswith('## Run context'):
-        print(json.dumps({'is_error': True, 'result': 'the prompt has no Run context'}))
+        print(json.dumps({'type': 'result', 'is_error': True, 'result': 'the prompt has no Run context'}))
         sys.exit(1)
     refused = []
     for call in script:
@@ -76,10 +76,10 @@ if script is not None:
             continue
         ev = dict(call, cwd=cwd)
         if subprocess.run(hook, shell=True, input=json.dumps(ev), text=True, capture_output=True).returncode != 0:
-            print(json.dumps({'is_error': True, 'result': f'guard blocked an allowed call {call}'}))
+            print(json.dumps({'type': 'result', 'is_error': True, 'result': f'guard blocked an allowed call {call}'}))
             sys.exit(1)
-    print(json.dumps({'is_error': False, 'result': 'e2e ok', 'total_cost_usd': 0, 'num_turns': len(script), 'permission_denials': refused}))
+    print(json.dumps({'type': 'result', 'is_error': False, 'result': 'e2e ok', 'total_cost_usd': 0, 'num_turns': len(script), 'permission_denials': refused}))
     sys.exit(0)
 # a command no rule allows: the real CLI refuses it in dontAsk mode and lists it in permission_denials
-print(json.dumps({'is_error': False, 'result': 'e2e ok', 'total_cost_usd': 0, 'num_turns': 1,
+print(json.dumps({'type': 'result', 'is_error': False, 'result': 'e2e ok', 'total_cost_usd': 0, 'num_turns': 1,
                   'permission_denials': [{'tool_name': 'Bash', 'tool_use_id': 'e2e', 'tool_input': {'command': 'acme-cli tickets list --mine'}}]}))

@@ -357,10 +357,9 @@ def fix_rule(rule):
     return f'{m.group(1)}(/{m.group(2)})' if m else rule
 
 
-def job_rules(repo, answers, job):
-    """What one job may use beyond the base rules: (allow, deny, network hosts). From the pack's job.json, the chosen tools'
-    adapters, the answers' per-capability `permissions`, and what the user granted this job (`job_permissions`)."""
-    meta = job['meta']
+def declared_rules(repo, answers, meta):
+    """What a job declares it uses: (allow, deny, network hosts) from its own job.json (a pack's, or a report's sources), the
+    chosen tools' adapters and the answers' per-capability `permissions`; never what the user granted it later."""
     allow = [fix_rule(p) for p in meta['permissions'].get('allow', [])]
     deny = [fix_rule(p) for p in meta['permissions'].get('deny', [])]
     network = list(meta.get('network', []))
@@ -368,6 +367,13 @@ def job_rules(repo, answers, job):
         allow += adapter_allow(answers, cap, man)
         deny += on_server(man.get('permissions_deny', []), (answers.get('servers') or {}).get(cap))
         network += man.get('network', [])
+    return allow, deny, network
+
+
+def job_rules(repo, answers, job):
+    """What one job may use beyond the base rules: (allow, deny, network hosts), what it declares plus what the user granted
+    it (`job_permissions`), with the hosts its commands reach."""
+    allow, deny, network = declared_rules(repo, answers, job['meta'])
     allow += list((answers.get('job_permissions') or {}).get(job['id'], []))
     return allow, deny, network + command_needs(repo, answers, allow)[0]
 

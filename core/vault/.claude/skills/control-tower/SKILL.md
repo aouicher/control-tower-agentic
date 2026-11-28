@@ -28,7 +28,7 @@ Read `.control-tower/manifest.json` in this vault: `repo` is the folder of the c
 ## Check my setup
 
 1. Run `python3 <repo>/installer/doctor.py --vault <this vault> --ct-home <ct_home>` and `python3 <repo>/installer/configure.py show --vault <this vault>`.
-2. Say in a few lines: the profiles, the tool for each capability, each report with its days and time and whether it is on, and whether automatic runs are loaded. Then each doctor warning or failure in plain words, with what to do about it. Fix nothing silently.
+2. Say in a few lines: the profiles, the tool for each capability, each report with its days and time and whether it is on, and whether automatic runs are loaded. List the rules a report was allowed outside the connections it declares (`unexpected_grants`, an "Allow anyway"): they can be taken back with `/job-permissions`. Then each doctor warning or failure in plain words, with what to do about it. Fix nothing silently.
 
 ## Change my setup
 

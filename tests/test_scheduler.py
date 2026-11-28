@@ -198,12 +198,24 @@ if mode == "slow":
 if mode == "fail":
     sys.stderr.write("boom")
     sys.exit(1)
-out = {"result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
-if mode == "denied":
+if mode == "noresult":
+    print(json.dumps({"type": "assistant", "message": {"content": []}}))
+    sys.exit(0)
+if mode == "authfail":
+    sys.stderr.write("x" * 3000 + " MCP server Amplitude: authentication required (401)")
+    sys.exit(1)
+if mode == "needsauth":  # as Claude Code 2.1.332 reports a server that needs a sign-in: the run itself succeeds
+    print(json.dumps({"type": "system", "subtype": "init", "mcp_servers": [{"name": "Amplitude", "status": "needs-auth", "source": "dynamic"}]}))
+out = {"type": "result", "result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
+if mode == "denied":  # as Claude Code 2.1.332 reports a guard refusal: an is_error tool result and a permission denial
+    blocked = "PreToolUse:Bash hook error: [python3 guard.py --vault '/notes [work]']: BLOCKED by control-tower guard: git write operation: git push"
+    print(json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": "t3", "is_error": True, "content": blocked},
+        {"type": "tool_result", "tool_use_id": "t4", "is_error": True, "content": blocked}]}}))  # t4 was not refused: printed text
     out["permission_denials"] = [
         {"tool_name": "Bash", "tool_use_id": "t1", "tool_input": {"command": "GH_TOKEN=s3cr3t twg jira workitem query " + "x" * 400}},
-        {"tool_name": "mcp__slack__search", "tool_use_id": "t2", "tool_input": {"query": "launch", "api_token": "s3cr3t"}}]
-    sys.stderr.write("BLOCKED by control-tower guard: git write operation: git push\\n")
+        {"tool_name": "mcp__slack__search", "tool_use_id": "t2", "tool_input": {"query": "launch", "api_token": "s3cr3t"}},
+        {"tool_name": "Bash", "tool_use_id": "t3", "tool_input": {"command": "git push"}}]
 print(json.dumps(out))
 '''
 
@@ -225,7 +237,8 @@ class RunJobTests(unittest.TestCase):
         json.dump({'vault': self.vault, 'claude_bin': 'claude-does-not-exist', 'timezone': 'UTC'}, open(os.path.join(self.home, 'install.json'), 'w'))
         json.dump({'id': 'demo', 'model': 'sonnet', 'timeout': 30}, open(os.path.join(jd, 'job.json'), 'w'))
         open(os.path.join(jd, 'prompt.md'), 'w').write('Unattended job. Never ask.')
-        json.dump({'permissions': {'allow': [], 'deny': []}}, open(os.path.join(jd, 'settings.json'), 'w'))
+        hooks = {'PreToolUse': [{'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': "python3 guard.py --vault '/notes [work]'"}]}]}
+        json.dump({'permissions': {'allow': [], 'deny': []}, 'hooks': hooks}, open(os.path.join(jd, 'settings.json'), 'w'))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -256,6 +269,19 @@ class RunJobTests(unittest.TestCase):
                     self.assertNotEqual(r.returncode, 0)
                     self.assertIn('settings.json', open(os.path.join(self.home, 'logs', 'demo.log')).read())
 
+    def test_every_run_leaves_its_outcome(self):
+        def record():
+            with open(os.path.join(self.home, 'logs', 'demo.run.json')) as fh:
+                return json.load(fh)
+        for mode, want in (('ok', 'ok'), ('denied', 'refused'), ('authfail', 'auth'), ('needsauth', 'auth'), ('fail', 'failed'), ('noresult', 'failed')):
+            with self.subTest(mode):
+                self.run_job(mode)
+                self.assertEqual(record()['outcome'], want)
+                if mode == 'authfail':
+                    self.assertIn('(401)', record()['error'], 'the end of a long error is kept: it says why')
+        self.run_job('slow', timeout_override=1)
+        self.assertEqual((record()['outcome'], record()['rc']), ('timeout', 124))
+
     def test_runs_claude_in_the_vault_with_safe_flags(self):
         r = self.run_job()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -266,7 +292,7 @@ class RunJobTests(unittest.TestCase):
         self.assertTrue(argv[1].startswith('## Run context\n'), 'the runner gives the job its dates first')
         self.assertIn(', UTC\n- Today: ', argv[1], 'in the installed timezone')
         self.assertTrue(argv[1].endswith('\nUnattended job. Never ask.'))
-        for flag, value in (('--permission-mode', 'dontAsk'), ('--setting-sources', 'project'), ('--output-format', 'json'), ('--model', 'sonnet')):
+        for flag, value in (('--permission-mode', 'dontAsk'), ('--setting-sources', 'project'), ('--output-format', 'stream-json'), ('--model', 'sonnet')):
             self.assertEqual(argv[argv.index(flag) + 1], value)
         self.assertTrue(argv[argv.index('--settings') + 1].endswith('settings.json'))
         self.assertIn('--strict-mcp-config', argv, 'a job starts only the MCP servers the installer copied for it')

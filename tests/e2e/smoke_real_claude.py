@@ -16,6 +16,8 @@ import argparse
 import json
 import os
 import re
+import select
+import shlex
 import shutil
 import subprocess
 import sys
@@ -23,8 +25,11 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'installer'))
+sys.path.insert(0, os.path.join(ROOT, 'scheduler'))
 import install  # noqa: E402
 import plan  # noqa: E402
+from run_job import (blocked_hosts, init_of, messages, result_of, tool_output, tool_results,  # noqa: E402  the runner's own parser
+                     denials as run_job_denials, notice as run_job_notice, outcome as run_job_outcome)
 
 PROBE = """You are a test probe. Never ask questions. Do exactly these steps, then stop:
 0. Read the file .claude/adapters/code.md with the Read tool and note its first heading.
@@ -67,6 +72,7 @@ def smoke():
 
 # ----------------------------------------------------------------------------- runtime facts
 FACTS_SERVER = os.path.join(ROOT, 'tests', 'e2e', 'facts_mcp_server.py')
+AUTH_SERVER = os.path.join(ROOT, 'tests', 'e2e', 'auth_mcp_server.py')
 COST = []  # USD per claude run
 FACT_VALUE = 'fact-value-7f3a'  # what the server's get_fact answers: seen in a tool result only if the call really ran
 SAY_OK = 'Reply with the single word OK.'
@@ -87,50 +93,13 @@ def run_prompt(command):
             'Then reply with its complete output, verbatim, including any error text.')
 
 
-def messages(text):
-    out = []
-    for line in text.splitlines():
-        try:
-            m = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(m, dict):
-            out.append(m)
-    return out
-
-
-def init_of(msgs):
-    return next((m for m in msgs if m.get('type') == 'system' and m.get('subtype') == 'init'), {})
-
-
-def result_of(msgs):
-    return next((m for m in reversed(msgs) if m.get('type') == 'result'), {})
-
-
 def denied(msgs):
     return {str(d.get('tool_name')) for d in result_of(msgs).get('permission_denials') or [] if isinstance(d, dict)}
-
-
-def tool_output(msgs):
-    """Every tool result the model saw, as one text (stream-json `user` messages)."""
-    parts = []
-    for m in msgs:
-        content = (m.get('message') or {}).get('content') if m.get('type') == 'user' else None
-        for block in content if isinstance(content, list) else []:
-            if isinstance(block, dict) and block.get('type') == 'tool_result':
-                inner = block.get('content')
-                parts += [inner] if isinstance(inner, str) else [str(b.get('text', '')) for b in inner or [] if isinstance(b, dict)]
-    return '\n'.join(parts)
 
 
 def denied_commands(msgs):
     return [str((d.get('tool_input') or {}).get('command', '')) for d in result_of(msgs).get('permission_denials') or []
             if isinstance(d, dict) and d.get('tool_name') == 'Bash' and isinstance(d.get('tool_input'), dict)]
-
-
-def blocked_hosts(text):
-    """Hosts the sandbox refused, from the `<sandbox_violations>` block Claude Code appends to a command's output."""
-    return sorted({h.lower() for h in re.findall(r'deny network-outbound ([A-Za-z0-9.-]+):\d+', text)})
 
 
 def server_names(init):
@@ -162,7 +131,8 @@ def sanitize_init(init, keep=('facts', 'claude.ai Gmail')):
             'tools': list(dict.fromkeys(t for t in init.get('tools') or [] if not t.startswith('mcp__') or t.startswith(prefixes)))}
 
 
-def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None):
+def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None, env=None):
+    """One run in job mode, as stream-json messages; its stderr is kept in claude.stderr."""
     cmd = ['claude', '-p', prompt, '--model', 'haiku', '--max-turns', str(turns), '--permission-mode', 'dontAsk',
            '--setting-sources', sources, '--output-format', 'stream-json', '--verbose']
     if mcp is not None:  # what the job runner passes: only these servers start
@@ -172,7 +142,9 @@ def claude(cwd, prompt, settings=None, sources='project', turns=6, mcp=None):
         with open(path, 'w') as fh:
             json.dump(settings, fh)
         cmd += ['--settings', path]
-    r = subprocess.run(cmd, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
+    r = subprocess.run(cmd, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300,
+                       env=dict(os.environ, **(env or {})))
+    claude.stderr = r.stderr
     msgs = messages(r.stdout)
     COST.append(float(result_of(msgs).get('total_cost_usd') or 0))
     return msgs
@@ -248,9 +220,45 @@ def facts(save_init=None):
             out.append((fact, False if ran else True if refused else None,
                         ('YES: ' if ran else 'no: ' if refused else 'not attempted: ') + what + ' under dontAsk'))
 
-        r8 = tool_output(claude(vault, run_prompt('gh api /zen'), job(['Bash(gh api:*)'], sandbox=box(enableWeakerNetworkIsolation=True))))
+        m8 = claude(vault, run_prompt('gh api /zen'), job(['Bash(gh api:*)'], sandbox=box(enableWeakerNetworkIsolation=True)))
+        r8 = '\n'.join(tool_results(m8, 'Bash')[-1:])
         out.append(('F8', 'api.github.com' in blocked_hosts(r8) or (None if not r8 else False),
                     'blocked host in the sandboxed command output: ' + (r8.strip().replace('\n', ' ')[:200] or 'no output')))
+        failed = [h for r in tool_results(m8, 'Bash', failed=True) for h in blocked_hosts(r)]  # what the runner reads
+        out.append(('F8b', 'api.github.com' in failed or (None if not r8 else False),
+                    'the stopped command\'s result is marked is_error and ends with the block' if failed else
+                    'the blocked host is NOT in a failed command\'s closing block: the runner would report none'))
+
+        marker = 'filled-from-env-' + str(os.getpid())
+        r9 = claude(empty, call, {'permissions': {'allow': ['mcp__facts__get_fact']}}, env={'CT_FACT_VALUE': marker},
+                    mcp={'facts': {'command': sys.executable, 'args': [FACTS_SERVER], 'env': {'FACT_FROM_ENV': '${CT_FACT_VALUE}'}}})
+        out.append(('F9', marker in tool_output(r9) or (False if tool_output(r9) else None),
+                    'a ${NAME} in a --mcp-config server env is ' + ('filled from the environment' if marker in tool_output(r9)
+                                                                    else 'NOT filled: ' + tool_output(r9)[:80])))
+
+        guard = [sys.executable, os.path.join(ROOT, 'scheduler', 'guard.py'), '--vault', vault]
+        hooks = {'PreToolUse': [{'matcher': 'Read', 'hooks': [{'type': 'command', 'command': ' '.join(shlex.quote(x) for x in guard)}]}]}
+        r10 = claude(vault, 'Use the Read tool once on /etc/hosts, then reply DONE.', job(['Read'], hooks=hooks))
+        where = [w for w, text in (('stderr', claude.stderr), ('tool results', tool_output(r10))) if 'BLOCKED by control-tower guard' in text]
+        labeled = [d for d in run_job_denials(result_of(r10), r10, 'now', hooks['PreToolUse'][0]['hooks'][0]['command']) if d['source'] == 'guard']
+        out.append(('F10', bool(labeled) or (False if where else None),
+                    'the guard\'s refusal reaches ' + (' and '.join(where) or 'neither stderr nor the tool results')
+                    + (', and the runner labels it: ' + labeled[0]['reason'][:60] if labeled else ', and the runner does NOT label it')))
+        server = subprocess.Popen([sys.executable, AUTH_SERVER, os.path.join(tmp, 'auth-requests.log')], stdout=subprocess.PIPE, text=True)
+        try:
+            ready = select.select([server.stdout], [], [], 10)[0]  # its port, or nothing if it did not start
+            port = server.stdout.readline().strip() if ready else ''
+            r11 = claude(empty, SAY_OK, {}, turns=1, mcp={'signin': {'type': 'http', 'url': f'http://127.0.0.1:{port}/mcp'}})
+        finally:
+            server.terminate()
+            server.wait(timeout=10)
+        status = next((s.get('status') for s in init_of(r11).get('mcp_servers') or [] if s.get('name') == 'signin'), None)
+        failed = bool(result_of(r11).get('is_error'))
+        down = [{'name': 'signin', 'status': str(status)}]
+        said = run_job_notice('job', empty, run_job_outcome(0, failed, [], down, [], ''), down)
+        out.append(('F11', None if status is None else (status == 'needs-auth' and bool(said)),
+                    f'a server that needs a sign-in shows as {status!r}; the run itself ' + ('fails' if failed else 'succeeds')
+                    + ('; the runner reports it: ' + said[:60] if said else '; the runner says NOTHING')))
         out.append(('hosts:gh', bool(blocked_hosts(r8)) or None, ', '.join(blocked_hosts(r8)) or 'none blocked'))
         tries = {'twg': ('TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql "created >= -1d"',
                          ['Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query:*)', 'Bash(twg jira workitem query:*)'], {}),
