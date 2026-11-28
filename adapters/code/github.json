@@ -25,6 +25,9 @@
     "Bash(gh release create:*)",
     "Bash(gh release delete:*)"
   ],
+  "network": [
+    "api.github.com"
+  ],
   "verify": "Run: gh pr list --repo OWNER/REPO --state merged --limit 5 --json number,title,mergedAt",
   "read_only": false,
   "read_only_mitigation": "Use a fine-grained personal access token limited to the needed repositories with read-only permissions, supplied through GH_TOKEN; the CLI itself has write commands, so the token is the control. Claude Code prefix rules need a wildcard, so no command is pre-allowed: approve read commands one by one or review them, and keep the deny list.",

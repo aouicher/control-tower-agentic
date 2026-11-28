@@ -54,12 +54,10 @@ class GuardTests(unittest.TestCase):
                     'gh pr view 12', 'gh issue list --limit 100', 'gh release list --limit 20', 'git log --oneline -5', 'git status']:
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd), f'should allow: {cmd}')
-        # other commands only when the user trusts them (passed to the guard by the installer)
-        for cmd in ['aws logs filter-log-events --log-group-name g', 'python3 _system/tools/duplicate-tasks.py']:
-            with self.subTest(trusted=cmd):
-                self.assertIsNotNone(self.bash(cmd))
-                self.assertIsNone(guard.check({'tool_name': 'Bash', 'tool_input': {'command': cmd}, 'cwd': self.vault}, self.vault,
-                                              ('aws', 'python3')))
+        # which commands a job may run is decided by its permission rules, not by the guard
+        for cmd in ['aws logs filter-log-events --log-group-name g', 'twg jira workitem query --jql "status IN (Done)"', 'sort -u x | uniq -c']:
+            with self.subTest(other=cmd):
+                self.assertIsNone(self.bash(cmd))
 
     def test_writes_stay_inside_the_vault(self):
         self.assertIsNone(self.tool('Edit', os.path.join(self.vault, 'journal/reports/a.md')))
@@ -193,7 +191,13 @@ if mode == "slow":
 if mode == "fail":
     sys.stderr.write("boom")
     sys.exit(1)
-print(json.dumps({"result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}))
+out = {"result": "line one\\nline two", "total_cost_usd": 0.12, "num_turns": 3, "is_error": False}
+if mode == "denied":
+    out["permission_denials"] = [
+        {"tool_name": "Bash", "tool_use_id": "t1", "tool_input": {"command": "GH_TOKEN=s3cr3t twg jira workitem query " + "x" * 400}},
+        {"tool_name": "mcp__slack__search", "tool_use_id": "t2", "tool_input": {"query": "launch", "api_token": "s3cr3t"}}]
+    sys.stderr.write("BLOCKED by control-tower guard: git write operation: git push\\n")
+print(json.dumps(out))
 '''
 
 
@@ -244,6 +248,24 @@ class RunJobTests(unittest.TestCase):
         self.assertIn('rc=0', log)
         self.assertIn('cost=$0.12', log)
         self.assertIn('line one', log)
+
+    def test_refusals_of_the_latest_run_are_recorded(self):
+        r = self.run_job('denied')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = os.path.join(self.home, 'logs', 'demo.denials.json')
+        got = json.load(open(path))
+        self.assertEqual([(d['tool'], d['source']) for d in got],
+                         [('Bash', 'permissions'), ('mcp__slack__search', 'permissions'), ('guard', 'guard')])
+        self.assertTrue(got[0]['input'].startswith('GH_TOKEN=[hidden] twg jira workitem query'))
+        self.assertLessEqual(len(got[0]['input']), 300)
+        self.assertNotIn('s3cr3t', open(path).read(), 'values that look like secrets are never written')
+        self.assertIn('"query": "launch"', got[1]['input'])
+        self.assertEqual(got[2]['reason'], 'git write operation: git push')
+        self.assertTrue(all(d['at'] for d in got))
+        self.assertIn('denied: 3 (see logs/demo.denials.json)', open(os.path.join(self.home, 'logs', 'demo.log')).read())
+        self.run_job()
+        self.assertEqual(json.load(open(path)), [], 'overwritten by the next run')
+        self.assertEqual(open(os.path.join(self.home, 'logs', 'demo.log')).read().count('denied:'), 1)
 
     def test_failure_is_logged_and_returned(self):
         r = self.run_job('fail')

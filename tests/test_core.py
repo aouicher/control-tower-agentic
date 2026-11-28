@@ -25,7 +25,7 @@ LAYOUT_DIRS = [
     '.claude/skills',
 ]
 TEMPLATES = ['daily', 'weekly', 'meeting', 'project', 'area', 'workstream', 'risk', 'decision', 'team', 'person', 'report', 'resource']
-SKILLS = ['today', 'weekly-review', 'meeting', 'research', 'time-review', 'inbox']
+SKILLS = ['today', 'weekly-review', 'meeting', 'research', 'time-review', 'inbox', 'job-permissions']
 DASHBOARDS = ['projects', 'workstreams', 'people', 'teams', 'decisions', 'risks', 'reports']
 TYPE_VALUES = {'project', 'area', 'workstream', 'decision', 'risk', 'team', 'person', 'report', 'meeting', 'resource', 'hub', 'daily', 'weekly'}
 FRENCH = re.compile(r'[àâäçéèêëîïôöùûüÿœ]', re.I)

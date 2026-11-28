@@ -15,6 +15,7 @@ What it does:
   * runs `claude -p` inside the vault with the job's settings and `--permission-mode dontAsk`
     (anything not explicitly allowed is refused) and a time limit (default 30 minutes)
   * appends the cost, turns and the final answer to <ct-home>/logs/<id>.log, errors to <id>.stderr.log
+  * writes what was refused during the run to <ct-home>/logs/<id>.denials.json (the /job-permissions skill reads it)
   * sends a desktop notification when the run fails (best effort)
 Set CT_CLAUDE_BIN to use another executable (used by the tests).
 """
@@ -22,6 +23,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -30,6 +32,33 @@ import time
 
 DEFAULT_TIMEOUT = 1800
 EXTRA_PATH = ['~/.local/bin', '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
+BLOCKED = 'BLOCKED by control-tower guard: '
+SECRET_KEY = re.compile(r'token|secret|passw|api.?key|auth|cookie|credential|bearer', re.I)
+SECRET_VALUE = re.compile(r'\b(\w*(?:token|secret|passw|api_?key|auth)\w*=|bearer\s+|token\s+)\S+', re.I)
+
+
+def redact(text):
+    return SECRET_VALUE.sub(lambda m: m.group(1) + '[hidden]', str(text))[:300]
+
+
+def denials(data, errtxt, at):
+    """What was refused during the run: Claude Code's permission denials (rule missing) and the guard's blocks."""
+    out = []
+    for d in (data.get('permission_denials') if isinstance(data, dict) else None) or []:
+        if not isinstance(d, dict):
+            continue
+        tool, inp = str(d.get('tool_name') or '?'), d.get('tool_input')
+        if tool == 'Bash' and isinstance(inp, dict):
+            text = inp.get('command', '')
+        elif isinstance(inp, dict):  # never keep values of keys that look like credentials
+            text = json.dumps({k: v for k, v in inp.items() if not SECRET_KEY.search(str(k))}, ensure_ascii=False, sort_keys=True)
+        else:
+            text = inp or ''
+        out.append({'tool': tool, 'input': redact(text), 'reason': 'not allowed for this job', 'source': 'permissions', 'at': at})
+    for line in (errtxt or '').splitlines():
+        if BLOCKED in line:
+            out.append({'tool': 'guard', 'input': '', 'reason': redact(line.split(BLOCKED, 1)[1]), 'source': 'guard', 'at': at})
+    return out
 
 
 def load(path):
@@ -153,7 +182,7 @@ def main():
     finally:
         shutil.rmtree(lock, ignore_errors=True)
 
-    summary, failed = '', rc != 0
+    summary, failed, data = '', rc != 0, None
     try:
         data = json.loads(out)
         failed = failed or bool(data.get('is_error'))
@@ -161,8 +190,14 @@ def main():
         summary += '\n'.join(str(data.get('result', '')).split('\n')[:60])
     except (json.JSONDecodeError, AttributeError):
         summary = out[:2000]
+    refused = denials(data, errtxt, started)
+    with open(os.path.join(logs, f'{args.job}.denials.json'), 'w', encoding='utf-8') as fh:  # the latest run only
+        json.dump(refused, fh, indent=2, ensure_ascii=False)
     with open(log, 'a', encoding='utf-8') as fh:
-        fh.write(f'=== {started} {args.job} rc={rc}\n{summary}\n\n')
+        fh.write(f'=== {started} {args.job} rc={rc}\n{summary}\n')
+        if refused:
+            fh.write(f'denied: {len(refused)} (see logs/{args.job}.denials.json)\n')
+        fh.write('\n')
     if errtxt:
         with open(err, 'a', encoding='utf-8') as fh:
             fh.write(f'=== {started} {args.job}\n{errtxt}\n')

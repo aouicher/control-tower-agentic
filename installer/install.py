@@ -34,8 +34,8 @@ import zoneinfo  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import render  # noqa: E402
-from plan import (REPO, TOOLS_KEY_ANYWHERE, CorePolicy, InstallError, Trust, check_permissions, check_rendered, expand, guard_rules, jload,  # noqa: E402
-                  list_packs, resolve_packs, vault_files)
+from plan import (ID_RE, REPO, TOOLS_KEY_ANYWHERE, risky_settings, CorePolicy, InstallError, check_permissions, check_rendered,  # noqa: E402
+                  describe_rules, expand, guard_rules, jload, list_packs, permission_problem, resolve_packs, vault_files)
 
 VERSION = '0.1.0'
 CAPABILITIES = ['calendar', 'tracker', 'code', 'errors', 'quality', 'logs', 'analytics', 'crm']
@@ -87,7 +87,18 @@ def validate(answers, repo=REPO):
     except InstallError as exc:
         errors.append(str(exc))
         available = list_packs(repo)
-    errors += Trust.problems(answers)
+    # trusted_* keys of older answers files are ignored: access is now granted per job (job_permissions), by answering questions
+    grants = answers.get('job_permissions') or {}
+    if not isinstance(grants, dict):
+        errors.append('answers: "job_permissions" must be an object, for example {"morning-prs": ["Bash(twg jira:*)"]}')
+        grants = {}
+    for jid, rules in grants.items():
+        if not ID_RE.match(str(jid)) or not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
+            errors.append(f'answers: job_permissions "{jid}" must be a list of rules')
+            continue
+        errors += [f'answers: job_permissions "{jid}": "{r}": {p}' for r in rules for p in [permission_problem(r)] if p]
+    if not isinstance(answers.get('strict', False), bool):
+        errors.append('answers: "strict" must be true or false')
     if answers.get('vault_mode', 'full') not in ('full', 'runtime'):
         errors.append('answers: "vault_mode" must be full or runtime')
     elif answers.get('vault_mode') == 'runtime' and answers.get('vault_path') and not os.path.isdir(expand(answers['vault_path'])):
@@ -350,28 +361,57 @@ def fix_rule(rule):
     return f'{m.group(1)}(/{m.group(2)})' if m else rule
 
 
-def job_settings(repo, answers, job):
-    vault = expand(answers['vault_path'])
-    req, opt = job_capabilities(job['meta'])
-    allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')]  # every job writes its report in the vault
-    allow += [fix_rule(p) for p in job['meta']['permissions'].get('allow', [])]  # rendered and checked in Ctx.plan_jobs
-    deny = list(BASE_DENY) + [fix_rule(p) for p in job['meta']['permissions'].get('deny', [])]
-    deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
-    # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
-    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
+def job_rules(repo, answers, job):
+    """What one job may use beyond the base rules: (allow, deny, network hosts). From the pack's job.json, the chosen tools'
+    adapters, the answers' per-capability `permissions`, and what the user granted this job (`job_permissions`)."""
+    meta = job['meta']
+    req, opt = job_capabilities(meta)
+    allow = [fix_rule(p) for p in meta['permissions'].get('allow', [])]
+    deny = [fix_rule(p) for p in meta['permissions'].get('deny', [])]
+    network = list(meta.get('network', []))
     for cap in req + opt:
         tool = answers['tools'].get(cap, 'none')
         if tool != 'none':
             man = jload(os.path.join(repo, 'adapters', cap, tool + '.json'))
-            allow += man.get('permissions_allow', [])
-            allow += list((answers.get('permissions') or {}).get(cap, []))
+            allow += man.get('permissions_allow', []) + list((answers.get('permissions') or {}).get(cap, []))
             deny += man.get('permissions_deny', [])
+            network += man.get('network', [])
+    allow += list((answers.get('job_permissions') or {}).get(job['id'], []))
+    return allow, deny, network
+
+
+# Strict mode: Claude Code's sandbox around every shell command. Absolute paths are written `//abs` (Claude Code's absolute form;
+# a plain `//` is the same folder for the operating system anyway).
+SANDBOX_DENY_READ = ['~/.ssh', '~/.aws', '~/.gnupg', '~/.kube', '~/.docker', '~/.claude']
+SANDBOX_DENY_WRITE = ['.git', '.claude', '.obsidian', '.control-tower', 'CLAUDE.md', '_system/templates', '_system/dashboards']
+
+
+def sandbox_settings(vault, meta, allow, network):
+    fs = {'denyRead': list(SANDBOX_DENY_READ), 'denyWrite': ['/' + os.path.join(vault, p) for p in SANDBOX_DENY_WRITE]}
+    if meta.get('sandbox_allow_write'):
+        fs['allowWrite'] = list(meta['sandbox_allow_write'])
+    box = {'enabled': True, 'failIfUnavailable': True, 'allowUnsandboxedCommands': False, 'filesystem': fs,
+           'network': {'allowedDomains': sorted(set(network))}}
+    if any(r.startswith('Bash(gh ') for r in allow):
+        box['enableWeakerNetworkIsolation'] = True  # gh (Go) checks TLS certificates through a macOS service the sandbox blocks
+    return box
+
+
+def job_settings(repo, answers, job):
+    vault = expand(answers['vault_path'])
+    extra_allow, extra_deny, network = job_rules(repo, answers, job)  # rendered and checked in Ctx.plan_jobs
+    allow = list(BASE_ALLOW) + [abs_rule('Edit', f'{vault}/**')] + extra_allow  # every job writes its report in the vault
+    deny = list(BASE_DENY) + extra_deny
+    deny += ['Read(**/.env*)', 'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.gnupg/**)', 'Read(**/*credentials*)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)']
+    # defence in depth (the guard hook enforces the same): jobs never edit their own settings, the vault rules, git internals or the installer state
+    deny += [abs_rule('Edit', f'{vault}/{p}/**') for p in PROTECTED_DIRS] + [abs_rule('Edit', f'{vault}/{f}') for f in PROTECTED_FILES_CASED]
     hook = [python_bin(answers), os.path.join(expand(answers['ct_home']), 'bin', 'guard.py'), '--vault', vault]
-    if answers.get('trusted_commands'):
-        hook += ['--commands', ','.join(answers['trusted_commands'])]
     guard = ' '.join(shlex.quote(x) for x in hook)
-    return {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
-            'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
+    settings = {'permissions': {'allow': sorted(set(allow)), 'deny': sorted(set(deny))},
+                'hooks': {'PreToolUse': [{'matcher': GUARD_MATCHER, 'hooks': [{'type': 'command', 'command': guard, 'timeout': 10}]}]}}
+    if answers.get('strict'):
+        settings['sandbox'] = sandbox_settings(vault, job['meta'], allow, network)
+    return settings
 
 
 def python_bin(answers):
@@ -476,18 +516,16 @@ class Ctx:
             self.stash_dir = os.path.join(self.vault, '.control-tower', 'updates', datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
         self.report = {'vault': self.vault, 'ct_home': self.ct_home, 'created': 0, 'kept': 0, 'jobs': [], 'jobs_skipped': [],
                        'warnings': [], 'schedule': None, 'updated': [], 'stashed': [], 'skipped': [], 'stash_dir': self.stash_dir,
-                       'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full'}
+                       'routines': [], 'routines_skipped': [], 'vault_mode': 'runtime' if self.runtime_only else 'full',
+                       'permissions_summary': []}
         self.files = {}  # vault paths written by this run: checksummed into the manifest
         self.jobs_on, self.jobs_off = self.plan_jobs()
 
     def plan_jobs(self):
         """Which jobs run, their final (rendered) definition, and every check on them: nothing is written if one fails."""
         a, on, off = self.a, [], []
-        # MCP tools the user lists under `permissions` in the answers are trusted by being listed there
-        own = [str(r) for rules in (a.get('permissions') or {}).values() for r in rules if str(r).startswith('mcp__')]
-        trust = Trust.from_answers(a, extra_mcp_tools=own)
         for cap, rules in (a.get('permissions') or {}).items():
-            check_permissions(f'answers permissions "{cap}"', rules, trust)
+            check_permissions(f'answers permissions "{cap}"', rules)
         for j in eligible_jobs(a['packs'], self.packs, a['tools']):
             cfg = (a.get('jobs') or {}).get(j['id'], {})
             if j['missing'] or cfg.get('enabled') is False:
@@ -498,7 +536,12 @@ class Ctx:
             meta['schedule'] = {**meta['schedule'], **{k: v for k, v in cfg.items() if k in ('time', 'days')}}
             j['rendered'] = json.loads(render.render_text(json.dumps(meta), self.table, j['id'], []))
             # checked on the FINAL strings: a pack's vocabulary could otherwise inject text into a rule after the check
-            check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []), trust)
+            check_permissions(f'pack "{j["pack"]}" job "{j["id"]}"', j['rendered']['permissions'].get('allow', []))
+            allow, _, network = job_rules(self.repo, a, {'id': j['id'], 'meta': j['rendered']})
+            check_permissions(f'job "{j["id"]}"', allow)  # adapters and the user's grants: the same limits
+            uses = describe_rules(allow, network)
+            if any(uses.values()):  # what the user consents to, in plain words (the guided installer asks about it)
+                self.report['permissions_summary'].append({'job': j['id'], 'name': j['rendered'].get('name', j['id']), **uses})
             sched = j['rendered']['schedule']
             self.report['jobs'].append({'id': j['id'], 'pack': j['pack'], 'days': sched['days'], 'time': sched['time']})
             on.append(j)
@@ -528,13 +571,12 @@ def vault_settings_warnings(vault):
     out = []
     for name in ('settings.json', 'settings.local.json'):
         p = os.path.join(vault, '.claude', name)
-        try:
-            data = jload(p) if os.path.isfile(p) else {}
-        except ValueError:
-            data = {'unreadable': True}
-        if (data.get('permissions') or {}).get('allow') or data.get('hooks') or data.get('unreadable'):
-            out.append(f'{p} has allow rules or hooks: unattended jobs load it too, so it widens what they can do. '
-                       'Keep it empty for jobs, or move those rules to your user settings')
+        risky = risky_settings(p) if os.path.isfile(p) else []
+        if risky:
+            out.append(f'{p} sets {", ".join(risky)}: unattended jobs load it too, so it can widen what they do. '
+                       'Keep it empty for jobs, or move those settings to your user settings')
+    if os.path.isfile(os.path.join(vault, '.mcp.json')):
+        out.append(f'{os.path.join(vault, ".mcp.json")}: MCP servers declared in the vault are available to unattended jobs too')
     skills = os.path.join(vault, '.claude', 'skills')
     for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
         p = os.path.join(skills, name, 'SKILL.md')
@@ -720,7 +762,7 @@ def step_manifest(ctx):
     files = {**ctx.previous.get('files', {}), **sums}
     jdump(ctx.manifest_path, {'version': VERSION, 'installed_at': datetime.datetime.now().isoformat(timespec='seconds'),
                               'packs': ctx.a['packs'], 'tools': ctx.a['tools'], 'ct_home': ctx.ct_home, 'files': files,
-                              'vault_mode': ctx.report['vault_mode'], **ctx.policy.to_json()})
+                              'vault_mode': ctx.report['vault_mode'], 'repo': ctx.repo, **ctx.policy.to_json()})
     jdump(os.path.join(ctx.vault, '.control-tower', 'answers.json'), {k: v for k, v in ctx.a.items() if k != 'claude_bin'})
 
 
@@ -793,6 +835,12 @@ def print_report(report, dry_run):
     print('Jobs: ' + (', '.join(f"{j['id']} ({j['days']} {j['time']})" for j in report['jobs']) or 'none'))
     for j in report['jobs_skipped']:
         print(f"  skipped {j['id']}: " + (f"needs a tool for {', '.join(j['missing'])}" if j['missing'] else 'disabled'))
+    if report.get('permissions_summary'):
+        print('Access the jobs will have (besides reading your vault and writing their reports in it):')
+        for p in report['permissions_summary']:
+            uses = [f"{label}: {', '.join(p[key])}" for key, label in (('commands', 'commands'), ('mcp_tools', 'tools'), ('web', 'web sites'))
+                    if p[key]]
+            print(f"  {p['job']}: " + '; '.join(uses))
     s = report['schedule']
     if s:
         if s['kind'] == 'none':

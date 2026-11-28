@@ -6,8 +6,8 @@ One place for:
   * ids: pack, job and routine ids end up in file paths;
   * the core policy: which core files a private pack replaces or excludes (segment-aware patterns);
   * the files a pack may never ship into a vault (derived from the guard's protected paths);
-  * the permissions an unattended job may be granted: an ALLOW-list, because a pack is often written by someone else than the
-    person installing it. Commands the user trusts (a company CLI) are declared in the answers, never by the pack.
+  * the permissions an unattended job may never be granted, whether a pack or the user asks (permission_problem), and the
+    plain-language summary the user consents to (describe_rules).
 """
 import fnmatch
 import json
@@ -21,8 +21,7 @@ REPO = os.path.dirname(HERE)
 
 
 def _load_guard():
-    """scheduler/guard.py is copied standalone to the runtime; it is the single source of the protected paths and of the
-    commands a job may run. Loaded by file so that importing plan does not change sys.path."""
+    """scheduler/guard.py is copied standalone to the runtime; it is the single source of the protected paths. Loaded by file so that importing plan does not change sys.path."""
     spec = importlib.util.spec_from_file_location('ct_guard', os.path.join(REPO, 'scheduler', 'guard.py'))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -119,7 +118,22 @@ def check_id(kind, value):
     return value
 
 
-def check_pack(pk, trust=None):
+# Strict mode lets a pack add folders a sandboxed command may write to: only per-user log and cache folders.
+SANDBOX_WRITABLE = ('~/Library/Logs/', '~/Library/Caches/', '~/.cache/', '~/.local/state/')
+
+
+def job_meta_problem(meta):
+    """The optional sandbox fields of a job.json: `network` (web hosts its commands reach) and `sandbox_allow_write`."""
+    net, writable = meta.get('network', []), meta.get('sandbox_allow_write', [])
+    if not isinstance(net, list) or not all(isinstance(h, str) and HOST.match(h) for h in net):
+        return '"network" must be a list of host names, for example ["api.github.com"]'
+    if not isinstance(writable, list) or not all(isinstance(w, str) and w.startswith(SANDBOX_WRITABLE) and '..' not in w.split('/')
+                                                 for w in writable):
+        return f'"sandbox_allow_write" may only list folders under {", ".join(SANDBOX_WRITABLE)}'
+    return None
+
+
+def check_pack(pk):
     """Everything about one pack that can be checked before writing: ids, job ids, folders and symlinks, shipped files,
     core policy shape, and the tools its skills ask for."""
     root = os.path.realpath(pk.dir)
@@ -141,8 +155,12 @@ def check_pack(pk, trust=None):
         jp = os.path.join(pk.dir, 'jobs', j, 'job.json')
         if not os.path.isfile(jp) or not os.path.isfile(os.path.join(pk.dir, 'jobs', j, 'prompt.md.tmpl')):
             raise InstallError(f'pack "{pk.id}": jobs/{j} needs job.json and prompt.md.tmpl')
-        if jload(jp).get('id', j) != j:
+        meta = jload(jp)
+        if meta.get('id', j) != j:
             raise InstallError(f'pack "{pk.id}": jobs/{j}/job.json has another id: it must equal the folder name')
+        problem = job_meta_problem(meta)
+        if problem:
+            raise InstallError(f'pack "{pk.id}": jobs/{j}/job.json: {problem}')
     for r in pk.manifest.get('routines', []):
         check_id(f'routine (pack {pk.id})', r)
     shipped = vault_files(os.path.join(pk.dir, 'vault'))
@@ -221,10 +239,26 @@ def resolve_packs(repo, answers=None):
         if pid in packs:
             raise InstallError(f'answers: private pack "{pid}" ({raw}) has the same id as another pack: rename it in its pack.json')
         packs[pid] = Pack(pid, d, manifest, True)
-    trust = Trust.from_answers(answers or {})
     for pk in packs.values():
-        check_pack(pk, trust)
+        check_pack(pk)
     return packs
+
+
+# ----------------------------------------------------------------------------- vault settings
+# Unattended jobs run in the vault and load its project settings. Only these keys, with these values, cannot widen what a job
+# does; anything else (allow rules, hooks, env, additionalDirectories, apiKeyHelper, enabled MCP servers...) is reported.
+HARMLESS_SETTINGS = {'enabledMcpjsonServers': [], 'enableAllProjectMcpServers': False, '$schema': None}
+
+
+def risky_settings(path):
+    """Keys of a vault settings file that could widen unattended jobs ([] when harmless). Unreadable counts as risky."""
+    try:
+        data = jload(path)
+    except (OSError, ValueError):
+        return ['(unreadable)']
+    if not isinstance(data, dict):
+        return ['(not an object)']
+    return sorted(k for k, v in data.items() if k not in HARMLESS_SETTINGS or (HARMLESS_SETTINGS[k] is not None and v != HARMLESS_SETTINGS[k]))
 
 
 # ----------------------------------------------------------------------------- core policy
@@ -260,87 +294,107 @@ class CorePolicy:
 
 
 # ----------------------------------------------------------------------------- job permissions
-# What an unattended job may be granted, as an ALLOW-list. The installer grants the vault write itself; scheduler/guard.py confines
-# Read/Grep/Glob to the vault, blocks secrets and checks the ACTUAL arguments of every Bash call against guard.JOB_COMMANDS. Here,
-# a rule may only name an allowed tool or command: anything not listed is refused.
+# Secure by default: a job may use only what its rules allow (`dontAsk` refuses the rest), and the person installing consents to
+# those rules by answering a question (never by editing a file). Some rules can never be granted, whoever asks: they would let
+# an unattended job run any code, write anywhere, or act on the user's behalf. scheduler/guard.py adds the run-time limits.
 SAFE_TOOLS = {'Read', 'Grep', 'Glob', 'TodoWrite', 'Skill'}
 SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r"\']')
 COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]*$')
-ENV_PREFIX = re.compile(r'^([A-Z_][A-Z0-9_]*)=(\S*)$')
+ENV_PREFIX = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(\S*)$')
 MCP_TOOL = re.compile(r'^mcp__([A-Za-z0-9_.-]+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
-TRUST_PATTERNS = {'trusted_commands': COMMAND_NAME, 'trusted_env': re.compile(r'^[A-Z_][A-Z0-9_]*$'),
-                  'trusted_mcp_tools': re.compile(r'^mcp__[A-Za-z0-9_.-]+$'), 'trusted_domains': re.compile(r'^[A-Za-z0-9.-]+$')}
+HOST = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
+# shells, interpreters, wrappers that run another command, and tools that copy files or talk to the network by themselves
+NEVER_COMMANDS = {'sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'python', 'node', 'perl', 'ruby', 'php', 'osascript', 'curl', 'wget',
+                  'nc', 'ncat', 'ssh', 'scp', 'sftp', 'rsync', 'cp', 'mv', 'rm', 'dd', 'tee', 'chmod', 'chown', 'sudo', 'su', 'env',
+                  'xargs', 'eval', 'exec', 'command', 'source', 'timeout', 'nohup', 'nice', 'find', 'awk', 'sed', 'npx'}
+GIT_READ = {'log', 'show', 'diff', 'status', 'rev-parse', 'shortlog', 'blame', 'ls-files', 'describe', 'grep'}
+UNSAFE_ENV = re.compile(r'^(PATH|HOME|SHELL|ENV|BASH_ENV|PAGER|EDITOR|VISUAL|PYTHON\w*|NODE\w*|PERL\w*|RUBY\w*|GIT_\w*|LD_\w*|'
+                        r'DYLD_\w*|GH_\w*|SSH_\w*|\w*PROXY\w*)$', re.I)
+# an MCP tool whose name says it acts (sends, changes, deletes...) can carry vault text out or change the user's data
+ACTION_WORDS = {'send', 'post', 'create', 'update', 'delete', 'remove', 'write', 'edit', 'merge', 'close', 'publish', 'upload',
+                'comment', 'reply', 'react', 'transition', 'assign', 'invite', 'share', 'trigger', 'deploy',
+                'add', 'set', 'manage', 'move', 'archive', 'respond', 'approve', 'submit'}
 
 
-@dataclass(frozen=True)
-class Trust:
-    """What the user (never a pack) trusts unattended jobs to use, from the answers: a company CLI, the variables it needs,
-    exact MCP tools, web domains."""
-    commands: tuple = ()
-    env: tuple = ()
-    mcp_tools: tuple = ()
-    domains: tuple = ()
-
-    @classmethod
-    def from_answers(cls, answers, extra_mcp_tools=()):
-        get = lambda k: tuple(answers.get(k) or ())
-        return cls(get('trusted_commands'), get('trusted_env'), get('trusted_mcp_tools') + tuple(extra_mcp_tools), get('trusted_domains'))
-
-    @staticmethod
-    def problems(answers):
-        out = []
-        for key, rx in TRUST_PATTERNS.items():
-            val = answers.get(key) or []
-            if not isinstance(val, list) or not all(isinstance(x, str) and rx.match(x) for x in val):
-                out.append(f'answers: "{key}" must be a list of plain names, for example ["twg"]')
-        return out
+def name_words(name):
+    """`createIssue`, `create_issue`, `create-issue`, `issues.create` -> lowercase words."""
+    name = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', name))
+    return [w.lower() for w in re.split(r'[\s_.\-]+', name) if w]
 
 
-def permission_problem(rule, trust=None):
-    """Why `rule` may not be granted to an unattended job, or None."""
-    trust = trust or Trust()
+def bash_parts(rule):
+    """`Bash(A=1 twg jira x:*)` -> (['A=1'], 'twg', ['jira', 'x']), or None when the rule is not a Bash rule with a body."""
+    m = re.fullmatch(r'Bash\((.+)\)', str(rule).strip(), re.S)
+    if not m:
+        return None
+    body = m.group(1).strip()
+    tokens = (body[:-2] if body.endswith(':*') else body).split()
+    env = []
+    while tokens and ENV_PREFIX.match(tokens[0]):
+        env.append(tokens.pop(0))
+    return env, (tokens[0] if tokens else ''), tokens[1:]
+
+
+def permission_problem(rule):
+    """Why `rule` may never be granted to an unattended job (by a pack or by the user), or None when it is acceptable."""
     rule = str(rule).strip()
     if '{{' in rule:
         return 'unrendered template token in a permission'
     if rule in SAFE_TOOLS or re.fullmatch(r'Read\([^()]+\)', rule):
         return None
-    if rule.startswith('mcp__'):
-        if not MCP_TOOL.match(rule) or '__' in rule.split('__', 2)[2]:
-            return 'MCP permissions must name one tool (mcp__<server>__<tool>), never a whole server or a wildcard'
-        return None if rule in trust.mcp_tools else 'MCP tool not trusted: list this exact tool in the answers under "trusted_mcp_tools"'
-    m = re.fullmatch(r'WebFetch\(domain:([A-Za-z0-9.-]+)\)', rule)
-    if m:  # a fetch can carry vault text in its URL: only domains the user trusts
-        return None if m.group(1).lower() in [d.lower() for d in trust.domains] else \
-            f'domain {m.group(1)} is not trusted: list it in the answers under "trusted_domains"'
     if re.match(r'(Edit|Write|MultiEdit|NotebookEdit)\b', rule):
-        return 'jobs get write access to the vault from the installer; packs may not grant Edit or Write'
-    m = re.fullmatch(r'Bash\((.+)\)', rule, re.S)
-    if not m:
-        return 'not an allowed job permission (allowed: Read, Grep, Glob, Bash(<allowed command> ...), trusted MCP tools and domains)'
-    body = m.group(1).strip()
-    if SHELL_CHARS.search(body):
-        return 'Bash permissions may not contain shell operators, quotes or substitutions'
-    tokens = (body[:-2] if body.endswith(':*') else body).split()
-    while tokens and ENV_PREFIX.match(tokens[0]):
-        name = ENV_PREFIX.match(tokens[0]).group(1)
-        if name not in trust.env or guard_rules.UNSAFE_ENV.match(name):
-            return f'environment variable {name} in a permission: declare it in the answers under "trusted_env" (never PATH, PAGER, GIT_*, LD_*...)'
-        tokens.pop(0)
-    if not tokens or not COMMAND_NAME.match(tokens[0]):
-        return 'Bash permissions must start with a plain lowercase command name (no path, no quotes, no wildcard)'
-    cmd, rest = tokens[0], tokens[1:]
-    if cmd in trust.commands:
-        return None
-    rule_def = guard_rules.JOB_COMMANDS.get(cmd)
-    if rule_def is None:
-        return f'"{cmd}" is not an allowed job command; if you trust this tool, list it in the answers under "trusted_commands"'
-    allowed = rule_def.get('subcommands')
-    if allowed and ' '.join(rest[:1]) not in allowed and ' '.join(rest[:2]) not in allowed:
-        return f'only these {cmd} subcommands are allowed: {", ".join(sorted(allowed))}'
-    return None  # its arguments are checked at run time by the guard
+        return 'jobs write only inside the vault, and the installer grants that itself'
+    if rule.startswith('WebSearch'):
+        return 'a web search can send your notes to any site'
+    if rule.startswith('WebFetch'):
+        m = re.fullmatch(r'WebFetch\(domain:([^()\s]+)\)', rule)
+        return None if m and HOST.match(m.group(1)) else 'web access is granted one site at a time (WebFetch(domain:host))'
+    if rule.startswith('mcp__'):
+        m = MCP_TOOL.match(rule)
+        if not m or '__' in rule.split('__', 2)[2]:
+            return 'MCP access is granted one tool at a time (mcp__<server>__<tool>), never a whole server or a wildcard'
+        acts = sorted(set(name_words(m.group(2))) & ACTION_WORDS)
+        return f'this tool acts on your behalf ({", ".join(acts)}): jobs only read' if acts else None
+    if rule in ('Bash', 'Bash()') or not rule.startswith('Bash('):
+        return 'not a job permission (jobs may use Read, Grep, Glob, one command, one MCP tool or one web site)'
+    if not rule.endswith(')') or SHELL_CHARS.search(rule[5:-1]):
+        return 'a command rule may not contain shell operators, quotes or substitutions'
+    env, cmd, rest = bash_parts(rule)
+    for e in env:
+        name = ENV_PREFIX.match(e).group(1)
+        if UNSAFE_ENV.match(name):
+            return f'the variable {name} can change which program runs'
+    if not COMMAND_NAME.match(cmd):
+        return 'a command rule must start with a plain command name (no path, no wildcard)'
+    if cmd in NEVER_COMMANDS or re.sub(r'[0-9.]+$', '', cmd) in NEVER_COMMANDS:
+        return f'"{cmd}" can run any code, copy files or reach the network by itself'
+    if cmd == 'git' and (not rest or rest[0] not in GIT_READ):
+        return f'jobs may only read git history ({", ".join(sorted(GIT_READ))})'
+    return None
 
 
-def check_permissions(where, rules, trust=None):
-    problems = [f'{where}: "{r}": {p}' for r in rules for p in [permission_problem(r, trust)] if p]
+def check_permissions(where, rules):
+    problems = [f'{where}: "{r}": {p}' for r in rules for p in [permission_problem(r)] if p]
     if problems:
         raise InstallError('\n'.join(problems))
+
+
+def describe_rules(rules, network=()):
+    """Plain-language summary of what rules let a job use: {'commands': [...], 'mcp_tools': [...], 'web': [...]}."""
+    out = {'commands': [], 'mcp_tools': [], 'web': []}
+    def add(key, text):
+        if text not in out[key]:
+            out[key].append(text)
+    for r in rules:
+        parts = bash_parts(r)
+        if parts:
+            env, cmd, rest = parts
+            add('commands', ' '.join([cmd] + [w for w in rest if w != '*']))
+        elif str(r).startswith('mcp__') and MCP_TOOL.match(r):
+            server, tool = MCP_TOOL.match(r).groups()
+            add('mcp_tools', f'{" ".join(name_words(tool))} ({server})')
+        elif re.fullmatch(r'WebFetch\(domain:[^()]+\)', str(r)):
+            add('web', str(r)[len('WebFetch(domain:'):-1])
+    for host in network:
+        add('web', host)
+    return out
