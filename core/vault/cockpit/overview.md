@@ -22,7 +22,7 @@ The state of all {{ct.teams}} and {{ct.workstreams}} at a glance. Back to [[cock
 ## 🔁 Review cadence
 | Rhythm | Source | What I look at |
 |---|---|---|
-| Daily | [[today]] | agenda, overdue tasks, `#to-triage` items |
+| Daily | [[today]] | priorities, agenda, `#to-triage` count |
 | Weekly | latest weekly review in `journal/daily/` | progress per {{ct.workstream}}, blockers, `#waiting` items |
 | Weekly | `journal/reports/` | generated reports, {{ct.risks}} |
 | Monthly | `work/` and `journal/reports/` | trends, open decisions, {{ct.team}} health |

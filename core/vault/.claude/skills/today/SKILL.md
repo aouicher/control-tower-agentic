@@ -1,6 +1,6 @@
 ---
 name: today
-description: Create or refresh today's daily note and the reading page cockpit/today.md (priorities, agenda, overdue tasks, triage count). Use when the user says /today, "start my day", "daily note", "what should I focus on today" or "plan my day".
+description: Create or refresh today's daily note and the reading page cockpit/today.md (priorities, agenda, triage count). Use when the user says /today, "start my day", "daily note", "what should I focus on today" or "plan my day".
 argument-hint: "[YYYY-MM-DD | refresh]"
 ---
 
@@ -15,7 +15,7 @@ If the prompt has a `## Run context`, take dates and times from it and do not ru
 If the argument is `refresh`, do only this, then stop (do not run the steps below, do not ask "Anything to add?"):
 1. Get the date and the current time in the configured timezone: `TZ={{ct.timezone}} date "+%F %H:%M"`. If `cockpit/today.md` does not already carry today's date, run the full steps instead.
 2. Re-read today's events as in step 6 and recompute the states.
-3. In `cockpit/today.md`, rewrite only the agenda table, the `Past meetings` callout and the `🕐 Updated` line. Leave the priorities, overdue tasks, triage count and every other section as they are. Do not touch the daily note.
+3. In `cockpit/today.md`, rewrite only the agenda table, the `Past meetings` callout and the `🕐 Updated` line. Leave the priorities, the triage count and every other section as they are. Do not touch the daily note.
 4. Reply in 2 lines: what is in progress and what comes next.
 
 ## Steps
@@ -60,7 +60,6 @@ Follow section 6 (page style) of the vault `CLAUDE.md`. Two pages, same content.
     > | 09:30–09:45 | Stand-up | [[checkout]] |
     ```
   - no HTML in the agenda, so the wikilinks always work. The split is only exact at the time of the last update, hence the `🕐 Updated` line;
-- `## 🔴 Overdue`: table `| Task | Note | Due |`, 5 rows max;
 - one line `📥 N tasks to triage`, with a link to the page that lists `#to-triage` tasks.
 
 **Daily note** (from `_system/templates/daily.md`, no summary callout: it is a short page): `## 📅 Agenda` (the whole day in one plain table, past meetings included, no states, no callout: it is the record of the day), `## 🎯 Focus` (the same priorities, numbered), `## ✅ Tasks` (today-only tasks), `## 📝 Notes`, `## ⚖️ Decisions`, `## 🚨 Blockers`, `## 🌙 End of day`. Keep these headings, with their icons.

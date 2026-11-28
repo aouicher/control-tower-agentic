@@ -7,7 +7,7 @@
   "skills": ["discovery-notes", "prioritize", "prd-draft", "product-weekly"],
   "templates": ["opportunity", "interview", "prd", "release-notes"],
   "dashboards": ["opportunities"],
-  "cockpit_pages": ["roadmap"],
+  "cockpit_pages": [],
   "jobs": ["product-weekly", "feedback-digest"],
   "routines": ["daily-note", "weekly-review", "morning-brief"],
   "capabilities": {
