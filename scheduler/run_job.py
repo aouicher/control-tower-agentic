@@ -67,12 +67,15 @@ def run_context(now):
         return f'{year}-W{number:02d}, Monday {monday} to Sunday {monday + 6 * one}'
     before = day - {0: 3, 6: 2}.get(day.weekday(), 1) * one  # Monday and Sunday: Friday; Saturday: Friday too (1 day)
     zone = getattr(now.tzinfo, 'key', None) or now.tzname()
+    midnight = lambda d: int(datetime.datetime.combine(d, datetime.time(), now.tzinfo).timestamp())  # local midnight
     return '\n'.join([
         '## Run context', '', 'Computed by the job runner: take every date and time from here and do not run `date`.', '',
         f'- Now: {now:%Y-%m-%d %H:%M} ({now:%d/%m/%Y at %H:%M}), {DAYS[day.weekday()]}, {zone}',
         f'- Today: {day}', f'- Year: {day.year}', f'- ISO week: {week(day)}',
         f'- Last complete ISO week: {week(day - 7 * one)}', f'- The week before: {week(day - 14 * one)}',
-        f'- Previous working day: {before}, {DAYS[before.weekday()]}', ''])
+        f'- Previous working day: {before}, {DAYS[before.weekday()]}',
+        f'- Unix time (epoch seconds, for tools that take one): now {int(now.timestamp())}, today 00:00 {midnight(day)}, '
+        f'previous working day 00:00 {midnight(before)}', ''])
 
 
 def redact(text, tail=False):

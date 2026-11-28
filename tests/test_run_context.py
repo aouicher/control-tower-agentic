@@ -38,8 +38,13 @@ class RunContextTests(unittest.TestCase):
         self.assertIn('- Last complete ISO week: 2026-W47, Monday 2026-11-16 to Sunday 2026-11-22', c)
         self.assertIn('- The week before: 2026-W46, Monday 2026-11-09 to Sunday 2026-11-15', c)
         self.assertIn('- Previous working day: 2026-11-20, Friday', c)
+        self.assertIn('- Unix time (epoch seconds, for tools that take one): now 1795417500, today 00:00 1795388400, previous working day 00:00 1795129200', c)
         self.assertTrue(c.startswith('## Run context\n'))
         self.assertIn('do not run `date`', c)
+
+    def test_unix_times_follow_the_clock_change(self):
+        c = context(2026, 3, 30, 8, 0)  # the clocks moved forward on Sunday 29 March: Friday midnight is 71 hours before Monday's
+        self.assertIn('now 1774850400, today 00:00 1774821600, previous working day 00:00 1774566000', c)
 
     def test_a_sunday_is_still_in_its_own_iso_week(self):
         c = context(2026, 11, 29, 23, 59)
