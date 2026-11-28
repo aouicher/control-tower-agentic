@@ -186,6 +186,12 @@ def command_needs(repo, answers, allow):
     return sorted(set(hosts)), sorted(set(writable)), weaker
 
 
+def needs_host(answers, command, table):
+    """True when nothing says which web addresses a command reaches: no host in the table, and no `network` answer ("it
+    needs no web address" is recorded as an empty list)."""
+    return not table.get(command, {}).get('network') and 'network' not in ((answers.get('commands') or {}).get(command) or {})
+
+
 def check_pack(pk):
     """Everything about one pack that can be checked before writing: ids, job ids, folders and symlinks, shipped files,
     core policy shape, and the tools its skills ask for."""
@@ -355,6 +361,8 @@ SHELL_CHARS = re.compile(r'[;&|`$<>(){}\[\]\\\n\r"\']')
 COMMAND_NAME = re.compile(r'^[a-z0-9][a-z0-9._-]{0,31}$')
 MAX_RULE = 120  # with at most two variables, a rule stays one short line: it cannot carry a message to the person reading it
 ENV_PREFIX = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(\S*)$')
+SUBCOMMAND = re.compile(r'^[a-z][a-z-]{0,19}$')  # a subcommand word, not an argument (no digit, path, option or value)
+MAX_SUBCOMMANDS = 3  # `twg jira workitem query`: enough for real tools, too short to carry a message to the reader
 SERVER_CHARS = '[A-Za-z0-9_.-]'  # an MCP server name, as in mcp__<server>__<tool>
 SERVER_NAME = re.compile(f'^{SERVER_CHARS}{{1,64}}$')
 MCP_TOOL = re.compile(f'^mcp__({SERVER_CHARS}+?)__([A-Za-z0-9.-]+(?:_[A-Za-z0-9.-]+)*)$')
@@ -498,10 +506,15 @@ def fingerprint(entry):
     return hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()
 
 
-def approved_servers(vault, answers):
-    """{name: entry} of the servers connected with configure.py whose .mcp.json entry is unchanged since: the only ones jobs
-    start."""
-    recorded, prints = set((answers.get('servers') or {}).values()), answers.get('fingerprints') or {}
+def recorded_servers(answers):
+    """The MCP servers connected with configure.py: a known tool's (`servers`) or a connection's."""
+    conns = answers.get('connections') or {}
+    return set((answers.get('servers') or {}).values()) | {c['server'] for c in conns.values() if isinstance(c, dict) and 'server' in c}
+
+
+def approved_servers(vault, answers, recorded):
+    """{name: entry} of these connected servers whose .mcp.json entry is unchanged since they were connected."""
+    prints = answers.get('fingerprints') or {}
     try:
         declared = vault_servers(vault) if recorded else {}
     except ValueError:
@@ -509,26 +522,65 @@ def approved_servers(vault, answers):
     return {s: declared[s] for s in sorted(recorded) if s in declared and prints.get(s) == fingerprint(declared[s])}
 
 
+def connection_problem(cid, entry):
+    """Why one `connections` answer is refused: {id: {"server": s} or {"command": c}, plus "read_tools": [its read rules]}."""
+    if not ID_RE.match(str(cid)):
+        return f'"connections": "{cid}" is not an id (lowercase letters, digits and -)'
+    if not isinstance(entry, dict) or len({'server', 'command'} & set(entry)) != 1 or set(entry) - {'server', 'command', 'read_tools'}:
+        return f'"connections" "{cid}" holds a "server" or a "command", and its "read_tools"'
+    rules, source = entry.get('read_tools'), entry.get('server') or entry.get('command')
+    if not isinstance(rules, list) or not rules:
+        return f'"connections" "{cid}": "read_tools" lists at least one tool'
+    for r in rules:
+        why = permission_problem(r) or (command_read_problem(r, source) if 'command' in entry
+                                        else None if mcp_server(r) == source else f'not a tool of {source}')
+        if why:
+            return f'"connections" "{cid}": "{r}": {why}'
+    return None
+
+
+COMMAND_READS = READ_VERBS | {'status', 'diff', 'log', 'unread', 'history', 'info'}
+
+
+def command_read_problem(rule, command):
+    """Why a connection's command rule is not a read: the command, then 1 to MAX_SUBCOMMANDS subcommand words ending in a
+    read (`gh pr list`; a group such as `gh pr` covers its actions too), no variable, and no action word before it."""
+    env, cmd, words = bash_parts(rule) or ([], None, [])
+    if cmd != command:
+        return f'not a command of {command}'
+    names = [x for w in words for x in name_words(w)]
+    if env or not 0 < len(words) <= MAX_SUBCOMMANDS or not all(SUBCOMMAND.match(w) for w in words) or names[-1] not in COMMAND_READS:
+        return f'a read rule is {command}, then 1 to {MAX_SUBCOMMANDS} subcommand words ending in a read: Bash({command} list:*)'
+    acts = set(names[:-1]) & (ACTION_WORDS | {'api'}) - NOUN_ACTIONS
+    return f'{", ".join(sorted(acts))} acts: jobs only read' if acts else None
+
+
 def server_answer_problems(answers, capabilities):
-    """What is wrong with the answers' record of connected MCP servers (configure.py connect writes it)."""
+    """What is wrong with the answers' record of connected MCP servers and connections (configure.py writes it)."""
     servers, prints, added = answers.get('servers') or {}, answers.get('fingerprints') or {}, answers.get('connections_added') or []
-    return [m for bad, m in (
-        (not isinstance(servers, dict) or not all(c in capabilities and SERVER_NAME.match(str(s)) for c, s in servers.items()),
-         '"servers" maps a capability to the MCP server name jobs see, for example {"tracker": "atlassian"}'),
-        (not isinstance(prints, dict) or not all(SERVER_NAME.match(str(s)) and re.fullmatch(r'[0-9a-f]{64}', str(h)) for s, h in prints.items()),
-         '"fingerprints" maps a connected MCP server to the hash of its .mcp.json entry'),
-        (not isinstance(added, list) or not all(SERVER_NAME.match(str(s)) for s in added), '"connections_added" is a list of MCP server names'))
-        if bad]
+    conns, out = answers.get('connections') or {}, []
+    if not isinstance(servers, dict) or not all(c in capabilities and SERVER_NAME.match(str(s)) for c, s in servers.items()):
+        out.append('"servers" maps a capability to the MCP server name jobs see, for example {"tracker": "atlassian"}')
+    if not isinstance(prints, dict) or not all(SERVER_NAME.match(str(s)) and re.fullmatch(r'[0-9a-f]{64}', str(h)) for s, h in prints.items()):
+        out.append('"fingerprints" maps a connected MCP server to the hash of its .mcp.json entry')
+    if not isinstance(added, list) or not all(SERVER_NAME.match(str(s)) for s in added):
+        out.append('"connections_added" is a list of MCP server names')
+    if not isinstance(conns, dict):
+        return out + ['"connections" maps an id to {"server" or "command", "read_tools"}']
+    owned = list(servers.values() if isinstance(servers, dict) else [])
+    owned += [c['server'] for c in conns.values() if isinstance(c, dict) and 'server' in c]
+    out += [f'"{s}" is connected twice: one MCP server serves one tool or connection' for s in sorted({s for s in owned if owned.count(s) > 1})]
+    return out + [p for cid, e in conns.items() for p in [connection_problem(cid, e)] if p]
 
 
 def mcp_file_findings(vault, answers):
     """(level, text) about the vault's .mcp.json: unreadable, connected servers changed since, servers nobody connected."""
-    recorded = set((answers.get('servers') or {}).values())
+    recorded = recorded_servers(answers)
     try:
         declared = vault_servers(vault)
     except ValueError as exc:
         return [('FAIL' if recorded else 'warn', f'cannot be read ({exc}): reports start none of its servers')]
-    out, changed, unused = [], sorted(recorded - set(approved_servers(vault, answers))), sorted(set(declared) - recorded)
+    out, changed, unused = [], sorted(recorded - set(approved_servers(vault, answers, recorded))), sorted(set(declared) - recorded)
     if changed:
         out.append(('FAIL', f'{", ".join(changed)} changed since connected (or is gone): reports do not use the new version; '
                             'connect it again in /control-tower, which shows what it now runs'))

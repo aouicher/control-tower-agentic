@@ -56,6 +56,19 @@ class DocTests(unittest.TestCase):
         for route in ('automate', 'update', 'uninstall'):  # only what works today is offered
             self.assertNotRegex(text.lower(), rf'say:? ["\'*]*{route}\b')
 
+    def test_a_command_is_never_recorded_without_its_network_answer(self):
+        skills = os.path.join(ROOT, 'core', 'vault', '.claude', 'skills')
+        lines = [line for name in os.listdir(skills) for line in open(os.path.join(skills, name, 'SKILL.md'), encoding='utf-8')
+                 if 'configure.py add-command' in line]
+        self.assertTrue(lines)
+        for line in lines:
+            with self.subTest(line=line[:80]):
+                self.assertIn('--host', line)
+                self.assertIn('--no-network', line)
+        hub = open(os.path.join(skills, 'control-tower', 'SKILL.md'), encoding='utf-8').read()
+        for needle in ('configure.py add-server', 'configure.py add-connection', '--command', 'usually for developers'):
+            self.assertIn(needle, hub)
+
     def test_every_question_from_a_list_is_asked_in_pages(self):
         # the question tool shows at most 4 options: a longer list goes through configure.py choices, never by hand
         import glob
