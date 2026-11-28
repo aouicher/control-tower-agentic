@@ -10,7 +10,6 @@ status: active
 
 [[my-work|🗂️ My work]] · [[commitments|🤝 Commitments]] · [[overview|🛠️ Overview]] · [[how-this-vault-works|📖 How this vault works]]
 
-## 📅 Today
 ![[today]]
 
 ### 🔴 Overdue or due today

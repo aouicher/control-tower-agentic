@@ -50,7 +50,7 @@ When it is done, you have three folders in your home folder:
 3. Turn on the **Tasks** plugin, which the dashboards need: **Settings** (gear icon, bottom left), **Community plugins**, **Turn on community plugins**, **Browse**, search "Tasks", **Install**, then **Enable**.
 4. Open **cockpit** in the file list: it is your home page.
 
-Obsidian keeps the vault in its list: next time it opens there directly.
+Obsidian keeps the vault in its list: next time it opens there directly. Every page shows its own title, so Obsidian does not repeat the file name above it: to rename a note, click its name in the tab.
 
 ## 3. Talk to your control tower
 
